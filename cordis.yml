@@ -1,0 +1,5 @@
+# portable overlay: relative name only. --patch resolves against the profile
+# directory, so cold-boot through `dshx start` / `dshx verify-boot`, not raw pnpm dsh.
+- insert:
+    - id: dsh-watcher
+      name: './src/dsh-watcher.ts'

@@ -1,0 +1,8 @@
+node_modules
+lib/
+coverage/
+.dshx/
+*.tsbuildinfo
+.DS_Store
+.env
+.env.*

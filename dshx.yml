@@ -1,0 +1,5 @@
+id: dsh-watcher
+entry: src/dsh-watcher.ts
+marker: "[my-plugins/dsh-watcher] loaded"
+kind: client
+profile: web
