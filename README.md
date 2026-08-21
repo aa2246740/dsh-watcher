@@ -8,17 +8,17 @@
 
 它不往对话里塞消息，不编隐藏思维链，也不替代官方 Trajectory。
 
-![从逐项切到归类：两次改 package.json 收成 ×2](docs/screenshots/switch-mode.gif)
+![在官方 Web 里从逐项切到归类：两次改 package.json 收成 ×2](docs/screenshots/switch-mode.gif)
 
-完整 DeepSeek Harness Web 在拍这些图的机器上没能启动。图是本仓库 Watcher 面板对一段本地 Session 做 `foldEvents` 回放，不是画出来的外壳。
+图是官方 DeepSeek Harness Web。Watcher 挂在会话标题栏的眼睛上。这段对话是本地 Session 回放，面板读的是官方 ConversationSnapshot，不是单独做的 foldEvents 页。
 
 ## 面板
 
 收起的轮次仍留下阶段数、执行数、总耗时和 tok/s。展开后能看到模型 / 工具 / 首 token 的时间条。
 
-![三轮工作路径，前两轮收起，第三轮展开](docs/screenshots/overview.png)
+![官方会话里打开眼睛：三轮都收着，留下阶段数、执行数和 tok/s](docs/screenshots/collapsed-turns.png)
 
-![两轮收起：3 个阶段 · 2 次执行，总 2m 8s · 20 tok/s](docs/screenshots/collapsed-turns.png)
+![第三轮展开：并行步骤还在原来的 Step 里](docs/screenshots/overview.png)
 
 并行就停在原来的 Step 里，两条分支都能点开。
 
@@ -29,12 +29,6 @@
 ![归类：修改 package.json ×2，展开仍是步骤 5 和 6](docs/screenshots/grouped.png)
 
 模型阶段只使用供应商已经写进 Session 的可见 reasoning。没有记录就写未记录。正文默认折着。
-
-![模型阶段：可见推理 21s，推理记录折着](docs/screenshots/reasoning.png)
-
-点一次执行，结果在旁边。页脚写着只读。
-
-![点开「跑 Watcher 回归测试」后的结果](docs/screenshots/inspector.png)
 
 ## 装上
 

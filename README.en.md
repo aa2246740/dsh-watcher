@@ -8,17 +8,17 @@ Watcher is a read-only plugin for DeepSeek Harness WebUI. Open the eye in the se
 
 It does not inject messages, invent hidden chain-of-thought, or replace the official Trajectory.
 
-![Switching from itemized to grouped: two package.json edits collapse to ×2](docs/screenshots/switch-mode.gif)
+![Inside official Web, switching from itemized to grouped: two package.json edits collapse to ×2](docs/screenshots/switch-mode.gif)
 
-Full DeepSeek Harness Web did not boot on the machine that took these shots. What you see is this repo’s Watcher panel replaying a local Session through `foldEvents` — the real panel, not a drawn Harness shell.
+These shots are official DeepSeek Harness Web. Watcher hangs off the eye in the session header. The conversation is a local Session replay. The panel reads the official ConversationSnapshot, not a standalone foldEvents page.
 
 ## The panel
 
 A collapsed turn still keeps its phase count, execution count, duration, and tok/s. Open it and the strip splits model time, tool time, and time-to-first-token.
 
-![Three-turn work path, first two turns collapsed, third open](docs/screenshots/overview.png)
+![Official session, eye open: three collapsed turns with phase counts, executions, and tok/s](docs/screenshots/collapsed-turns.png)
 
-![Two collapsed turns: 3 phases · 2 executions, 2m 8s total · 20 tok/s](docs/screenshots/collapsed-turns.png)
+![Turn 3 expanded: the parallel step stays on its original Step](docs/screenshots/overview.png)
 
 Parallel work stays on the same Step. Each branch is still its own row.
 
@@ -29,12 +29,6 @@ Grouped view only stacks what it can prove. Two edits of the same `package.json`
 ![Grouped: edit package.json ×2, still steps 5 and 6 when opened](docs/screenshots/grouped.png)
 
 The model stage shows only provider-visible reasoning already written into the Session. If nothing was recorded, it says so. The body stays folded.
-
-![Model stage: 21s of visible reasoning, reasoning row folded](docs/screenshots/reasoning.png)
-
-Click an execution and the result sits beside the path. The footer says read-only.
-
-![Inspector open on “run Watcher regression tests”](docs/screenshots/inspector.png)
 
 ## Install
 
