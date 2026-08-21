@@ -61,6 +61,7 @@ import {
   type ModelAttempt,
   type ModelStepTrace,
 } from '../observation/model-trace.ts'
+import { stepTimelineEntries } from './step-timeline.ts'
 
 export interface WatcherInjected {
   loadAllHistory: (signal: AbortSignal) => Promise<CompleteHistoryResult>
@@ -857,7 +858,7 @@ function PhaseOverview({
                 const showStepTotal = stepDuration !== null && stepDuration !== modelDuration
                 const modelDefaultOpen = modelMetrics?.live === true
                 const modelOpen = modelDisclosure[step.id] ?? modelDefaultOpen
-                const occurrenceItems = step.items.filter(item => item.source !== 'model')
+                const timelineEntries = stepTimelineEntries(step)
                 return (
                   <section
                     key={step.id}
@@ -885,32 +886,37 @@ function PhaseOverview({
                       </button>
                     </header>
                     <div id={`watcher-step-body-${step.id}`} className={css.overviewOccurrences} hidden={!stepOpen}>
-                      {step.model === null
-                        ? null
-                        : (
-                          <ModelStage
-                            trace={step.model}
-                            stepId={step.id}
+                      {timelineEntries.map(entry => {
+                        if (entry.kind === 'model') {
+                          return (
+                            <ModelStage
+                              key={`model:${step.id}`}
+                              trace={entry.trace}
+                              stepId={step.id}
+                              now={now}
+                              open={modelOpen}
+                              reasoningDisclosure={reasoningDisclosure}
+                              onToggle={() => onToggleModel(step.id, modelOpen)}
+                              onToggleReasoning={(key, defaultOpen) => onToggleReasoning(key, defaultOpen, step.id)}
+                            />
+                          )
+                        }
+
+                        const item = entry.item
+                        return (
+                          <OverviewOccurrenceButton
+                            key={item.id}
+                            item={item}
+                            occurrenceNumber={group.items.findIndex(candidate => candidate.id === item.id) + 1}
+                            branch={step.parallel ? entry.occurrenceIndex + 1 : null}
+                            step={null}
+                            live={stepLive && item.id === latestItemId && item.status === 'running'}
+                            selected={selectedGroup && selectedItemId === item.id}
                             now={now}
-                            open={modelOpen}
-                            reasoningDisclosure={reasoningDisclosure}
-                            onToggle={() => onToggleModel(step.id, modelOpen)}
-                            onToggleReasoning={(key, defaultOpen) => onToggleReasoning(key, defaultOpen, step.id)}
+                            onSelect={() => onSelectItem(item)}
                           />
-                        )}
-                      {occurrenceItems.map((item, itemIndex) => (
-                        <OverviewOccurrenceButton
-                          key={item.id}
-                          item={item}
-                          occurrenceNumber={group.items.findIndex(candidate => candidate.id === item.id) + 1}
-                          branch={step.parallel ? itemIndex + 1 : null}
-                          step={null}
-                          live={stepLive && item.id === latestItemId && item.status === 'running'}
-                          selected={selectedGroup && selectedItemId === item.id}
-                          now={now}
-                          onSelect={() => onSelectItem(item)}
-                        />
-                      ))}
+                        )
+                      })}
                     </div>
                   </section>
                 )
