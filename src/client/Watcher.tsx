@@ -63,12 +63,17 @@ import {
 } from '../observation/model-trace.ts'
 import { stepTimelineEntries } from './step-timeline.ts'
 import {
-  chooseTurnDisclosureMode,
-  createTurnDisclosureState,
-  resetTurnDisclosureOverrides,
+  chooseDisclosureDepth,
+  createDisclosureState,
+  layerDisclosureOpen,
+  resetDisclosureOverrides,
+  setLayerDisclosure,
+  toggleLayerDisclosure,
   toggleTurnDisclosure,
   turnDisclosureOpen,
-} from './turn-disclosure.ts'
+  type DisclosureLayer,
+  type DisclosureState,
+} from './disclosure-depth.ts'
 
 export interface WatcherInjected {
   loadAllHistory: (signal: AbortSignal) => Promise<CompleteHistoryResult>
@@ -567,7 +572,7 @@ function ModelStage({
   stepId,
   now,
   open,
-  reasoningDisclosure,
+  disclosure,
   onToggle,
   onToggleReasoning,
 }: {
@@ -575,9 +580,9 @@ function ModelStage({
   stepId: string
   now: number
   open: boolean
-  reasoningDisclosure: Readonly<Record<string, boolean>>
+  disclosure: DisclosureState
   onToggle: () => void
-  onToggleReasoning: (key: string, open: boolean) => void
+  onToggleReasoning: (key: string) => void
 }) {
   const metrics = modelStageMetrics(trace, now)
   const hasReasoning = hasReasoningEvidence(trace)
@@ -678,7 +683,7 @@ function ModelStage({
               <p className={css.modelStageNote}>仅展示供应商写入 DSH 会话的可见 reasoning；不补写未记录内容。</p>
               {reasoningAttempts.map(attempt => {
                 const key = `${stepId}:attempt:${attempt.attempt}`
-                const reasoningOpen = reasoningDisclosure[key] ?? false
+                const reasoningOpen = layerDisclosureOpen(disclosure, 'reasoning', key)
                 const duration = formatDuration(reasoningAttemptDuration(attempt, now))
                 const meta = [
                   reasoningAttemptState(attempt),
@@ -693,7 +698,7 @@ function ModelStage({
                       className={css.reasoningToggle}
                       aria-expanded={reasoningOpen}
                       aria-controls={`watcher-reasoning-${key}`}
-                      onClick={() => onToggleReasoning(key, reasoningOpen)}
+                      onClick={() => onToggleReasoning(key)}
                     >
                       <IconChevronRightOutline14 size={11} className={css.reasoningChevron} />
                       <span className={css.reasoningLabel}>
@@ -775,14 +780,9 @@ function PhaseOverview({
   selectedItemId,
   observationMode,
   open,
-  stepDisclosure,
-  clusterDisclosure,
-  modelDisclosure,
-  reasoningDisclosure,
+  disclosure,
   onToggle,
-  onToggleStep,
-  onToggleCluster,
-  onToggleModel,
+  onToggleLayer,
   onToggleReasoning,
   onSelectItem,
 }: {
@@ -794,15 +794,10 @@ function PhaseOverview({
   selectedItemId: string | null
   observationMode: ObservationMode
   open: boolean
-  stepDisclosure: Readonly<Record<string, boolean>>
-  clusterDisclosure: Readonly<Record<string, boolean>>
-  modelDisclosure: Readonly<Record<string, boolean>>
-  reasoningDisclosure: Readonly<Record<string, boolean>>
+  disclosure: DisclosureState
   onToggle: () => void
-  onToggleStep: (step: WorkStep, defaultOpen: boolean) => void
-  onToggleCluster: (cluster: WorkCluster, defaultOpen: boolean) => void
-  onToggleModel: (key: string, defaultOpen: boolean) => void
-  onToggleReasoning: (key: string, defaultOpen: boolean, modelKey: string) => void
+  onToggleLayer: (layer: DisclosureLayer, key: string) => void
+  onToggleReasoning: (key: string, modelKey: string) => void
   onSelectItem: (item: WorkItem) => void
 }) {
   const phaseState = overviewStateOf(group.status, isNow)
@@ -814,11 +809,9 @@ function PhaseOverview({
   ].filter((part): part is string => part !== null).join(' · ')
   const latestItemId = group.items.at(-1)?.id ?? null
   const clusters = clusterWorkItems(group.items.filter(item => item.source !== 'model'))
-  const latestClusterId = clusters.at(-1)?.id ?? null
   const modelSteps = group.steps.filter((step): step is WorkStep & { model: ModelStepTrace } => step.model !== null)
   const groupedModelsKey = `${group.id}:model-list`
-  const groupedModelsDefaultOpen = isNow && running
-  const groupedModelsOpen = modelDisclosure[groupedModelsKey] ?? groupedModelsDefaultOpen
+  const groupedModelsOpen = layerDisclosureOpen(disclosure, 'model', groupedModelsKey)
 
   return (
     <section
@@ -859,12 +852,11 @@ function PhaseOverview({
               {group.steps.map(step => {
                 const stepLive = isNow && running && step.items.some(item => item.id === latestItemId && item.status === 'running')
                 const stepDuration = formatDuration(stepElapsedMs(step, stepLive, now))
-                const stepOpen = stepDisclosure[step.id] ?? true
+                const stepOpen = layerDisclosureOpen(disclosure, 'step', step.id)
                 const modelMetrics = step.model === null ? null : modelStageMetrics(step.model, now)
                 const modelDuration = formatDuration(modelMetrics?.totalMs ?? null)
                 const showStepTotal = stepDuration !== null && stepDuration !== modelDuration
-                const modelDefaultOpen = modelMetrics?.live === true
-                const modelOpen = modelDisclosure[step.id] ?? modelDefaultOpen
+                const modelOpen = layerDisclosureOpen(disclosure, 'model', step.id)
                 const timelineEntries = stepTimelineEntries(step)
                 return (
                   <section
@@ -880,7 +872,7 @@ function PhaseOverview({
                         aria-expanded={stepOpen}
                         aria-controls={`watcher-step-body-${step.id}`}
                         aria-label={`步骤 ${step.step || '—'}，${step.executionCount} 次执行${stepDuration === null ? '' : `，耗时 ${stepDuration}`}，${stepOpen ? '收起步骤' : '展开步骤'}`}
-                        onClick={() => onToggleStep(step, stepOpen)}
+                        onClick={() => onToggleLayer('step', step.id)}
                       >
                         <IconChevronRightOutline14 size={11} className={css.stepChevron} />
                         <span className={css.overviewStepLabel}>步骤 {step.step || '—'}</span>
@@ -902,9 +894,9 @@ function PhaseOverview({
                               stepId={step.id}
                               now={now}
                               open={modelOpen}
-                              reasoningDisclosure={reasoningDisclosure}
-                              onToggle={() => onToggleModel(step.id, modelOpen)}
-                              onToggleReasoning={(key, defaultOpen) => onToggleReasoning(key, defaultOpen, step.id)}
+                              disclosure={disclosure}
+                              onToggle={() => onToggleLayer('model', step.id)}
+                              onToggleReasoning={key => onToggleReasoning(key, step.id)}
                             />
                           )
                         }
@@ -941,7 +933,7 @@ function PhaseOverview({
                       className={css.groupedModelToggle}
                       aria-expanded={groupedModelsOpen}
                       aria-controls={`watcher-grouped-models-${group.id}`}
-                      onClick={() => onToggleModel(groupedModelsKey, groupedModelsOpen)}
+                      onClick={() => onToggleLayer('model', groupedModelsKey)}
                     >
                       <IconChevronRightOutline14 size={11} className={css.groupedModelChevron} />
                       <span>
@@ -955,9 +947,7 @@ function PhaseOverview({
                       hidden={!groupedModelsOpen}
                     >
                       {modelSteps.map(step => {
-                        const metrics = modelStageMetrics(step.model, now)
-                        const defaultOpen = metrics.live
-                        const modelOpen = modelDisclosure[step.id] ?? defaultOpen
+                        const modelOpen = layerDisclosureOpen(disclosure, 'model', step.id)
                         return (
                           <div key={step.id} className={css.groupedModelStep}>
                             <span className={css.groupedModelStepLabel}>步骤 {step.step || '—'}</span>
@@ -966,9 +956,9 @@ function PhaseOverview({
                               stepId={`${step.id}:grouped`}
                               now={now}
                               open={modelOpen}
-                              reasoningDisclosure={reasoningDisclosure}
-                              onToggle={() => onToggleModel(step.id, modelOpen)}
-                              onToggleReasoning={(key, defaultOpen) => onToggleReasoning(key, defaultOpen, step.id)}
+                              disclosure={disclosure}
+                              onToggle={() => onToggleLayer('model', step.id)}
+                              onToggleReasoning={key => onToggleReasoning(key, step.id)}
                             />
                           </div>
                         )
@@ -996,8 +986,7 @@ function PhaseOverview({
                     </div>
                   )
                 }
-                const defaultOpen = isNow && cluster.id === latestClusterId
-                const clusterOpen = clusterDisclosure[cluster.id] ?? defaultOpen
+                const clusterOpen = layerDisclosureOpen(disclosure, 'cluster', cluster.id)
                 const basisLabel = clusterBasisLabel(cluster)
                 const outcome = clusterOutcomeSummary(cluster)
                 const clusterMeta = [
@@ -1014,7 +1003,7 @@ function PhaseOverview({
                       aria-expanded={clusterOpen}
                       aria-controls={`watcher-cluster-body-${cluster.id}`}
                       aria-label={`${cluster.title}，${clusterMeta}，${clusterOpen ? '收起同类执行' : '展开同类执行'}`}
-                      onClick={() => onToggleCluster(cluster, clusterOpen)}
+                      onClick={() => onToggleLayer('cluster', cluster.id)}
                     >
                       <IconChevronRightOutline14 size={11} className={css.analysisClusterChevron} />
                       <span className={css.analysisClusterDotSlot} aria-hidden="true">
@@ -1090,12 +1079,7 @@ export function Watcher({ useSession, useSessions, useProjection, sessionId, loa
   const [ui, setUi] = useState(() => ({ follow: true, unread: 0, selectedId: null as string | null }))
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const [observationMode, setObservationMode] = useState<ObservationMode>('itemized')
-  const [turnDisclosure, setTurnDisclosure] = useState(createTurnDisclosureState)
-  const [phaseDisclosure, setPhaseDisclosure] = useState<Record<string, boolean>>({})
-  const [stepDisclosure, setStepDisclosure] = useState<Record<string, boolean>>({})
-  const [clusterDisclosure, setClusterDisclosure] = useState<Record<string, boolean>>({})
-  const [modelDisclosure, setModelDisclosure] = useState<Record<string, boolean>>({})
-  const [reasoningDisclosure, setReasoningDisclosure] = useState<Record<string, boolean>>({})
+  const [disclosure, setDisclosure] = useState(createDisclosureState)
   const [historyLoad, setHistoryLoad] = useState<HistoryLoadState>({ kind: 'idle' })
   const now = useLiveClock(open && picture.running)
   const sessionTiming = deriveSessionTiming(picture, now)
@@ -1146,12 +1130,7 @@ export function Watcher({ useSession, useSessions, useProjection, sessionId, loa
     followRef.current.reset()
     setUi(followRef.current.snapshot())
     setSelectedItemId(null)
-    setTurnDisclosure(resetTurnDisclosureOverrides)
-    setPhaseDisclosure({})
-    setStepDisclosure({})
-    setClusterDisclosure({})
-    setModelDisclosure({})
-    setReasoningDisclosure({})
+    setDisclosure(resetDisclosureOverrides)
   }, [sessionId])
 
   useEffect(() => () => {
@@ -1225,6 +1204,12 @@ export function Watcher({ useSession, useSessions, useProjection, sessionId, loa
     if (mode === observationMode) return
     if (ui.follow) programmaticScrollRef.current = true
     setObservationMode(mode)
+  }
+
+  const chooseDepth = (depth: DisclosureState['depth']) => {
+    if (depth === disclosure.depth) return
+    pinForDisclosure()
+    setDisclosure(chooseDisclosureDepth(depth))
   }
 
   const startHistoryLoad = () => {
@@ -1355,50 +1340,53 @@ export function Watcher({ useSession, useSessions, useProjection, sessionId, loa
 
               <SessionTimeLedger timing={sessionTiming} />
 
-              <div className={css.viewToolbar} aria-label="观察方式">
-                <span className={css.viewToolbarLabel}>观察方式</span>
-                <div className={css.viewMode} role="group" aria-label="工作路径观察方式">
-                  <button
-                    type="button"
-                    data-active={observationMode === 'itemized' ? '' : undefined}
-                    aria-pressed={observationMode === 'itemized'}
-                    title="按时间顺序展示每个步骤和每次执行"
-                    onClick={() => chooseObservationMode('itemized')}
-                  >
-                    逐项
-                  </button>
-                  <button
-                    type="button"
-                    data-active={observationMode === 'grouped' ? '' : undefined}
-                    aria-pressed={observationMode === 'grouped'}
-                    title="按同一目标或完全相同的指令归类，展开仍可查看原始执行"
-                    onClick={() => chooseObservationMode('grouped')}
-                  >
-                    归类
-                  </button>
+              <div className={css.viewToolbar} aria-label="路径视图设置">
+                <div className={css.viewControl}>
+                  <span className={css.viewToolbarLabel}>组织</span>
+                  <div className={css.viewMode} role="group" aria-label="路径组织方式">
+                    <button
+                      type="button"
+                      data-active={observationMode === 'itemized' ? '' : undefined}
+                      aria-pressed={observationMode === 'itemized'}
+                      title="按时间顺序展示每个步骤和每次执行"
+                      onClick={() => chooseObservationMode('itemized')}
+                    >
+                      逐项
+                    </button>
+                    <button
+                      type="button"
+                      data-active={observationMode === 'grouped' ? '' : undefined}
+                      aria-pressed={observationMode === 'grouped'}
+                      title="按同一目标或完全相同的指令归类，展开仍可查看原始执行"
+                      onClick={() => chooseObservationMode('grouped')}
+                    >
+                      归类
+                    </button>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  className={css.turnOverviewToggle}
-                  data-active={turnDisclosure.mode === 'macro' ? '' : undefined}
-                  aria-pressed={turnDisclosure.mode === 'macro'}
-                  title={turnDisclosure.mode === 'macro'
-                    ? '退出轮次概览，恢复自动展开最新轮次'
-                    : '收起所有轮次；新进展和未来轮次也保持收起'}
-                  onClick={() => {
-                    pinForDisclosure()
-                    setTurnDisclosure(current => chooseTurnDisclosureMode(
-                      current.mode === 'macro' ? 'automatic' : 'macro',
-                    ))
-                  }}
-                >
-                  轮次概览
-                </button>
-                <span className={css.viewModeHint}>
-                  {turnDisclosure.mode === 'macro'
-                    ? '新进展保持收起'
-                    : observationMode === 'itemized' ? '完整时间线' : '可展开原始记录'}
-                </span>
+                <div className={css.viewControl}>
+                  <span className={css.viewToolbarLabel}>层级</span>
+                  <div className={css.viewMode} role="group" aria-label="路径展开深度">
+                    <button
+                      type="button"
+                      data-active={disclosure.depth === 'overview' ? '' : undefined}
+                      aria-pressed={disclosure.depth === 'overview'}
+                      title="展开当前轮次，展示阶段概览；阶段内部保持收起"
+                      onClick={() => chooseDepth('overview')}
+                    >
+                      概览
+                    </button>
+                    <button
+                      type="button"
+                      data-active={disclosure.depth === 'detail' ? '' : undefined}
+                      aria-pressed={disclosure.depth === 'detail'}
+                      title="展开所有轮次、阶段、步骤、模型与推理记录"
+                      onClick={() => chooseDepth('detail')}
+                    >
+                      详情
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {snapshot.hasMore || historyLoad.kind === 'loading'
@@ -1463,7 +1451,7 @@ export function Watcher({ useSession, useSessions, useProjection, sessionId, loa
                         const isLatestTurn = turn.turn === latestTurnNumber
                         const turnState = overviewStateOf(turn.status, isLatestTurn)
                         const automaticDefaultOpen = turnNeedsDefaultDisclosure(turnState, isLatestTurn)
-                        const turnOpen = turnDisclosureOpen(turnDisclosure, turn.turn, automaticDefaultOpen)
+                        const turnOpen = turnDisclosureOpen(disclosure, turn.turn, automaticDefaultOpen)
                         const turnTitle = turn.turn === 0 ? '会话准备' : `对话轮次 ${turn.turn}`
                         const turnSummary = turnOverviewSummary(turn)
                         const performance = performanceByTurn.get(turn.turn)
@@ -1494,7 +1482,7 @@ export function Watcher({ useSession, useSessions, useProjection, sessionId, loa
                                   title={turnOpen ? '收起此轮次；新进展仍会继续更新' : '展开此轮次'}
                                   onClick={() => {
                                     pinForDisclosure()
-                                    setTurnDisclosure(current => toggleTurnDisclosure(
+                                    setDisclosure(current => toggleTurnDisclosure(
                                       current,
                                       turn.turn,
                                       automaticDefaultOpen,
@@ -1531,7 +1519,7 @@ export function Watcher({ useSession, useSessions, useProjection, sessionId, loa
                                 {turn.groups.map(group => {
                                   const isNow = group.id === lastGroupId
                                   const selectedGroup = ui.selectedId === group.id
-                                  const phaseOpen = phaseDisclosure[group.id] ?? true
+                                  const phaseOpen = layerDisclosureOpen(disclosure, 'phase', group.id)
                                   return (
                                     <PhaseOverview
                                       key={group.id}
@@ -1543,35 +1531,27 @@ export function Watcher({ useSession, useSessions, useProjection, sessionId, loa
                                       selectedItemId={selectedItemId}
                                       observationMode={observationMode}
                                       open={phaseOpen}
-                                      stepDisclosure={stepDisclosure}
-                                      clusterDisclosure={clusterDisclosure}
-                                      modelDisclosure={modelDisclosure}
-                                      reasoningDisclosure={reasoningDisclosure}
+                                      disclosure={disclosure}
                                       onToggle={() => {
                                         pinForDisclosure()
-                                        setPhaseDisclosure(current => ({ ...current, [group.id]: !phaseOpen }))
+                                        setDisclosure(current => toggleLayerDisclosure(current, 'phase', group.id))
                                       }}
-                                      onToggleStep={(step, defaultOpen) => {
+                                      onToggleLayer={(layer, key) => {
                                         pinForDisclosure()
-                                        setStepDisclosure(current => ({ ...current, [step.id]: !defaultOpen }))
+                                        setDisclosure(current => toggleLayerDisclosure(current, layer, key))
                                       }}
-                                      onToggleCluster={(cluster, defaultOpen) => {
+                                      onToggleReasoning={(key, modelKey) => {
                                         pinForDisclosure()
-                                        setClusterDisclosure(current => ({ ...current, [cluster.id]: !defaultOpen }))
-                                      }}
-                                      onToggleModel={(key, defaultOpen) => {
-                                        pinForDisclosure()
-                                        setModelDisclosure(current => ({ ...current, [key]: !defaultOpen }))
-                                      }}
-                                      onToggleReasoning={(key, defaultOpen, modelKey) => {
-                                        pinForDisclosure()
-                                        if (!defaultOpen) {
+                                        setDisclosure(current => {
+                                          const reasoningOpen = layerDisclosureOpen(current, 'reasoning', key)
+                                          const withOpenParent = reasoningOpen
+                                            ? current
+                                            : setLayerDisclosure(current, 'model', modelKey, true)
                                           // Opening a nested reasoning record is explicit reading intent.
                                           // Keep its parent open when the live model settles and its
-                                          // automatic default changes from open to closed.
-                                          setModelDisclosure(current => ({ ...current, [modelKey]: true }))
-                                        }
-                                        setReasoningDisclosure(current => ({ ...current, [key]: !defaultOpen }))
+                                          // default changes after a depth switch or live update.
+                                          return toggleLayerDisclosure(withOpenParent, 'reasoning', key)
+                                        })
                                       }}
                                       onSelectItem={item => selectItem(group, item)}
                                     />
