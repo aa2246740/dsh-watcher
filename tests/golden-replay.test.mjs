@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import test from 'node:test'
 import { foldEvents, parseJsonl } from '../lib/types/observation/fold.js'
+import { deriveSessionTiming, turnElapsedReading } from '../lib/types/observation/performance.js'
 
 const goldenRoot = process.env.WATCHER_GOLDEN_DIR
 
@@ -24,6 +25,19 @@ test('celebration session replays without lossy grouping', { skip: goldenRoot ==
   assert.ok(items.some(item => item.rawText.length > 900))
   assert.ok(picture.nodes.every(group => group.steps.every(step => step.turn === group.turn)))
   assert.equal(Object.hasOwn(picture, 'loops'), false)
+
+  const longTurn = picture.turns.find(turn => turn.turn === 3)
+  assert.ok(longTurn)
+  assert.deepEqual(turnElapsedReading(longTurn, false, 0), { kind: 'exact', durationMs: 2_020_092 })
+  assert.deepEqual(deriveSessionTiming(picture, 0), {
+    kind: 'measured',
+    coverage: 'complete',
+    startTime: 1_787_195_024_007,
+    endTime: 1_787_201_657_600,
+    elapsedMs: 6_633_593,
+    activeTurnMs: 3_276_689,
+    betweenTurnMs: 3_356_904,
+  })
 })
 
 test('Tetris session preserves orphan result, parallelism, steering, approvals, and images', { skip: goldenRoot === undefined }, async () => {

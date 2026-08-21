@@ -115,6 +115,8 @@ export interface WorkStep {
   unconfirmedFailureCount: number
   firstSeq: number
   lastSeq: number
+  startTime: number | null
+  endTime: number | null
 }
 
 /** One consecutive phase inside one Turn. Every child Step remains addressable. */
@@ -134,6 +136,8 @@ export interface WorkGroup {
   unconfirmedFailureCount: number
   firstSeq: number
   lastSeq: number
+  startTime: number | null
+  endTime: number | null
 }
 
 export interface WorkTurn {
@@ -188,6 +192,11 @@ interface EventLike {
 interface Coordinates {
   turn: number
   step: number
+}
+
+interface TimeBounds {
+  startTime: number | null
+  endTime: number | null
 }
 
 const EMPTY_NOW = Object.freeze({ phase: 'other' as const, label: '', status: 'unknown' as const })
@@ -730,7 +739,7 @@ function turnStateItem(seq: number, time: number, coordinates: Coordinates, stat
     source: 'turn',
     phase: 'failure',
     status,
-    title: status === 'interrupted' ? '回合已中断' : '回合失败',
+    title: status === 'interrupted' ? '本轮已中断' : '本轮失败',
     subtitle: message,
     toolName: null,
     callId: null,
@@ -773,7 +782,7 @@ function interactionItem(
     source: 'interaction',
     phase: 'wait',
     status,
-    title: status === 'waiting' ? '等待用户决定' : '用户已作决定',
+    title: status === 'waiting' ? '等待你决定' : '你已作决定',
     subtitle,
     toolName: null,
     callId: null,
@@ -819,7 +828,6 @@ function snapshotLocations(snapshot: ConversationSnapshot): Map<number, Coordina
       const coordinates = coordinatesOfLocation(location)
       if (coordinates !== null) locations.set(seq, coordinates)
     }
-    return locations
   }
   for (const turnNumber of snapshot.chat.timeline.turnOrder) {
     const turn = snapshot.chat.timeline.turns.get(turnNumber)
@@ -827,7 +835,18 @@ function snapshotLocations(snapshot: ConversationSnapshot): Map<number, Coordina
     for (const step of turn.steps) {
       for (const key of snapshot.chat.locations.getStep(turnNumber, step.step)) {
         const node = snapshot.chat.nodes.get(key)
-        if (node !== undefined) locations.set(node.anchorSeq, { turn: turnNumber, step: step.step })
+        if (node === undefined) continue
+        const coordinates = { turn: turnNumber, step: step.step }
+        if (!locations.has(node.anchorSeq)) locations.set(node.anchorSeq, coordinates)
+
+        // Chat anchors a Tool row at its tool/call seq, while the durable
+        // ToolResultNode is keyed by the later tool/result seq. Preserve both
+        // identities so a settled Tool never falls into synthetic Turn 0 when
+        // Trajectory intentionally omits contribution-only event locations.
+        const data = recordAt(node, 'data')
+        const root = recordAt(data, 'root')
+        const resultSeq = root?.kind === 'tool-result' ? numberAt(root, 'seq') : null
+        if (resultSeq !== null && !locations.has(resultSeq)) locations.set(resultSeq, coordinates)
       }
     }
   }
@@ -920,7 +939,7 @@ function snapshotItems(snapshot: ConversationSnapshot): WorkItem[] {
     } else if (node.kind === 'turn-error') {
       items.push(turnStateItem(node.seq, node.time, coordinates, 'failure', node.message))
     } else if (node.kind === 'turn-max-tokens') {
-      items.push(turnStateItem(node.seq, node.time, coordinates, 'interrupted', '达到本回合输出上限'))
+      items.push(turnStateItem(node.seq, node.time, coordinates, 'interrupted', '达到本轮输出上限'))
     }
   }
   const latestTurn = snapshot.chat.timeline.turnOrder.at(-1) ?? 0
@@ -1029,6 +1048,37 @@ function eventCoordinates(events: readonly EventLike[]): Map<number, Coordinates
   return map
 }
 
+interface EventTimingIndex {
+  turns: ReadonlyMap<number, TimeBounds>
+  steps: ReadonlyMap<string, TimeBounds>
+}
+
+function eventTimingIndex(events: readonly EventLike[]): EventTimingIndex {
+  const turns = new Map<number, TimeBounds>()
+  const steps = new Map<string, TimeBounds>()
+  for (const event of events) {
+    const data = isRecord(event.data) ? event.data : {}
+    const turn = numberAt(data, 'turn')
+    if (turn === null) continue
+    const time = event.time ?? null
+    if (event.type === 'turn/start' || event.type === 'turn/end') {
+      const current = turns.get(turn) ?? { startTime: null, endTime: null }
+      turns.set(turn, event.type === 'turn/start'
+        ? { ...current, startTime: time }
+        : { ...current, endTime: time })
+    }
+    if (event.type !== 'step/start' && event.type !== 'step/end') continue
+    const step = numberAt(data, 'step')
+    if (step === null) continue
+    const key = `${turn}:${step}`
+    const current = steps.get(key) ?? { startTime: null, endTime: null }
+    steps.set(key, event.type === 'step/start'
+      ? { ...current, startTime: time }
+      : { ...current, endTime: time })
+  }
+  return { turns, steps }
+}
+
 function eventMessageContent(event: EventLike): readonly unknown[] {
   const data = isRecord(event.data) ? event.data : null
   if (data === null) return []
@@ -1094,7 +1144,7 @@ function logMessageItems(events: readonly EventLike[], coordinates: ReadonlyMap<
     } else if (event.type === 'turn/end') {
       const reason = recordAt(data, 'reason')
       const kind = stringAt(reason, 'kind')
-      if (kind === 'aborted') items.push(turnStateItem(seq, event.time ?? 0, location, 'interrupted', '用户或运行时中断了本回合'))
+      if (kind === 'aborted') items.push(turnStateItem(seq, event.time ?? 0, location, 'interrupted', '用户或运行时中断了本轮对话'))
       else if (kind !== null && kind !== 'completed') items.push(turnStateItem(seq, event.time ?? 0, location, 'failure', safeStringify(reason)))
     }
   }
@@ -1200,7 +1250,7 @@ export function phaseTitle(phase: WorkPhase): string {
     activate: '激活插件',
     desktop: '操作界面',
     answer: '给出答复',
-    wait: '等待用户',
+    wait: '等待你决定',
     failure: '处理异常',
     other: '执行其他工作',
   }
@@ -1214,7 +1264,7 @@ function compactTargets(items: readonly WorkItem[]): string {
   return values.length > 2 ? `${head} · +${values.length - 2}` : head
 }
 
-function stepOf(items: readonly WorkItem[]): WorkStep {
+function stepOf(items: readonly WorkItem[], timing: TimeBounds): WorkStep {
   const first = items[0]
   if (first === undefined) throw new Error('work step requires at least one item')
   const phase = items.reduce((winner, item) => phasePriority(item.phase) > phasePriority(winner) ? item.phase : winner, first.phase)
@@ -1242,23 +1292,35 @@ function stepOf(items: readonly WorkItem[]): WorkStep {
     unconfirmedFailureCount,
     firstSeq: first.seq,
     lastSeq: items.at(-1)?.seq ?? first.seq,
+    ...timing,
   }
 }
 
-function stepsOf(items: readonly WorkItem[]): WorkStep[] {
+function stepsOf(
+  items: readonly WorkItem[],
+  timingOf: ((turn: number, step: number) => TimeBounds) | undefined,
+): WorkStep[] {
   const steps: WorkStep[] = []
   let current: WorkItem[] = []
   let key = ''
   for (const item of items) {
     const itemKey = `${item.turn}:${item.step}`
     if (current.length > 0 && itemKey !== key) {
-      steps.push(stepOf(current))
+      const first = current[0]
+      if (first !== undefined) {
+        steps.push(stepOf(current, timingOf?.(first.turn, first.step) ?? { startTime: null, endTime: null }))
+      }
       current = []
     }
     key = itemKey
     current.push(item)
   }
-  if (current.length > 0) steps.push(stepOf(current))
+  if (current.length > 0) {
+    const first = current[0]
+    if (first !== undefined) {
+      steps.push(stepOf(current, timingOf?.(first.turn, first.step) ?? { startTime: null, endTime: null }))
+    }
+  }
   return steps
 }
 
@@ -1292,6 +1354,8 @@ function groupOf(steps: readonly WorkStep[]): WorkGroup {
     unconfirmedFailureCount,
     firstSeq: first.firstSeq,
     lastSeq: steps.at(-1)?.lastSeq ?? first.lastSeq,
+    startTime: first.startTime,
+    endTime: steps.at(-1)?.endTime ?? null,
   }
 }
 
@@ -1313,9 +1377,21 @@ function groupsOf(steps: readonly WorkStep[]): WorkGroup[] {
   return groups
 }
 
-function turnTimesFromSnapshot(snapshot: ConversationSnapshot, turn: number): { startTime: number | null; endTime: number | null } {
+function turnTimesFromSnapshot(snapshot: ConversationSnapshot, turn: number): TimeBounds {
+  const location = snapshot.chat.timeline.turns.get(turn)
   const timing = snapshot.turnTimings.get(turn)
-  return { startTime: timing?.startTime ?? null, endTime: timing?.endTime ?? null }
+  return {
+    startTime: location?.start?.time ?? timing?.startTime ?? null,
+    endTime: location?.end?.time ?? timing?.endTime ?? null,
+  }
+}
+
+function stepTimesFromSnapshot(snapshot: ConversationSnapshot, turn: number, step: number): TimeBounds {
+  const location = snapshot.chat.timeline.turns.get(turn)?.steps.find(value => value.step === step)
+  return {
+    startTime: location?.start?.time ?? null,
+    endTime: location?.end?.time ?? null,
+  }
 }
 
 function pictureOf(
@@ -1324,12 +1400,22 @@ function pictureOf(
     running: boolean
     partialHistory: boolean
     pendingCount: number
-    turnTimes?: (turn: number) => { startTime: number | null; endTime: number | null }
+    turnTimes?: (turn: number) => TimeBounds
+    stepTimes?: (turn: number, step: number) => TimeBounds
   },
 ): WorkPicture {
   if (sourceItems.length === 0) return { ...EMPTY_PICTURE, running: options.running, partialHistory: options.partialHistory, pendingCount: options.pendingCount }
-  const items = withPatterns([...sourceItems].sort((left, right) => left.seq - right.seq || left.time - right.time))
-  const steps = stepsOf(items)
+  // Turn and Step are the authoritative conversation coordinates. Some
+  // interaction records (for example a delayed approval decision) arrive
+  // after events from a later Step. Event sequence therefore orders only
+  // occurrences *inside* one Step; it must never reorder the Step rail.
+  const items = withPatterns([...sourceItems].sort((left, right) =>
+    left.turn - right.turn
+    || left.step - right.step
+    || left.seq - right.seq
+    || left.time - right.time,
+  ))
+  const steps = stepsOf(items, options.stepTimes)
   const groups = groupsOf(steps)
   const turns: WorkTurn[] = []
   for (const turnNumber of [...new Set(groups.map(group => group.turn))]) {
@@ -1364,21 +1450,100 @@ function pictureOf(
 
 /** Fold the official RC8 snapshot without flattening Turn/Step identity. */
 export function foldSnapshot(snapshot: ConversationSnapshot, options: { running?: boolean } = {}): WorkPicture {
-  if (snapshot.blank) return { ...EMPTY_PICTURE, running: options.running === true || snapshot.running }
+  if (snapshot.blank) {
+    return {
+      ...EMPTY_PICTURE,
+      running: options.running === true || snapshot.running,
+      partialHistory: snapshot.hasMore,
+    }
+  }
   return pictureOf(snapshotItems(snapshot), {
     running: options.running === true || snapshot.running,
     partialHistory: snapshot.hasMore,
     pendingCount: snapshot.pending.length,
     turnTimes: turn => turnTimesFromSnapshot(snapshot, turn),
+    stepTimes: (turn, step) => stepTimesFromSnapshot(snapshot, turn, step),
+  })
+}
+
+function itemsOfPicture(picture: WorkPicture): readonly WorkItem[] {
+  return picture.nodes.flatMap(group => group.items)
+}
+
+function turnTimesOfPicture(picture: WorkPicture): Map<number, TimeBounds> {
+  return new Map(picture.turns.map(turn => [turn.turn, {
+    startTime: turn.startTime,
+    endTime: turn.endTime,
+  }]))
+}
+
+function stepTimesOfPicture(picture: WorkPicture): Map<string, TimeBounds> {
+  return new Map(picture.nodes.flatMap(group => group.steps.map(step => [
+    `${step.turn}:${step.step}`,
+    { startTime: step.startTime, endTime: step.endTime },
+  ] as const)))
+}
+
+/**
+ * Retain every occurrence already observed in this mounted page while the
+ * official RC8 window advances. Latest evidence wins by stable occurrence id,
+ * so running → result updates one row instead of duplicating or removing it.
+ */
+export function mergeObservedPictures(previous: WorkPicture, current: WorkPicture): WorkPicture {
+  if (previous.nodes.length === 0) return current
+  if (current.nodes.length === 0) {
+    return {
+      ...previous,
+      running: current.running,
+      partialHistory: current.partialHistory,
+      pendingCount: current.pendingCount,
+    }
+  }
+
+  const items = new Map<string, WorkItem>()
+  for (const item of itemsOfPicture(previous)) items.set(item.id, item)
+  for (const item of itemsOfPicture(current)) items.set(item.id, item)
+
+  const turns = turnTimesOfPicture(previous)
+  for (const [turn, timing] of turnTimesOfPicture(current)) {
+    const prior = turns.get(turn)
+    turns.set(turn, {
+      startTime: timing.startTime ?? prior?.startTime ?? null,
+      endTime: timing.endTime ?? prior?.endTime ?? null,
+    })
+  }
+
+  const steps = stepTimesOfPicture(previous)
+  for (const [key, timing] of stepTimesOfPicture(current)) {
+    const prior = steps.get(key)
+    steps.set(key, {
+      startTime: timing.startTime ?? prior?.startTime ?? null,
+      endTime: timing.endTime ?? prior?.endTime ?? null,
+    })
+  }
+
+  return pictureOf([...items.values()], {
+    running: current.running,
+    partialHistory: current.partialHistory,
+    pendingCount: current.pendingCount,
+    turnTimes: turn => turns.get(turn) ?? { startTime: null, endTime: null },
+    stepTimes: (turn, step) => steps.get(`${turn}:${step}`) ?? { startTime: null, endTime: null },
   })
 }
 
 /** Fold a full session JSONL replay, including approvals, steering, images, and orphan results. */
 export function foldEvents(events: readonly EventLike[], options: { running?: boolean } = {}): WorkPicture {
   const coordinates = eventCoordinates(events)
+  const timings = eventTimingIndex(events)
   const items = [...pairTools(events).map(toolItem), ...logMessageItems(events, coordinates), ...approvalItems(events, coordinates)]
   const pendingCount = items.filter(item => item.status === 'waiting').length
-  return pictureOf(items, { running: options.running === true, partialHistory: false, pendingCount })
+  return pictureOf(items, {
+    running: options.running === true,
+    partialHistory: false,
+    pendingCount,
+    turnTimes: turn => timings.turns.get(turn) ?? { startTime: null, endTime: null },
+    stepTimes: (turn, step) => timings.steps.get(`${turn}:${step}`) ?? { startTime: null, endTime: null },
+  })
 }
 
 /** Parse valid JSONL lines and skip only a torn final line. */

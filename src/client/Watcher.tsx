@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import type { ConversationSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
+import type {} from '@deepseek-ai/dsh-session-stats/client'
 import {
   DiffBlock,
   IconCheckOutline16,
@@ -20,26 +21,54 @@ import {
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { createFollow } from '../hub/follow.ts'
+import type { CompleteHistoryResult } from '../hub/history.ts'
+import {
+  clusterOutcomeSummary,
+  clusterWorkItems,
+  type WorkCluster,
+} from '../hub/aggregation.ts'
 import {
   foldSnapshot,
+  mergeObservedPictures,
   type WorkGroup,
   type WorkItem,
   type WorkPresentation,
   type WorkStatus,
+  type WorkStep,
   type WorkTurn,
 } from '../observation/fold.ts'
 import css from './Watcher.module.css'
 import {
   OVERVIEW_STATE_LABEL,
-  groupOverviewSummary,
   overviewStateOf,
   turnNeedsDefaultDisclosure,
   turnOverviewSummary,
 } from '../hub/overview.ts'
+import {
+  deriveSessionTiming,
+  deriveTurnPerformance,
+  formatTokensPerSecond,
+  groupElapsedMs,
+  itemElapsedMs,
+  stepElapsedMs,
+  turnElapsedReading,
+  type SessionTiming,
+  type TurnPerformance,
+} from '../observation/performance.ts'
 
-export type WatcherProps = PropsRuntime<'conversation.session.header.utilities'>
+export interface WatcherInjected {
+  loadAllHistory: (signal: AbortSignal) => Promise<CompleteHistoryResult>
+}
+
+export type WatcherProps = PropsRuntime<'conversation.session.header.utilities'> & WatcherInjected
 
 type DetailTab = 'result' | 'input' | 'raw'
+type ObservationMode = 'itemized' | 'grouped'
+type HistoryLoadState =
+  | { kind: 'idle' }
+  | { kind: 'loading' }
+  | { kind: 'complete' }
+  | { kind: 'error'; message: string }
 
 const PANEL_GAP = 8
 const PANEL_MARGIN = 12
@@ -48,7 +77,7 @@ const MARKDOWN_CODE_LABELS = Object.freeze({ copyLabel: '复制', copiedLabel: '
 
 const STATUS_LABEL: Record<WorkStatus, string> = {
   running: '进行中',
-  waiting: '等待用户',
+  waiting: '等待你',
   success: '成功',
   failure: '失败',
   returned: '已返回',
@@ -74,15 +103,90 @@ function StatusMark({ status, className }: { status: WorkStatus; className?: str
 function formatDuration(durationMs: number | null): string | null {
   if (durationMs === null) return null
   if (durationMs < 1000) return `${Math.round(durationMs)} ms`
-  if (durationMs < 60_000) return `${(durationMs / 1000).toFixed(durationMs < 10_000 ? 1 : 0)} s`
-  const minutes = Math.floor(durationMs / 60_000)
-  const seconds = Math.round((durationMs % 60_000) / 1000)
+  const secondsWithDecimal = Math.round(durationMs / 100) / 10
+  if (secondsWithDecimal < 60) {
+    return `${secondsWithDecimal < 10 ? secondsWithDecimal.toFixed(1) : Math.round(secondsWithDecimal)} s`
+  }
+  const totalSeconds = Math.round(durationMs / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  if (minutes >= 60) {
+    const hours = Math.floor(minutes / 60)
+    return `${hours}h ${minutes % 60}m`
+  }
   return `${minutes}m ${seconds}s`
 }
 
-function turnDuration(turn: WorkTurn): string | null {
-  if (turn.startTime === null || turn.endTime === null) return null
-  return formatDuration(Math.max(0, turn.endTime - turn.startTime))
+type TurnDurationDisplay = {
+  kind: 'exact' | 'partial'
+  value: string
+}
+
+function turnDuration(turn: WorkTurn, live: boolean, now: number): TurnDurationDisplay | null {
+  const reading = turnElapsedReading(turn, live, now)
+  if (reading.kind === 'unavailable') return null
+  const duration = formatDuration(reading.durationMs)
+  if (duration === null) return null
+  return {
+    kind: reading.kind === 'exact' ? 'exact' : 'partial',
+    value: duration,
+  }
+}
+
+function useLiveClock(enabled: boolean): number {
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    if (!enabled) return
+    setNow(Date.now())
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [enabled])
+
+  return now
+}
+
+function TurnMetricStrip({ performance }: { performance: TurnPerformance }) {
+  const metrics = [
+    ['模型', formatDuration(performance.modelMs)],
+    ['工具', formatDuration(performance.toolMs)],
+    ['首 token', formatDuration(performance.ttftMs)],
+  ].filter((metric): metric is [string, string] => metric[1] !== null)
+
+  if (metrics.length === 0) return null
+  return (
+    <dl className={css.turnMetrics} aria-label="对话轮次性能分解">
+      {metrics.map(([label, value]) => (
+        <div key={label} className={css.turnMetric}>
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
+function SessionTimeLedger({ timing }: { timing: SessionTiming }) {
+  if (timing.kind === 'unavailable') return null
+  const metrics = [
+    [timing.coverage === 'complete' ? '会话总跨度' : '已加载跨度', formatDuration(timing.elapsedMs)],
+    ['轮次内耗时', formatDuration(timing.activeTurnMs)],
+    ['轮次间隔', formatDuration(timing.betweenTurnMs)],
+  ]
+  return (
+    <dl
+      className={css.sessionTiming}
+      aria-label="会话墙钟时间分解"
+      title="会话跨度等于轮次内耗时与轮次之间间隔；已加载跨度表示更早历史尚未载入"
+    >
+      {metrics.map(([label, value]) => (
+        <div key={label} className={css.sessionTimingMetric}>
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  )
 }
 
 function rawOf(item: WorkItem): string {
@@ -194,11 +298,15 @@ function itemPattern(item: WorkItem): string | null {
 function ExecutionInspector({
   group,
   selectedItemId,
+  live,
+  now,
   onSelectItem,
   onBack,
 }: {
   group: WorkGroup
   selectedItemId: string | null
+  live: boolean
+  now: number
   onSelectItem: (id: string) => void
   onBack: () => void
 }) {
@@ -209,7 +317,8 @@ function ExecutionInspector({
   useEffect(() => setTab('result'), [group.id, selected?.id])
 
   if (selected === null) return null
-  const duration = formatDuration(selected.durationMs)
+  const duration = formatDuration(itemElapsedMs(selected, live && selected.status === 'running', now))
+  const groupDuration = formatDuration(groupElapsedMs(group, live, now))
   const raw = rawOf(selected)
   const hasInput = Object.keys(selected.args).length > 0
   const pattern = itemPattern(selected)
@@ -224,15 +333,17 @@ function ExecutionInspector({
         <div className={css.statusLine} data-status={group.status}>
           <StatusMark status={group.status} />
           <span>{groupStatusLabel(group)}</span>
-          <span className={css.location}>回合 {group.turn || '—'} · {group.steps.length} 个步骤</span>
+          <span className={css.location}>
+            对话轮次 {group.turn || '—'} · {group.steps.length} 个步骤{groupDuration === null ? '' : ` · ${groupDuration}`}
+          </span>
         </div>
         <h2 className={css.inspectorTitle}>{group.title}</h2>
         <p className={css.inspectorSummary}>{group.subtitle}</p>
         <div className={css.groupSignals} aria-label="工作模式">
           {group.parallelStepCount > 0 ? <span>并行 {group.parallelStepCount} 次</span> : null}
-          {group.retryCount > 0 ? <span data-attention="">重试 {group.retryCount} 次</span> : null}
+          {group.retryCount > 0 ? <span data-retry="">重试 {group.retryCount} 次</span> : null}
           {group.iterationCount > 0 ? <span>有 {group.iterationCount} 次迭代</span> : null}
-          {group.unconfirmedFailureCount > 0 ? <span data-error="">{group.unconfirmedFailureCount} 条失败未确认恢复</span> : null}
+          {group.unconfirmedFailureCount > 0 ? <span data-error="">{group.unconfirmedFailureCount} 条失败后未见成功证据</span> : null}
         </div>
       </header>
 
@@ -243,15 +354,21 @@ function ExecutionInspector({
             <span>{group.items.length} 条记录</span>
           </div>
           <div className={css.executionList}>
-            {group.steps.map(step => (
-              <div key={step.id} className={css.stepBlock} data-parallel={step.parallel ? '' : undefined}>
+            {group.steps.map((step, stepIndex) => {
+              const stepLive = live && stepIndex === group.steps.length - 1
+              const stepDuration = formatDuration(stepElapsedMs(step, stepLive, now))
+              return <div key={step.id} className={css.stepBlock} data-parallel={step.parallel ? '' : undefined}>
                 <div className={css.stepHeading}>
-                  <span>Step {step.step || '—'}</span>
-                  {step.parallel ? <span className={css.parallelLabel}>{step.executionCount} 项并行</span> : null}
+                  <span>步骤 {step.step || '—'}</span>
+                  <span className={css.stepSignals}>
+                    {stepDuration === null ? null : <span className={css.stepDuration}>{stepDuration}</span>}
+                    {step.parallel ? <span className={css.parallelLabel}>{step.executionCount} 项并行</span> : null}
+                  </span>
                 </div>
                 <div className={css.occurrences}>
-                  {step.items.map((item, itemIndex) => (
-                    <button
+                  {step.items.map((item, itemIndex) => {
+                    const itemDuration = formatDuration(itemElapsedMs(item, stepLive && item.status === 'running', now))
+                    return <button
                       key={item.id}
                       type="button"
                       className={css.occurrence}
@@ -269,12 +386,13 @@ function ExecutionInspector({
                           {itemPattern(item) === null ? '' : ` · ${itemPattern(item)}`}
                         </span>
                       </span>
+                      {itemDuration === null ? null : <span className={css.occurrenceDuration}>{itemDuration}</span>}
                       <IconChevronRightOutline14 size={12} className={css.occurrenceChevron} />
                     </button>
-                  ))}
+                  })}
                 </div>
               </div>
-            ))}
+            })}
           </div>
         </section>
 
@@ -382,21 +500,337 @@ function groupBadges(group: WorkGroup) {
   )
 }
 
+function showOverviewTag(state: ReturnType<typeof overviewStateOf>): boolean {
+  return state === 'waiting' || state === 'failure' || state === 'interrupted' || state === 'partial'
+}
+
+function itemMeta(item: WorkItem, { branch, step }: { branch: number | null; step: number | null }): string {
+  return [
+    step === null ? null : `步骤 ${step || '—'}`,
+    item.toolName ?? item.source,
+    branch === null ? null : `分支 ${branch}`,
+    itemPattern(item),
+  ].filter((part): part is string => part !== null && part !== '').join(' · ')
+}
+
+function branchNumberOf(step: WorkStep, item: WorkItem): number | null {
+  if (!step.parallel) return null
+  const index = step.items.findIndex(candidate => candidate.id === item.id)
+  return index < 0 ? null : index + 1
+}
+
+function clusterBasisLabel(cluster: WorkCluster): string | null {
+  if (cluster.executionCount < 2) return null
+  if (cluster.basis === 'mutable-target' || cluster.basis === 'shared-target') return '同一目标'
+  if (cluster.basis === 'exact-call') return '同一指令'
+  return null
+}
+
+function OverviewOccurrenceButton({
+  item,
+  occurrenceNumber,
+  branch,
+  step,
+  live,
+  selected,
+  now,
+  onSelect,
+}: {
+  item: WorkItem
+  occurrenceNumber: number
+  branch: number | null
+  step: number | null
+  live: boolean
+  selected: boolean
+  now: number
+  onSelect: () => void
+}) {
+  const duration = formatDuration(itemElapsedMs(item, live, now))
+  const meta = itemMeta(item, { branch, step })
+  return (
+    <button
+      type="button"
+      className={css.overviewOccurrence}
+      data-selected={selected ? '' : undefined}
+      data-current={live ? '' : undefined}
+      data-status={item.status}
+      data-ud-motion="watcher-live-append"
+      aria-current={live ? 'step' : undefined}
+      aria-pressed={selected}
+      aria-label={`记录 ${occurrenceNumber}，${item.title}，${meta}${duration === null ? '' : `，耗时 ${duration}`}，${STATUS_LABEL[item.status]}`}
+      onClick={onSelect}
+    >
+      <span className={css.overviewOccurrenceIndex}>{String(occurrenceNumber).padStart(2, '0')}</span>
+      <span className={css.overviewOccurrenceDotSlot} aria-hidden="true">
+        <StatusMark status={item.status} className={css.overviewOccurrenceDot} />
+      </span>
+      <span className={css.overviewOccurrenceCopy}>
+        <span className={css.overviewOccurrenceTitle}>{item.title}</span>
+        <span className={css.overviewOccurrenceMeta}>{meta}</span>
+      </span>
+      {duration === null ? null : <span className={css.overviewOccurrenceDuration}>{duration}</span>}
+      <IconChevronRightOutline14 size={12} className={css.overviewOccurrenceChevron} />
+    </button>
+  )
+}
+
+function PhaseOverview({
+  group,
+  isNow,
+  running,
+  now,
+  selectedGroup,
+  selectedItemId,
+  observationMode,
+  open,
+  stepDisclosure,
+  clusterDisclosure,
+  onToggle,
+  onToggleStep,
+  onToggleCluster,
+  onSelectItem,
+}: {
+  group: WorkGroup
+  isNow: boolean
+  running: boolean
+  now: number
+  selectedGroup: boolean
+  selectedItemId: string | null
+  observationMode: ObservationMode
+  open: boolean
+  stepDisclosure: Readonly<Record<string, boolean>>
+  clusterDisclosure: Readonly<Record<string, boolean>>
+  onToggle: () => void
+  onToggleStep: (step: WorkStep, defaultOpen: boolean) => void
+  onToggleCluster: (cluster: WorkCluster, defaultOpen: boolean) => void
+  onSelectItem: (item: WorkItem) => void
+}) {
+  const phaseState = overviewStateOf(group.status, isNow)
+  const phaseDuration = formatDuration(groupElapsedMs(group, isNow && running, now))
+  const phaseSummary = [
+    `${group.steps.length} 个步骤`,
+    `${group.executionCount} 次执行`,
+    phaseDuration,
+  ].filter((part): part is string => part !== null).join(' · ')
+  const latestItemId = group.items.at(-1)?.id ?? null
+  const clusters = clusterWorkItems(group.items)
+  const latestClusterId = clusters.at(-1)?.id ?? null
+
+  return (
+    <section
+      className={css.phase}
+      data-selected={selectedGroup ? '' : undefined}
+      data-now={isNow ? '' : undefined}
+      data-overview-state={phaseState}
+      aria-label={`${group.title}，${phaseSummary}，${OVERVIEW_STATE_LABEL[phaseState]}`}
+    >
+      <header className={css.phaseHeader}>
+        <button
+          type="button"
+          className={css.phaseToggle}
+          aria-expanded={open}
+          aria-controls={`watcher-phase-body-${group.id}`}
+          aria-label={`${group.title}，${phaseSummary}，${open ? '收起阶段' : '展开阶段'}`}
+          onClick={onToggle}
+        >
+          <span className={css.phaseMarker} data-state={phaseState} aria-hidden="true" />
+          <IconChevronRightOutline14 size={12} className={css.phaseChevron} />
+          <span className={css.phaseCopy}>
+            <span className={css.phaseTitleLine}>
+              <span className={css.phaseTitle} data-watcher-group-title="">{group.title}</span>
+              {groupBadges(group)}
+              {showOverviewTag(phaseState)
+                ? <span className={css.overviewTag} data-state={phaseState}>{OVERVIEW_STATE_LABEL[phaseState]}</span>
+                : null}
+            </span>
+            <span className={css.phaseMeta}>{phaseSummary}</span>
+          </span>
+        </button>
+      </header>
+
+      <div id={`watcher-phase-body-${group.id}`} hidden={!open}>
+        {observationMode === 'itemized'
+          ? (
+            <div className={css.stepTimeline} data-observation-mode="itemized">
+              {group.steps.map(step => {
+                const stepLive = isNow && running && step.items.some(item => item.id === latestItemId && item.status === 'running')
+                const stepDuration = formatDuration(stepElapsedMs(step, stepLive, now))
+                const stepOpen = stepDisclosure[step.id] ?? true
+                return (
+                  <section
+                    key={step.id}
+                    className={css.overviewStep}
+                    data-current={stepLive ? '' : undefined}
+                    data-parallel={step.parallel ? '' : undefined}
+                  >
+                    <header className={css.overviewStepHeader}>
+                      <button
+                        type="button"
+                        className={css.stepToggle}
+                        aria-expanded={stepOpen}
+                        aria-controls={`watcher-step-body-${step.id}`}
+                        aria-label={`步骤 ${step.step || '—'}，${step.executionCount} 次执行${stepDuration === null ? '' : `，耗时 ${stepDuration}`}，${stepOpen ? '收起步骤' : '展开步骤'}`}
+                        onClick={() => onToggleStep(step, stepOpen)}
+                      >
+                        <IconChevronRightOutline14 size={11} className={css.stepChevron} />
+                        <span className={css.overviewStepLabel}>步骤 {step.step || '—'}</span>
+                        <span className={css.overviewStepSignals}>
+                          <span>{step.executionCount} 次</span>
+                          {step.parallel ? <span className={css.parallelLabel}>{step.executionCount} 项并行</span> : null}
+                          {stepDuration === null ? null : <span>{stepDuration}</span>}
+                        </span>
+                      </button>
+                    </header>
+                    <div id={`watcher-step-body-${step.id}`} className={css.overviewOccurrences} hidden={!stepOpen}>
+                      {step.items.map((item, itemIndex) => (
+                        <OverviewOccurrenceButton
+                          key={item.id}
+                          item={item}
+                          occurrenceNumber={group.items.findIndex(candidate => candidate.id === item.id) + 1}
+                          branch={step.parallel ? itemIndex + 1 : null}
+                          step={null}
+                          live={stepLive && item.id === latestItemId && item.status === 'running'}
+                          selected={selectedGroup && selectedItemId === item.id}
+                          now={now}
+                          onSelect={() => onSelectItem(item)}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                )
+              })}
+            </div>
+          )
+          : (
+            <div className={css.analysisClusters} data-observation-mode="grouped">
+              {clusters.map(cluster => {
+                if (cluster.executionCount === 1) {
+                  const item = cluster.items[0]
+                  const sourceStep = group.steps.find(step => step.items.some(candidate => candidate.id === item.id))
+                  const branch = sourceStep === undefined ? null : branchNumberOf(sourceStep, item)
+                  return (
+                    <div key={cluster.id} className={css.analysisSingleton}>
+                      <OverviewOccurrenceButton
+                        item={item}
+                        occurrenceNumber={group.items.findIndex(candidate => candidate.id === item.id) + 1}
+                        branch={branch}
+                        step={item.step}
+                        live={isNow && running && item.id === latestItemId && item.status === 'running'}
+                        selected={selectedGroup && selectedItemId === item.id}
+                        now={now}
+                        onSelect={() => onSelectItem(item)}
+                      />
+                    </div>
+                  )
+                }
+                const defaultOpen = isNow && cluster.id === latestClusterId
+                const clusterOpen = clusterDisclosure[cluster.id] ?? defaultOpen
+                const basisLabel = clusterBasisLabel(cluster)
+                const outcome = clusterOutcomeSummary(cluster)
+                const clusterMeta = [
+                  basisLabel,
+                  `${cluster.executionCount} 次执行`,
+                  `${cluster.stepCount} 个步骤`,
+                  outcome,
+                ].filter((part): part is string => part !== null && part !== '').join(' · ')
+                return (
+                  <section key={cluster.id} className={css.analysisCluster} data-open={clusterOpen ? '' : undefined}>
+                    <button
+                      type="button"
+                      className={css.analysisClusterToggle}
+                      aria-expanded={clusterOpen}
+                      aria-controls={`watcher-cluster-body-${cluster.id}`}
+                      aria-label={`${cluster.title}，${clusterMeta}，${clusterOpen ? '收起同类执行' : '展开同类执行'}`}
+                      onClick={() => onToggleCluster(cluster, clusterOpen)}
+                    >
+                      <IconChevronRightOutline14 size={11} className={css.analysisClusterChevron} />
+                      <span className={css.analysisClusterDotSlot} aria-hidden="true">
+                        <StatusMark status={cluster.latestStatus} className={css.analysisClusterDot} />
+                      </span>
+                      <span className={css.analysisClusterCopy}>
+                        <span className={css.analysisClusterTitle}>{cluster.title}</span>
+                        <span className={css.analysisClusterMeta}>{clusterMeta}</span>
+                      </span>
+                      {cluster.executionCount > 1
+                        ? <span className={css.analysisClusterCount}>×{cluster.executionCount}</span>
+                        : null}
+                    </button>
+                    <div
+                      id={`watcher-cluster-body-${cluster.id}`}
+                      className={css.analysisClusterItems}
+                      hidden={!clusterOpen}
+                    >
+                      {cluster.items.map(item => {
+                        const sourceStep = group.steps.find(step => step.items.some(candidate => candidate.id === item.id))
+                        const branch = sourceStep === undefined ? null : branchNumberOf(sourceStep, item)
+                        return (
+                          <OverviewOccurrenceButton
+                            key={item.id}
+                            item={item}
+                            occurrenceNumber={group.items.findIndex(candidate => candidate.id === item.id) + 1}
+                            branch={branch}
+                            step={item.step}
+                            live={isNow && running && item.id === latestItemId && item.status === 'running'}
+                            selected={selectedGroup && selectedItemId === item.id}
+                            now={now}
+                            onSelect={() => onSelectItem(item)}
+                          />
+                        )
+                      })}
+                    </div>
+                  </section>
+                )
+              })}
+            </div>
+          )}
+      </div>
+    </section>
+  )
+}
+
 /** Native session-header utility: exact work picture, typed evidence, no steering. */
-export function Watcher({ useSession, useSessions, sessionId }: WatcherProps) {
+export function Watcher({ useSession, useSessions, useProjection, sessionId, loadAllHistory }: WatcherProps) {
   const running = useSessions(list => Boolean(list.byId[sessionId]?.running))
   const snapshot = useSession((state: ConversationSnapshot) => state)
-  const picture = useMemo(() => foldSnapshot(snapshot, { running }), [snapshot, running])
-  const lastId = picture.nodes.at(-1)?.id ?? null
+  const wholeSessionStats = useProjection('sessionStats')
+  const snapshotPicture = useMemo(() => foldSnapshot(snapshot, { running }), [snapshot, running])
+  const observedRef = useRef<{ sessionId: string; picture: typeof snapshotPicture } | null>(null)
+  const picture = useMemo(() => {
+    const previous = observedRef.current?.sessionId === sessionId
+      ? observedRef.current.picture
+      : null
+    const next = previous === null ? snapshotPicture : mergeObservedPictures(previous, snapshotPicture)
+    observedRef.current = { sessionId, picture: next }
+    return next
+  }, [sessionId, snapshotPicture])
+  const performanceByTurn = useMemo(
+    () => deriveTurnPerformance(snapshot.nodes, picture.turns),
+    [snapshot.nodes, picture.turns],
+  )
+  const lastGroup = picture.nodes.at(-1)
+  const lastGroupId = lastGroup?.id ?? null
+  const lastItem = lastGroup?.items.at(-1)
+  const latestActivityKey = lastItem === undefined
+    ? lastGroupId
+    : `${lastGroupId}:${lastItem.id}:${lastItem.status}:${lastItem.resultSeq ?? 'open'}:${lastItem.resultTime ?? 'open'}`
   const [open, setOpen] = useState(false)
   const [ui, setUi] = useState(() => ({ follow: true, unread: 0, selectedId: null as string | null }))
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
+  const [observationMode, setObservationMode] = useState<ObservationMode>('itemized')
   const [turnDisclosure, setTurnDisclosure] = useState<Record<number, boolean>>({})
+  const [phaseDisclosure, setPhaseDisclosure] = useState<Record<string, boolean>>({})
+  const [stepDisclosure, setStepDisclosure] = useState<Record<string, boolean>>({})
+  const [clusterDisclosure, setClusterDisclosure] = useState<Record<string, boolean>>({})
+  const [historyLoad, setHistoryLoad] = useState<HistoryLoadState>({ kind: 'idle' })
+  const now = useLiveClock(open && picture.running)
+  const sessionTiming = deriveSessionTiming(picture, now)
   const followRef = useRef(createFollow())
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const railRef = useRef<HTMLDivElement>(null)
+  const programmaticScrollRef = useRef(false)
+  const historyAbortRef = useRef<AbortController | null>(null)
   const panelPosition = useAnchoredPosition({
     open,
     anchorRef: triggerRef,
@@ -431,49 +865,134 @@ export function Watcher({ useSession, useSessions, sessionId }: WatcherProps) {
   }, [open])
 
   useLayoutEffect(() => {
+    historyAbortRef.current?.abort()
+    historyAbortRef.current = null
+    setHistoryLoad({ kind: 'idle' })
     followRef.current.reset()
     setUi(followRef.current.snapshot())
     setSelectedItemId(null)
     setTurnDisclosure({})
+    setPhaseDisclosure({})
+    setStepDisclosure({})
+    setClusterDisclosure({})
   }, [sessionId])
+
+  useEffect(() => () => {
+    historyAbortRef.current?.abort()
+  }, [])
 
   useLayoutEffect(() => {
     setUi(followRef.current.onPicture(picture))
-  }, [lastId])
+  }, [latestActivityKey])
 
   useLayoutEffect(() => {
     const rail = railRef.current
     if (!rail || !open || !ui.follow) return
+    programmaticScrollRef.current = true
     rail.scrollTop = rail.scrollHeight
-  }, [ui.follow, lastId, open])
+    const frame = requestAnimationFrame(() => {
+      programmaticScrollRef.current = false
+    })
+    return () => {
+      cancelAnimationFrame(frame)
+      programmaticScrollRef.current = false
+    }
+  }, [ui.follow, latestActivityKey, observationMode, open])
 
   const selected = ui.selectedId === null ? undefined : picture.nodes.find(group => group.id === ui.selectedId)
   const latestTurnNumber = picture.turns.at(-1)?.turn ?? null
+  const totalTurnCount = Math.max(picture.turnCount, wholeSessionStats?.turns ?? 0)
+  const totalStepCount = Math.max(picture.stepCount, wholeSessionStats?.steps ?? 0)
+  const historyProgress = totalStepCount > picture.stepCount
+    ? `${picture.stepCount}/${totalStepCount} 个步骤`
+    : totalTurnCount > picture.turnCount
+      ? `${picture.turnCount}/${totalTurnCount} 个对话轮次`
+      : `${picture.stepCount} 个步骤已载入`
   const nowLabel = picture.now.label || (picture.nodes.length > 0 ? '整理工作路径' : '等待第一步')
-  const needsAttention = picture.pendingCount > 0
+  const hasEdgeAlert = picture.pendingCount > 0
     || picture.now.status === 'failure'
     || picture.now.status === 'interrupted'
   const summaryState = picture.pendingCount > 0
-    ? '等待用户'
+    ? '等待你'
     : picture.running
-      ? '工作进行中'
+      ? '正在执行'
       : picture.now.status === 'failure'
         ? '最近一步失败'
         : picture.now.status === 'interrupted'
-          ? '工作已中断'
-          : picture.nodes.length > 0 ? '工作已停稳' : '等待第一步'
+          ? '已中断'
+          : picture.nodes.length > 0 ? '已停稳' : '等待任务'
 
-  const selectGroup = (group: WorkGroup) => {
+  const selectItem = (group: WorkGroup, item: WorkItem) => {
     setUi(followRef.current.onSelect(group.id))
-    setSelectedItemId(preferredItem(group)?.id ?? null)
+    setSelectedItemId(item.id)
   }
 
   const onRailScroll = () => {
+    if (programmaticScrollRef.current) return
     const rail = railRef.current
     if (rail === null) return
     const atBottom = rail.scrollHeight - rail.scrollTop - rail.clientHeight < 24
     setUi(followRef.current.onScroll({ atBottom }))
   }
+
+  const backToLatest = () => {
+    programmaticScrollRef.current = true
+    setUi(followRef.current.backToLatest())
+  }
+
+  const pinForDisclosure = () => {
+    if (ui.follow) setUi(followRef.current.setFollow(false))
+  }
+
+  const chooseObservationMode = (mode: ObservationMode) => {
+    if (mode === observationMode) return
+    if (ui.follow) programmaticScrollRef.current = true
+    setObservationMode(mode)
+  }
+
+  const startHistoryLoad = () => {
+    if (historyLoad.kind === 'loading' || historyLoad.kind === 'complete') return
+    historyAbortRef.current?.abort()
+    const controller = new AbortController()
+    historyAbortRef.current = controller
+    setHistoryLoad({ kind: 'loading' })
+    void loadAllHistory(controller.signal).then((result) => {
+      if (historyAbortRef.current !== controller) return
+      if (result.kind === 'blocked') {
+        const message = result.reason === 'busy'
+          ? '主会话正在载入历史，请稍后重试'
+          : result.reason === 'page-limit'
+            ? '历史页数超出安全上限，请分次重试'
+            : '历史分页没有继续前进，请重试'
+        setHistoryLoad({ kind: 'error', message })
+      } else if (result.kind === 'complete') {
+        // Keep a short terminal state until React observes the final Session
+        // page. This prevents a stale `hasMore` render from starting the loop
+        // a second time after the official loader has already reached page 1.
+        setHistoryLoad({ kind: 'complete' })
+      } else {
+        setHistoryLoad({ kind: 'idle' })
+      }
+    }).catch((error: unknown) => {
+      if (historyAbortRef.current !== controller || controller.signal.aborted) return
+      setHistoryLoad({
+        kind: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      })
+    }).finally(() => {
+      if (historyAbortRef.current === controller) historyAbortRef.current = null
+    })
+  }
+
+  useEffect(() => {
+    if (!open || !snapshot.hasMore || historyLoad.kind !== 'idle') return
+    startHistoryLoad()
+  }, [open, snapshot.hasMore, historyLoad.kind, sessionId])
+
+  useEffect(() => {
+    if (historyLoad.kind !== 'complete' || snapshot.hasMore) return
+    setHistoryLoad({ kind: 'idle' })
+  }, [historyLoad.kind, snapshot.hasMore])
 
   return (
     <div ref={rootRef} className={css.root} data-dsh-watcher="header">
@@ -483,7 +1002,7 @@ export function Watcher({ useSession, useSessions, sessionId }: WatcherProps) {
         className={css.trigger}
         data-open={open ? '' : undefined}
         data-live={picture.running && picture.nodes.length > 0 ? '' : undefined}
-        data-attention={needsAttention ? '' : undefined}
+        data-alert={hasEdgeAlert ? '' : undefined}
         aria-expanded={open}
         aria-label={`Watcher，${summaryState}`}
         title="Watcher"
@@ -510,9 +1029,11 @@ export function Watcher({ useSession, useSessions, sessionId }: WatcherProps) {
                 <ExecutionInspector
                   group={selected}
                   selectedItemId={selectedItemId}
+                  live={picture.running && selected.id === lastGroupId}
+                  now={now}
                   onSelectItem={setSelectedItemId}
                   onBack={() => {
-                    setUi(followRef.current.backToLatest())
+                    backToLatest()
                     setSelectedItemId(null)
                   }}
                 />
@@ -521,16 +1042,23 @@ export function Watcher({ useSession, useSessions, sessionId }: WatcherProps) {
             <section className={css.workPicture} aria-label="Agent 工作路径" data-ud-check="watcher-work-picture" data-ud-role="panel">
               <header className={css.pictureHeader}>
                 <div className={css.nowBlock} aria-live="polite">
-                  <div className={css.eyebrow} data-attention={needsAttention ? '' : undefined}>
-                    <span>现在</span>
-                    <span aria-hidden="true">·</span>
+                  <div className={css.eyebrow} data-alert={hasEdgeAlert ? '' : undefined}>
                     <span>{summaryState}</span>
                   </div>
                   <div className={css.now} title={nowLabel}>{nowLabel}</div>
                   <div className={css.summary}>
-                    <span>{picture.turnCount} 个回合</span>
+                    <span>
+                      {snapshot.hasMore && totalTurnCount > picture.turnCount
+                        ? `已载入 ${picture.turnCount}/${totalTurnCount} 个对话轮次`
+                        : `${picture.turnCount} 个对话轮次`}
+                    </span>
+                    <span>
+                      {snapshot.hasMore && totalStepCount > picture.stepCount
+                        ? `${picture.stepCount}/${totalStepCount} 个步骤`
+                        : `${picture.stepCount} 个步骤`}
+                    </span>
                     <span>{picture.actionCount} 次执行</span>
-                    {picture.partialHistory ? <span data-partial="">仅当前窗口</span> : null}
+                    {snapshot.hasMore ? <span data-partial="">仅最近历史</span> : null}
                   </div>
                 </div>
                 <Pill
@@ -538,18 +1066,88 @@ export function Watcher({ useSession, useSessions, sessionId }: WatcherProps) {
                   active={ui.follow}
                   aria-pressed={ui.follow}
                   aria-label={ui.follow ? '停止跟随最新工作' : '跟随最新工作'}
-                  onClick={() => setUi(followRef.current.setFollow(!ui.follow))}
+                  onClick={() => {
+                    if (!ui.follow) programmaticScrollRef.current = true
+                    setUi(followRef.current.setFollow(!ui.follow))
+                  }}
                 >
                   <IconRefreshOutline14 size={12} />
-                  {ui.follow ? '跟随' : '已固定'}
+                  {ui.follow ? '自动跟随' : '浏览历史'}
                 </Pill>
               </header>
 
+              <SessionTimeLedger timing={sessionTiming} />
+
+              <div className={css.viewToolbar} aria-label="观察方式">
+                <span className={css.viewToolbarLabel}>观察方式</span>
+                <div className={css.viewMode} role="group" aria-label="工作路径观察方式">
+                  <button
+                    type="button"
+                    data-active={observationMode === 'itemized' ? '' : undefined}
+                    aria-pressed={observationMode === 'itemized'}
+                    title="按时间顺序展示每个步骤和每次执行"
+                    onClick={() => chooseObservationMode('itemized')}
+                  >
+                    逐项
+                  </button>
+                  <button
+                    type="button"
+                    data-active={observationMode === 'grouped' ? '' : undefined}
+                    aria-pressed={observationMode === 'grouped'}
+                    title="按同一目标或完全相同的指令归类，展开仍可查看原始执行"
+                    onClick={() => chooseObservationMode('grouped')}
+                  >
+                    归类
+                  </button>
+                </div>
+                <span className={css.viewModeHint}>
+                  {observationMode === 'itemized' ? '完整时间线' : '可展开原始记录'}
+                </span>
+              </div>
+
+              {snapshot.hasMore || historyLoad.kind === 'loading'
+                ? (
+                  <div className={css.historyNotice} data-state={historyLoad.kind} role="status" aria-live="polite">
+                    <span className={css.historyNoticeCopy}>
+                      <strong>
+                        {historyLoad.kind === 'loading'
+                          ? '正在补齐历史'
+                          : historyLoad.kind === 'error'
+                            ? '历史载入受阻'
+                            : historyLoad.kind === 'complete'
+                              ? '历史已补齐'
+                              : '准备补齐历史'}
+                      </strong>
+                      <span>
+                        {historyLoad.kind === 'loading'
+                          ? `已载入 ${historyProgress}`
+                          : historyLoad.kind === 'error'
+                            ? historyLoad.message
+                            : historyLoad.kind === 'complete'
+                              ? `已载入 ${historyProgress}`
+                              : `当前 ${historyProgress}，即将自动载入更早记录`}
+                      </span>
+                    </span>
+                    {historyLoad.kind === 'error'
+                      ? (
+                        <button
+                          type="button"
+                          onClick={startHistoryLoad}
+                          title="通过 RC8 官方会话分页重试补齐更早历史"
+                        >
+                          重试载入
+                        </button>
+                      )
+                      : null}
+                  </div>
+                )
+                : null}
+
               {!ui.follow && ui.unread > 0
                 ? (
-                  <button type="button" className={css.unread} onClick={() => setUi(followRef.current.backToLatest())}>
+                  <button type="button" className={css.unread} onClick={backToLatest}>
                     <IconRefreshOutline14 size={12} />
-                    新增 {ui.unread} 段工作 · 回到最新
+                    {ui.unread} 条新进展 · 查看最新
                   </button>
                 )
                 : null}
@@ -559,7 +1157,7 @@ export function Watcher({ useSession, useSessions, sessionId }: WatcherProps) {
                   <div className={css.empty}>
                     <span className={css.emptyEye} aria-hidden="true"><IconLivingEye size={22} /></span>
                     <strong>还没有工作记录</strong>
-                    <span>第一个回合开始后，路径会从这里生长</span>
+                    <span>第一轮对话开始后，路径会从这里生长</span>
                   </div>
                 )
                 : (
@@ -570,9 +1168,23 @@ export function Watcher({ useSession, useSessions, sessionId }: WatcherProps) {
                         const turnState = overviewStateOf(turn.status, isLatestTurn)
                         const defaultOpen = turnNeedsDefaultDisclosure(turnState, isLatestTurn)
                         const turnOpen = turnDisclosure[turn.turn] ?? defaultOpen
-                        const turnTitle = turn.turn === 0 ? '会话准备' : `回合 ${turn.turn}`
+                        const turnTitle = turn.turn === 0 ? '会话准备' : `对话轮次 ${turn.turn}`
                         const turnSummary = turnOverviewSummary(turn)
-                        const duration = turnDuration(turn)
+                        const performance = performanceByTurn.get(turn.turn)
+                        const isLiveTurn = isLatestTurn && picture.running
+                        const duration = turnDuration(turn, isLiveTurn, now)
+                        const tokenSpeed = performance?.throughput.kind === 'measured'
+                          ? `${formatTokensPerSecond(performance.throughput.tokensPerSecond)} tok/s`
+                          : null
+                        const durationAria = duration === null
+                          ? ''
+                          : duration.kind === 'exact'
+                            ? `，总耗时 ${duration.value}`
+                            : `，已记录 ${duration.value}，开头未载入`
+                        const secondaryPerformance = [
+                          duration?.kind === 'partial' ? '开头未载入' : null,
+                          tokenSpeed,
+                        ].filter((value): value is string => value !== null).join(' · ')
                         return (
                           <section key={turn.turn} className={css.turn} aria-labelledby={`watcher-turn-${turn.turn}`}>
                             <header className={css.turnHeader}>
@@ -582,68 +1194,73 @@ export function Watcher({ useSession, useSessions, sessionId }: WatcherProps) {
                                   className={css.turnToggle}
                                   aria-expanded={turnOpen}
                                   aria-controls={`watcher-turn-body-${turn.turn}`}
-                                  aria-label={`${turnTitle}，${OVERVIEW_STATE_LABEL[turnState]}，${turnSummary}${duration === null ? '' : `，${duration}`}`}
-                                  onClick={() => setTurnDisclosure(current => ({
-                                    ...current,
-                                    [turn.turn]: !(current[turn.turn] ?? defaultOpen),
-                                  }))}
+                                  aria-label={`${turnTitle}，${OVERVIEW_STATE_LABEL[turnState]}，${turnSummary}${durationAria}${tokenSpeed === null ? '' : `，生成速度 ${tokenSpeed}`}`}
+                                  onClick={() => {
+                                    pinForDisclosure()
+                                    setTurnDisclosure(current => ({
+                                      ...current,
+                                      [turn.turn]: !(current[turn.turn] ?? defaultOpen),
+                                    }))
+                                  }}
                                 >
                                   <IconChevronRightOutline14 size={13} className={css.turnChevron} />
-                                  <span className={css.turnCopy}>
-                                    <span className={css.turnTitleLine}>
-                                      <span className={css.turnTitle}>{turnTitle}</span>
-                                      {turnState === 'settled'
-                                        ? null
-                                        : <span className={css.overviewTag} data-state={turnState}>{OVERVIEW_STATE_LABEL[turnState]}</span>}
+                                      <span className={css.turnCopy}>
+                                        <span className={css.turnTitleLine}>
+                                          <span className={css.turnTitle}>{turnTitle}</span>
+                                          {showOverviewTag(turnState)
+                                            ? <span className={css.overviewTag} data-state={turnState}>{OVERVIEW_STATE_LABEL[turnState]}</span>
+                                            : null}
                                     </span>
                                     <span className={css.turnSummary}>{turnSummary}</span>
                                   </span>
-                                  <span className={css.turnDuration}>{duration ?? OVERVIEW_STATE_LABEL[turnState]}</span>
+                                  <span className={css.turnPerformance}>
+                                    <span className={css.turnDuration}>
+                                      {duration === null
+                                        ? OVERVIEW_STATE_LABEL[turnState]
+                                        : duration.kind === 'exact'
+                                          ? `总 ${duration.value}`
+                                          : `已记录 ${duration.value}`}
+                                    </span>
+                                    {secondaryPerformance === '' ? null : <span className={css.turnSpeed}>{secondaryPerformance}</span>}
+                                  </span>
                                 </button>
                               </h2>
                             </header>
                             <div id={`watcher-turn-body-${turn.turn}`} className={css.turnBody} hidden={!turnOpen}>
+                              {performance === undefined ? null : <TurnMetricStrip performance={performance} />}
                               <div className={css.groupRail}>
                                 <span className={css.railLine} aria-hidden="true" />
                                 {turn.groups.map(group => {
-                                  const isNow = group.id === lastId
+                                  const isNow = group.id === lastGroupId
                                   const selectedGroup = ui.selectedId === group.id
-                                  const phaseState = overviewStateOf(group.status, isNow)
-                                  const phaseSummary = groupOverviewSummary(group)
-                                  const phaseSignals = [
-                                    phaseSummary,
-                                    group.parallelStepCount > 0 ? '包含并行' : '',
-                                    group.retryCount > 0 ? `重试 ${group.retryCount} 次` : '',
-                                    group.iterationCount > 0 ? `迭代 ${group.iterationCount} 次` : '',
-                                  ].filter(Boolean).join('，')
+                                  const phaseOpen = phaseDisclosure[group.id] ?? true
                                   return (
-                                    <button
+                                    <PhaseOverview
                                       key={group.id}
-                                      type="button"
-                                      className={css.group}
-                                      data-selected={selectedGroup ? '' : undefined}
-                                      data-now={isNow ? '' : undefined}
-                                      data-compact={phaseSummary === '' ? '' : undefined}
-                                      data-overview-state={phaseState}
-                                      data-ud-motion="watcher-selection"
-                                      aria-current={isNow ? 'step' : undefined}
-                                      aria-pressed={selectedGroup}
-                                      aria-label={`${group.title}${phaseSignals === '' ? '' : `，${phaseSignals}`}，${OVERVIEW_STATE_LABEL[phaseState]}`}
-                                      onClick={() => selectGroup(group)}
-                                    >
-                                      <span className={css.phaseMarker} data-state={phaseState} aria-hidden="true" />
-                                      <span className={css.groupCopy}>
-                                        <span className={css.groupTitleLine}>
-                                          <span className={css.groupTitle} data-watcher-group-title="">{group.title}</span>
-                                          {groupBadges(group)}
-                                          {phaseState === 'settled'
-                                            ? null
-                                            : <span className={css.overviewTag} data-state={phaseState}>{OVERVIEW_STATE_LABEL[phaseState]}</span>}
-                                        </span>
-                                        {phaseSummary === '' ? null : <span className={css.groupMeta}>{phaseSummary}</span>}
-                                      </span>
-                                      <IconChevronRightOutline14 size={13} className={css.groupChevron} />
-                                    </button>
+                                      group={group}
+                                      isNow={isNow}
+                                      running={picture.running}
+                                      now={now}
+                                      selectedGroup={selectedGroup}
+                                      selectedItemId={selectedItemId}
+                                      observationMode={observationMode}
+                                      open={phaseOpen}
+                                      stepDisclosure={stepDisclosure}
+                                      clusterDisclosure={clusterDisclosure}
+                                      onToggle={() => {
+                                        pinForDisclosure()
+                                        setPhaseDisclosure(current => ({ ...current, [group.id]: !phaseOpen }))
+                                      }}
+                                      onToggleStep={(step, defaultOpen) => {
+                                        pinForDisclosure()
+                                        setStepDisclosure(current => ({ ...current, [step.id]: !defaultOpen }))
+                                      }}
+                                      onToggleCluster={(cluster, defaultOpen) => {
+                                        pinForDisclosure()
+                                        setClusterDisclosure(current => ({ ...current, [cluster.id]: !defaultOpen }))
+                                      }}
+                                      onSelectItem={item => selectItem(group, item)}
+                                    />
                                   )
                                 })}
                               </div>

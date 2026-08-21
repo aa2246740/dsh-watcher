@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { foldEvents, pairTools, parseJsonl } from '../lib/types/observation/fold.js'
+import { foldEvents, mergeObservedPictures, pairTools, parseJsonl } from '../lib/types/observation/fold.js'
 
 function call(seq, turn, step, callId, name, args) {
   return {
@@ -94,6 +94,73 @@ test('visual grouping never crosses a Turn boundary', () => {
   assert.equal(picture.turnCount, 2)
   assert.equal(picture.nodes.length, 2)
   assert.deepEqual(picture.nodes.map(group => group.turn), [1, 2])
+})
+
+test('an advancing RC8 window cannot erase occurrences already observed on this page', () => {
+  const earlier = foldEvents([
+    call(1, 1, 1, 'a', 'bash', { command: 'first' }),
+    result(2, 1, 1, 'a', '[exit code: 0]'),
+  ])
+  const later = foldEvents([
+    call(3, 1, 2, 'b', 'bash', { command: 'second' }),
+    result(4, 1, 2, 'b', '[exit code: 0]'),
+  ])
+
+  const observed = mergeObservedPictures(earlier, later)
+  assert.equal(observed.actionCount, 2)
+  assert.equal(observed.stepCount, 2)
+  assert.deepEqual(allItems(observed).map(item => item.callId), ['a', 'b'])
+})
+
+test('a late interaction event cannot move an earlier Step below a later Step', () => {
+  const events = [
+    call(1, 1, 104, 'earlier', 'edit', { file_path: '/tmp/a.ts', old_string: 'a', new_string: 'b' }),
+    result(2, 1, 104, 'earlier', 'edited'),
+    call(3, 1, 113, 'later', 'bash', { command: 'pnpm test' }),
+    result(4, 1, 113, 'later', '[exit code: 0]'),
+    { type: 'approval/asked', seq: 5, time: 500, data: { id: 'approval-1', callId: 'earlier', toolName: 'edit' } },
+    { type: 'approval/decided', seq: 6, time: 600, data: { id: 'approval-1', outcome: 'allowed-once' } },
+  ]
+
+  const picture = foldEvents(events)
+  const steps = picture.turns[0].groups.flatMap(group => group.steps)
+
+  assert.deepEqual(steps.map(step => step.step), [104, 113])
+  assert.equal(steps[0].items.length, 2)
+})
+
+test('new evidence updates one stable occurrence instead of duplicating it', () => {
+  const failed = foldEvents([
+    call(1, 1, 1, 'a', 'bash', { command: 'same' }),
+    result(2, 1, 1, 'a', '[exit code: 1]'),
+  ])
+  const succeeded = foldEvents([
+    call(1, 1, 1, 'a', 'bash', { command: 'same' }),
+    result(2, 1, 1, 'a', '[exit code: 0]'),
+  ])
+
+  const observed = mergeObservedPictures(failed, succeeded)
+  assert.equal(observed.actionCount, 1)
+  assert.equal(allItems(observed)[0].status, 'success')
+})
+
+test('recorded Turn and Step boundaries survive the fold for wall-clock diagnosis', () => {
+  const events = [
+    { type: 'turn/start', seq: 1, time: 1_000, data: { turn: 1 } },
+    { type: 'step/start', seq: 2, time: 2_000, data: { turn: 1, step: 1 } },
+    call(3, 1, 1, 'a', 'bash', { command: 'pnpm test' }),
+    result(4, 1, 1, 'a', '[exit code: 0]'),
+    { type: 'step/end', seq: 5, time: 8_000, data: { turn: 1, step: 1 } },
+    { type: 'turn/end', seq: 6, time: 9_000, data: { turn: 1, reason: { kind: 'completed' } } },
+  ]
+  const picture = foldEvents(events)
+  const turn = picture.turns[0]
+  const group = turn.groups[0]
+  const step = group.steps[0]
+
+  assert.deepEqual([turn.startTime, turn.endTime], [1_000, 9_000])
+  assert.deepEqual([group.startTime, group.endTime], [2_000, 8_000])
+  assert.deepEqual([step.startTime, step.endTime], [2_000, 8_000])
 })
 
 test('full raw output remains available beyond the old 900-character cap', () => {

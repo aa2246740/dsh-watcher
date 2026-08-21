@@ -1,13 +1,14 @@
 import type { WorkGroup, WorkStatus, WorkTurn } from '../observation/fold.ts'
 
 /** Overview progress is deliberately separate from execution evidence status. */
-export type OverviewState = 'active' | 'current' | 'waiting' | 'attention' | 'settled' | 'partial'
+export type OverviewState = 'active' | 'current' | 'waiting' | 'failure' | 'interrupted' | 'settled' | 'partial'
 
 export const OVERVIEW_STATE_LABEL: Readonly<Record<OverviewState, string>> = Object.freeze({
   active: '进行中',
   current: '当前',
-  waiting: '等待用户',
-  attention: '需要处理',
+  waiting: '等待你',
+  failure: '有失败记录',
+  interrupted: '已中断',
   settled: '已结束',
   partial: '数据不完整',
 })
@@ -15,7 +16,8 @@ export const OVERVIEW_STATE_LABEL: Readonly<Record<OverviewState, string>> = Obj
 /** Project evidence status into the one question overview markers answer: where should the user look? */
 export function overviewStateOf(status: WorkStatus, isLatest: boolean): OverviewState {
   if (status === 'waiting') return 'waiting'
-  if (status === 'failure' || status === 'interrupted') return 'attention'
+  if (status === 'failure') return 'failure'
+  if (status === 'interrupted') return 'interrupted'
   if (status === 'running') return 'active'
   if (status === 'unknown') return 'partial'
   return isLatest ? 'current' : 'settled'
@@ -34,5 +36,5 @@ export function turnOverviewSummary(turn: WorkTurn): string {
 }
 
 export function turnNeedsDefaultDisclosure(state: OverviewState, isLatest: boolean): boolean {
-  return isLatest || state === 'active' || state === 'waiting' || state === 'attention' || state === 'partial'
+  return isLatest || state === 'active' || state === 'waiting' || state === 'partial'
 }

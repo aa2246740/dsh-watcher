@@ -72,7 +72,7 @@ components:
 
 Watcher is a read-only session-header utility for people supervising long-running DSH agents. Its primary job is to answer three questions quickly: what is happening now, how the work reached this point, and what exactly happened in a selected execution. It complements the official Trajectory view; it does not replace or duplicate the full transcript.
 
-The visual direction is a quiet editorial instrument: a session summary, collapsible Turn chapters, a chronological phase rail, and a structured inspector that grows beside it. Step and execution detail stay behind selection instead of leaking into the overview. The living eye is the only brand-like memory feature. Repeated cards, decorative gradients, glass, large shadows, and unearned badges are intentionally excluded.
+The visual direction is a quiet editorial instrument: a session summary, collapsible Turn/phase/Step chapters, a chronological Step/execution rail, an optional reversible analysis lens, and a structured inspector that grows beside it. `逐项` keeps the causal path literal; `归类` groups only evidence-backed operation identities and always expands back to every source occurrence. Selection reveals evidence without being required to discover that the action happened. The living eye is the only brand-like memory feature. Repeated cards, decorative gradients, glass, large shadows, and unearned badges are intentionally excluded.
 
 ## Colors
 
@@ -84,14 +84,20 @@ Interface copy uses the host system family. Body and metadata are 13px and 12px 
 
 ## Layout
 
-The desktop panel is a two-column instrument: a 340–390px work picture on the right and a 380–460px inspector on the left after selection. The work picture is primary on first open. At narrow widths the inspector stacks beneath the work picture without page-level horizontal scrolling. The phase rail follows the latest work until the user selects or scrolls away; new work then increments an explicit unread count without moving the viewport. Historical Turns start collapsed; the latest and attention-bearing Turns start expanded and remain user-toggleable.
+The desktop panel is a two-column instrument: a 340–390px work picture on the right and a 380–460px inspector on the left after selection. The work picture is primary on first open. At narrow widths the inspector stacks beneath the work picture without page-level horizontal scrolling. The execution rail follows the latest recorded occurrence until the user selects or scrolls away; new occurrences and live-result updates then append in place and increment an explicit new-progress count without moving the reader. Historical Turns start collapsed; the latest Turn and any authoritative pending interaction start expanded. Turn, phase, Step, and analysis clusters are independently keyboard-toggleable. A historical failure remains visible evidence but does not force disclosure or imply a user action.
 
 Information hierarchy:
 
-1. Current status and current action.
-2. Turn chapters and user-facing work phases.
-3. Step and individual execution identity after selection.
-4. Structured result, arguments, timing, and full raw evidence.
+1. Current status, current action, and session wall-clock ledger.
+2. Conversation-Turn chapters with total elapsed time and performance evidence.
+3. Semantic phase dividers, then every Step and recorded occurrence with its own identity and elapsed interval.
+4. Structured result, arguments, timing, and full raw evidence after occurrence selection.
+
+Observation modes:
+
+- `逐项` is the default causal view. It renders every Step and occurrence in time order.
+- `归类` is a reversible analysis view inside each phase. Exact tool calls group only when normalized tool and arguments match; mutable file operations may group by the same operation and target so iterations stay comparable; reads may group by one exact file target across line windows. Bash, Glob, Grep, and search calls never merge from a shared cwd, broad path, tool name, or translated label.
+- A collapsed analysis cluster shows occurrence count, distinct Step count, and outcome distribution. Expanding it restores every numbered occurrence with its original Step, duration, status, retry, and iteration evidence.
 
 ## Elevation & Depth
 
@@ -106,9 +112,11 @@ The panel uses the host 12px menu radius. Rows use 8px only when they are intera
 ### Work picture
 
 - One collapsible chapter per Turn; it must never merge across Turn boundaries. Turn headers carry duration and useful totals, not a duplicated status dot.
-- One overview row per consecutive user-facing phase. Step boundaries remain preserved in the data and Inspector but are not another visible overview level.
-- Every tool occurrence keeps a stable id and remains selectable even when the summary groups it visually.
-- Step counts are suppressed entirely in the overview; `1 次执行` is also hidden. Only plural execution counts, parallelism, retry, or iteration remain visible.
+- One independently collapsible divider per consecutive user-facing phase; the closed header preserves exact Step/execution totals and elapsed time.
+- Every Step is independently collapsible beneath its phase. Its closed header preserves Step number, elapsed time, parallel count, and execution count.
+- In `逐项`, every tool/message occurrence keeps a stable numbered row. In `归类`, every occurrence remains available under one evidence-backed cluster and keeps the same stable selection identity.
+- Parallel calls retain one Step bracket and separate selectable rows. Retry and iteration labels sit on the exact affected occurrence. A cluster may show `×N` only as a reversible summary whose expanded children prove the N source records.
+- Occurrences already seen by Watcher survive RC8 history-window advancement. Opening Watcher automatically walks the public Session `loadOlder()` pages until the full log is present; a later result replaces the same stable occurrence and never removes or duplicates the running row. While pages are still arriving, whole-session projections expose loaded-versus-total progress and the visible evidence remains explicitly partial.
 - `N 次执行` means distinct recorded occurrences. `重试 N 次` requires the same normalized tool and arguments after a failed or unknown attempt. `迭代 N 版` requires the same target with changed input. `循环 N 次` is forbidden unless the same multi-action path is proven to repeat.
 - User steering, interruptions, turn failures, images/artifacts, and waiting states are first-class when the official snapshot exposes them.
 
@@ -126,9 +134,10 @@ The panel uses the host 12px menu radius. Rows use 8px only when they are intera
 
 Overview progress and execution evidence are separate axes. Overview markers answer only “where should I look?”; execution statuses answer “what evidence was returned?”.
 
-- Overview `当前`: latest active or latest settled phase; blue marker plus visible text.
-- Overview `等待用户`: authoritative pending interaction; amber marker plus visible text.
-- Overview `需要处理`: failure or interruption that still deserves attention; red marker plus visible text.
+- The header owns the one normal liveness phrase (`正在执行`, `已停稳`, or `等待任务`). Normal active/current Turn and phase rows use position, disclosure, and a blue marker without repeating `现在`, `当前`, or `进行中` text.
+- Overview `等待你`: an authoritative pending approval or question; amber marker plus visible text. This is the only overview state that asks the user to act.
+- Overview `有失败记录`: historical or latest failure evidence; red marker plus visible text, without claiming that recovery is still required.
+- Overview `已中断`: explicit interruption evidence; red marker plus visible text, without claiming that the user can or must repair it.
 - Overview `已结束`: historical settled phase, regardless of whether its evidence is authoritative success or neutral return; filled neutral marker, never an empty ring.
 - Overview `数据不完整`: required history is unavailable; dashed marker plus visible text.
 
@@ -136,17 +145,17 @@ Overview progress and execution evidence are separate axes. Overview markers ans
 - `成功`: authoritative success evidence exists, such as exit code 0 or a non-error typed result.
 - `失败`: `isError`, a terminating signal, a nonzero authoritative exit code, or a Turn error exists.
 - `已返回`: a result exists but the domain did not declare success; this is neutral, never green by inference.
-- `等待用户`: a pending approval or question is authoritative in the observed data.
+- `等待你`: a pending approval or question is authoritative in the observed data.
 - `已中断`: the agent or Turn explicitly stopped.
 - `未知`: required evidence is outside the loaded window or unavailable.
 - `成功` remains an execution-level evidence claim. A Turn or phase never becomes green merely because one child succeeded.
-- Header attention describes the current edge only: a pending interaction, latest failure, or interruption. Historical failures stay visible in their chapters but never keep the eye red after later work has moved on.
+- Header emphasis describes the current edge only: a pending interaction, latest failure, or interruption. Red means anomalous evidence, not an assigned user task. Historical failures stay visible in their chapters but never keep the eye red after later work has moved on.
 
 ## Do's and Don'ts
 
 Do preserve Turn, Step, parallel, and per-execution identity. Do show neutral `已返回` when success is not known. Do keep commands, paths, and output readable at normal zoom. Do use DSH primitives and tokens before inventing local components.
 
-Do not merge actions merely because their tool or Chinese label matches. Do not call an adjacency a loop. Do not display `×N` when the N occurrences have different arguments. Do not infer success from the mere presence of a result. Do not silently cut raw output. Do not add steering, diagnosis, or model-visible reasoning to this observation-only surface.
+Do not merge actions merely because their tool or Chinese label matches. Different Bash commands remain separate clusters. Changed mutable inputs may share one target-based iteration cluster, but every version remains expandable and selectable. Do not call adjacency a loop. Do not infer success from the mere presence of a result. Do not silently cut raw output. Do not add steering, diagnosis, or model-visible reasoning to this observation-only surface.
 
 ## Design Mandate
 
@@ -154,24 +163,46 @@ Do not merge actions merely because their tool or Chinese label matches. Do not 
 - Deliverable: Watcher as an external DSH Web client plugin.
 - Primary audience: DSH users supervising active or completed agent sessions.
 - Core job to be done: understand the agent's current action and causal workflow, then inspect any exact execution without reading raw session JSONL.
-- Success criteria: a three-level visible hierarchy (`会话 → 回合 → 阶段`); Step/execution detail on demand; progress markers that never impersonate radio buttons; no aggregate green success; precise execution drill-down; semantic Results and exact raw evidence; official WebUI compatibility; no DSH core edit; no Host restart for client-only updates, with one page refresh after first installation.
+- Latest user override: every hierarchy level must support deliberate folding, and users need a reversible same-kind analysis view without losing the ability to inspect every original execution.
+- Success criteria: one continuous hierarchy (`会话 → 对话轮次 → 阶段 → 步骤 → 每次执行`) with independent Turn/phase/Step disclosure; a `逐项 / 归类` switch whose grouped summaries expand to exact source rows; no different-command Bash aggregation; complete/current-window session span split into time inside Turns and gaps between Turns; exact or explicitly lower-bound Turn/phase/Step/execution elapsed time; per-turn decode performance that separates model, tool, and first-token latency; progress markers that never impersonate radio buttons; no aggregate green success; precise execution drill-down; semantic Results and exact raw evidence; official WebUI compatibility; no DSH core edit; no Host restart for client-only updates, with one page refresh after first installation.
 - Must preserve: observation-only scope, header utility seat, DSH token language, Follow behavior, HMR lifecycle, keyboard access, and `prefers-reduced-motion`.
 - Non-goals: agent steering, hidden reasoning exposure, a second model, process control, DSH core modification, or cloning the full official Trajectory ledger.
 - Validation must check against: both supplied full-session logs; exact per-execution identity; WebUI keyboard, overflow, type-size, and reduced-motion behavior; TypeScript, bundle, and dshx contracts.
 
 ## Content Model
 
-Canonical overview nouns are `回合` (Turn) and user-facing work phases such as `理解任务`, `检查与理解`, `修改实现`, `验证结果`, and `给出答复`. `步骤` (Step) and `执行` (one tool occurrence) are evidence-detail nouns and stay inside the Inspector. Avoid the ambiguous `节点`, generic `动作 ×N`, and `循环` without proof. The first view answers “现在 / 路径”; selection opens “证据”. `结果` is the interpreted reading view; `原始` is the exact recorded source.
+Canonical rail nouns are `对话轮次` (Turn; rendered as `对话轮次 N`), user-facing phases such as `理解任务`, `检查与理解`, `修改实现`, `验证结果`, and `给出答复`, `步骤 N` (recorded Step), and one numbered occurrence per recorded action. Observation modes are `逐项` and `归类`; a reversible aggregate is `同类执行`, not a loop. Avoid the game-like `回合`, ambiguous `节点`, generic unexpandable `动作 ×N`, and `循环` without proof. The first view answers “状态 / 路径 / 时间”; selection opens “证据”. `结果` is the interpreted reading view; `原始` is the exact recorded source.
 
 Empty copy explains that the first Turn will grow here. Partial-data copy names what is unavailable. Errors state both what failed and the available recovery path. Long localized copy wraps; Chinese and English tool names may coexist without sentence concatenation.
 
+## Performance Semantics
+
+Time is a nested wall-clock path, not a sum of command runtimes. The session ledger first distinguishes complete history from the currently loaded window, then splits the visible span into time inside conversation Turns and gaps between Turns. Each Turn, phase, Step, and individual execution exposes its own interval so a long-running outlier remains traceable without pretending that parallel children add linearly.
+
+Performance belongs to the conversation-turn chapter because its diagnostic value comes from comparing one Turn with another. The collapsed header shows total elapsed time and measured decode speed, so an outlier is visible before drill-down. The expanded chapter adds one quiet, non-card strip for `模型`, `工具`, and `首 token`; it does not repeat execution-level durations.
+
+- `会话总跨度`: first loaded `turn/start →` final `turn/end`; while live, the end is the current wall clock. If earlier history is not loaded, the label changes to `已加载跨度` and the overview says `历史未完整加载`.
+- `轮次内耗时`: union of visible Turn intervals. It includes model, tools, approvals, and in-Turn waits, but overlapping intervals are counted once.
+- `轮次间隔`: session/window span minus the union of Turn intervals. It exposes user thinking time, idle gaps, or a paused continuation instead of hiding them inside Agent work.
+- `对话轮次总耗时`: `turn/start → turn/end`; while the latest Turn is running, the end is the current wall clock and updates once per second. If the Turn start is clipped, the UI shows a `≥` lower bound.
+- `阶段耗时`: first Step start → last Step end within one consecutive phase.
+- `步骤耗时`: `step/start → step/end`, including model generation, tool calls, and waits recorded inside that Step.
+- `执行耗时`: `tool/call → tool/result`; a running tool uses call time → current wall clock.
+
+- `模型`: sum of recorded `step/start → assistant/message` intervals in the Turn.
+- `工具`: sum of recorded `tool/call → tool/result` intervals in the Turn.
+- `首 token`: the lowest visible Step's `step/start → first non-empty token` interval.
+- `token speed`: provider-reported output tokens divided by `first token → assistant/message` decode time, summed only across Steps carrying both facts.
+
+The model/tool figures are diagnostic recorded sums, not slices of a pie: parallel tools can overlap each other and model activity, so they are not required to add up to Turn elapsed time. Missing timing or provider usage is absence, not zero. Watcher omits the affected reading and never divides tokens by total Turn duration, tool time, approval wait, or wall-clock time. Values use direct units and tabular figures; color does not declare “fast” or “slow” without a user-defined baseline.
+
 ## Information Architecture
 
-- Primary task: scan the causal work rail.
-- Secondary task: select one Step or execution to inspect.
-- Tertiary task: copy or expand complete raw evidence.
-- Navigation model: header trigger → work picture → Step → execution → structured/raw evidence.
-- Required states: empty, opening, following, pinned/unread, running, parallel, returned-neutral, success, failure, waiting-user, interrupted, partial-history, and reduced-motion.
+- Primary task: scan every Step and occurrence in the causal work rail while it grows.
+- Secondary task: fold Turn/phase/Step levels or switch to same-kind analysis without losing source identity.
+- Tertiary task: select one occurrence, inspect it, then copy or expand complete raw evidence.
+- Navigation model: header trigger → work picture → observation mode → Turn → phase → Step or analysis cluster → execution → structured/raw evidence.
+- Required states: empty, opening, following, pinned/unread, expanded/collapsed, itemized/grouped, running, parallel, returned-neutral, success, failure, waiting-user, interrupted, partial-history, and reduced-motion.
 
 ## Taste Signature
 
@@ -186,8 +217,8 @@ Empty copy explains that the first Turn will grow here. Partial-data copy names 
 
 ## Necessary Judgment
 
-- Removed or demoted: fake loops, `×N` aggregation, generic green completion, tiny code, and nested card chrome.
-- Must remain: Turn/Step causality, per-execution identity, Follow, structured/full evidence, and observation-only copy.
+- Removed or demoted: fake loops, unexpandable `×N` aggregation, singleton aggregate wrappers, generic green completion, tiny code, and nested card chrome.
+- Must remain: Turn/Step causality, per-execution identity, reversible aggregation, Follow, structured/full evidence, and observation-only copy.
 - Inevitable relationships: status belongs to execution evidence; parallelism belongs to one Step; inspector selection belongs to one stable occurrence.
 - Craft tolerances: 12px minimum metadata, 13px code/body, 44px comfortable row targets where space permits, aligned rail junctions, 120–220ms transitions.
 - Care states: empty, partial history, long output, keyboard focus, reduced motion, failure, and pending interaction.
@@ -198,9 +229,9 @@ Empty copy explains that the first Turn will grow here. Partial-data copy names 
 
 - Motion purpose: feedback and continuity, with one small liveness memory cue.
 - Motion budget: Micro / Component.
-- Primary focus: panel origin, selection continuity, and the live eye pupil.
+- Primary focus: panel origin, stable-row selection, quiet live append, and the live eye pupil.
 - Do-not-move zones: commands, output, code, Turn labels, error copy, counters, and the work rail geometry.
-- Trigger model: panel on open; row state on hover/focus/selection; eye only while the session is running.
+- Trigger model: panel on open; one short append cue for a newly mounted occurrence; row state on hover/focus/selection; eye only while the session is running.
 - Duration/easing: press 100ms, hover/focus 140ms, panel 180ms `cubic-bezier(.2,.8,.2,1)`, selection 160ms. No delayed stagger.
 - Reduced motion: no pupil scan or blink; panel and selection appear immediately; all information remains visible.
 - Performance: transform and opacity only for motion; at most the eye and one panel transition run concurrently.
@@ -212,15 +243,16 @@ Empty copy explains that the first Turn will grow here. Partial-data copy names 
 | `watcher-eye-scan` | While live, the pupil makes a subtle horizontal scan and occasional blink; at rest it centers. | CSS keyframes | `[data-live]` state | pupil stays within 1.5px, does not encode status alone, stops under reduced motion |
 | `watcher-panel-enter` | The panel appears from its trigger origin without delaying interaction. | CSS animation | open | 180ms or less, transform/opacity only, no first-paint flash |
 | `watcher-selection` | Selected execution gains immediate stable emphasis. | CSS transition | focus/press/selection | 160ms or less, interruptible, no layout movement |
+| `watcher-live-append` | A newly recorded occurrence enters once and remains in the rail. | CSS keyframes | stable occurrence mount | 140ms, transform/opacity only, no stagger, disabled under reduced motion |
 
-Implementation markers: `data-ud-motion="watcher-eye-scan"`, `data-ud-motion="watcher-panel-enter"`, and `data-ud-motion="watcher-selection"`. Browser validation samples running, settled, and `prefers-reduced-motion: reduce` states.
+Implementation markers: `data-ud-motion="watcher-eye-scan"`, `data-ud-motion="watcher-panel-enter"`, `data-ud-motion="watcher-selection"`, and `data-ud-motion="watcher-live-append"`. Browser validation samples running, settled, appended, and `prefers-reduced-motion: reduce` states.
 
 ## OKF Preflight
 
 - Execution mode: single-agent implementation.
-- Active references loaded: information architecture, state language, semantic binding, taste engine, necessary design judgment, typography system, motion language, motion contract, accessibility/usability, responsive interaction, tokens/components, and design-to-code governance.
+- Active references loaded: information architecture, state language, semantic binding, taste engine, necessary design judgment, typography system, data visualization, motion language, motion contract, accessibility/usability, responsive interaction, tokens/components, and design-to-code governance.
 - Support references: request integrity, web-product branch, content model, audit/polish, visual verification, and quality gates.
-- Constraints extracted: observation-only DSH Web client; native semantic tokens and result primitives; no cross-Turn grouping; no unproven retry, iteration, loop, or success claims; body/code at least 13px; metadata at least 12px; bounded motion with a static reduced-motion fallback.
+- Constraints extracted: observation-only DSH Web client; native semantic tokens and result primitives; no cross-Turn grouping; every disclosure and aggregate is reversible; no unproven retry, iteration, loop, or success claims; body/code at least 13px; metadata at least 12px; bounded motion with a static reduced-motion fallback.
 - Deliberate exceptions: live approval duration is shown only when an authoritative registered view exposes it; offline golden replay may inspect the complete historical event stream.
 - Verification hooks: `data-ud-check` on both panels; `data-ud-motion` on the eye, panel, and selection; golden replay assertions; computed-style and overflow browser checks.
 
@@ -228,16 +260,17 @@ Implementation markers: `data-ud-motion="watcher-eye-scan"`, `data-ud-motion="wa
 
 | Reference | Decision | Artifact target | Verification |
 |---|---|---|---|
-| `foundations/information-architecture` | Overview exposes only session, Turn, and phase; Step and execution move behind selection. | panel structure | screenshot hierarchy review and DOM level count |
-| `content/state-language` | Separate overview progress/attention from execution outcome; never render neutral return as an empty ring or aggregate one child success into green. | overview projection and copy | projection unit tests and settled/current/error screenshots |
+| `foundations/information-architecture` | Turn is the chapter, phase is a semantic divider, Step is the primary process node, and `逐项 / 归类` are reversible observation lenses over the same occurrences. | panel structure and disclosure controls | screenshot hierarchy review, accessible disclosure tree, and row identity checks |
+| `content/state-language` | Separate overview progress from execution outcome; only an authoritative pending interaction asks the user to act. Failures remain evidence, never an invented to-do. | overview projection and copy | projection unit tests and settled/current/error screenshots |
 | `content/semantic-binding` | Native buttons/details, visible labels, full-view path for critical truncation. | React markup | keyboard, accessible-name, and long-output tests |
 | `content/message-model` | Put interpreted result before exact raw source; preserve both without duplicating the transcript. | Inspector tabs and text renderer | mixed Markdown visual fixture and raw parity check |
 | `systems/taste-engine` | Quiet rail + inspector; reject card-grid and decorative dashboard defaults. | CSS composition | before/after visual critique |
 | `foundations/necessary-design-judgment` | Remove duplicated Turn dots, singleton technical counts, and any marker that fails the Delete/Material Honesty tests. | Turn disclosure, phase rows, summary | before/after visual critique |
 | `systems/typography-system` | 13px body/code, 12px metadata, tabular execution data. | CSS tokens | computed-style and narrow-width audit |
+| `production/data-viz-i18n-legal` | Use direct units, separate latency stages, and never imply a performance verdict without a baseline. | Turn header and performance strip | formula unit tests and visual label review |
 | `systems/motion-language` | Micro/component budget; only feedback, continuity, and liveness move. | eye/panel/selection CSS | normal-motion browser sampling |
 | `systems/motion-contract` | Stable ids, bounded pupil movement, reduced-motion static fallback. | DOM markers and CSS | normal/reduced computed-style checks |
-| `digital/accessibility-usability` | WCAG 2.2 AA posture, keyboard access, focus, non-color state language. | controls and states | keyboard walkthrough and contrast review |
+| `digital/accessibility-usability` | WCAG 2.2 AA posture, keyboard-accessible `aria-expanded` disclosures, pressed-state observation modes, visible focus, and non-color state language. | controls and states | keyboard/disclosure walkthrough and contrast review |
 | `digital/responsive-interaction` | Desktop keeps overview and evidence side by side; narrow screens use a full-height, reversible Inspector drill-down without page overflow. | responsive CSS and Inspector back action | desktop and narrow screenshots plus return interaction |
 | `systems/tokens-components` | Consume DSH semantic tokens and official result primitives. | CSS and inspector | source audit and component tests |
 | `governance/design-to-code-governance` | Design contract precedes implementation and golden regressions protect semantics. | `DESIGN.md`, tests | contract validation plus test run |
@@ -245,15 +278,26 @@ Implementation markers: `data-ud-motion="watcher-eye-scan"`, `data-ud-motion="wa
 ## Quality Gates
 
 - No visual grouping crosses a Turn boundary.
-- The overview has exactly three visible conceptual levels: session summary, Turn chapter, and phase row. Step and execution appear only after selection.
-- Turn chapters do not repeat phase status markers. Historical Turns default collapsed; latest and attention-bearing Turns default expanded and every Turn is keyboard-toggleable.
-- A filled neutral marker means historical settled work; blue means current, amber means waiting, red means attention, and dashed means partial data. Every non-settled state also has visible text.
+- The overview visibly preserves session, Turn, phase, Step, and occurrence boundaries; semantic grouping never replaces the underlying actions.
+- Turn chapters do not repeat normal liveness text. Historical Turns default collapsed; the latest, active, waiting, and partial Turns default expanded, and every Turn is keyboard-toggleable. A historical failure does not auto-open merely because it failed.
+- A filled neutral marker means historical settled work; blue means current, amber means an authoritative wait for the user, red means failure/interruption evidence, and dashed means partial data. Every non-settled state also has visible text.
 - No overview marker is an empty ring, and overview never turns green from an aggregate `some(success)` rule.
-- `步骤` counts and `1 次执行` are absent from the overview; plural execution counts, parallelism, retries, and iterations remain visible when informative.
+- In `逐项`, every Step and occurrence is present in time order. Turn, phase, and Step headers expose independent `aria-expanded` disclosure and preserve counts/duration while closed.
+- In `归类`, singleton actions remain direct rows. Only evidence-backed repeated clusters may show `×N`; expanding a cluster restores every stable numbered occurrence with Step, duration, status, retry, and iteration evidence.
+- Different Bash commands never merge. Glob, Grep, and search calls require exact normalized arguments; a shared cwd, broad path, tool name, or translated title is insufficient. Mutable calls may group by exact operation plus target, and reads may group by one exact file target.
+- Normal liveness has one visible phrase in the header. `现在`, `当前`, and `进行中` must not appear simultaneously across header, Turn, phase, or occurrence.
+- While following, an appended occurrence scrolls into view. While browsing history, it remains appended and increments `N 条新进展`; a running occurrence settling updates the same stable row instead of disappearing.
+- Advancing the official RC8 history window cannot erase an occurrence already observed in the mounted page; changing sessions resets this observation ledger.
+- The header ledger shows `会话总跨度` only for complete loaded history; partial history says `已加载跨度` and `历史未完整加载`. It splits that span into `轮次内耗时` and `轮次间隔`.
+- Collapsed conversation-turn headers expose exact elapsed time or an explicit `≥` lower bound and measured `tok/s`; expanded headers separate model time, tool time, and first-token latency without adding a dashboard-card layer.
+- Selected phases, Steps, and individual executions each expose their own wall-clock interval. Parallel child durations are never presented as an additive decomposition of their parent.
+- Token speed uses only provider-reported output tokens and recorded decode time. Missing timing or usage remains absent, and total Turn duration is never used as its denominator.
 - Parallel calls in one Step stay visibly parallel and individually selectable.
 - No `循环` label without a proven repeated path.
 - No `重试` label unless normalized tool and arguments match and a preceding attempt failed or remained unknown.
 - A historical failure must not masquerade as the current state after later work has moved on.
+- `需要处理` never appears. Only a pending approval or question may say `等待你`; historical failure copy says `有失败记录`.
+- When Trajectory lacks a tool-result location, the official Chat location index is merged for missing sequence ids so live tools do not fall into `会话准备` or lose Turn/Step timing.
 - Full output remains reachable beyond any preview cap.
 - Text Results use proportional document typography; they must not fall back to one monochrome `<pre>` surface.
 - Markdown headings, lists, quotes, tables, links, inline code, and fenced code render semantically; fenced code retains its language banner, highlighting, horizontal containment, and copy action.
@@ -263,7 +307,7 @@ Implementation markers: `data-ud-motion="watcher-eye-scan"`, `data-ud-motion="wa
 - Body/code/metadata meet 13/13/12px minimums.
 - A status primitive never participates in the work-row grid: its plugin-owned absolute wrapper leaves the copy track at normal reading width in every state.
 - The Watcher surface is portaled to the viewport layer; no sidebar, banner, transcript, or sticky Composer may paint above any sampled point inside the panel.
-- On narrow screens, the overview uses the full available shell height. Selecting a phase swaps to a full-height Inspector with a visible `返回工作路径` action; closing that drill-down restores the overview without closing Watcher.
+- On narrow screens, the overview uses the full available shell height. Selecting an occurrence swaps to a full-height Inspector with a visible `返回工作路径` action; closing that drill-down restores the overview without closing Watcher.
 - Escape closes and returns focus; every selectable row has visible focus.
 - Desktop and narrow layouts have no page-level horizontal overflow.
 - Normal and reduced-motion states pass browser inspection.
@@ -286,3 +330,10 @@ Implementation markers: `data-ud-motion="watcher-eye-scan"`, `data-ud-motion="wa
 - 2026-08-20: File Panel study showed that readable preview should reuse RC8 `MarkdownText` while source remains a separate exact view. Watcher adopted the same semantic pipeline for text Results instead of maintaining a plugin-local parser or monochrome `<pre>` fallback.
 - 2026-08-20: First-principles flow audit found that the hollow neutral-return ring looked unfinished, Turn and phase duplicated the same marker, and Step/execution taxonomy leaked into overview copy. Contract revised to three visible levels, separate overview progress from evidence outcome, collapse historical Turns, and suppress singleton technical counts.
 - 2026-08-20: Pinned-Chromium narrow review found that a 48vh overview cap and split overview/Inspector made both panes needlessly cramped. Narrow layout now grants the overview the full shell and uses a reversible single-pane Inspector drill-down; desktop remains side by side.
+- 2026-08-21: Performance diagnosis added at the conversation-turn boundary. Total elapsed, model time, tool time, TTFT, and decode throughput retain distinct source intervals; missing usage/timing is never estimated. User-facing `回合` copy was replaced by `对话轮次 N` while the RC8 `Turn` domain name remains in code.
+- 2026-08-21: Timing audit against the supplied `cdde96b7` log proved that one Turn lasted 2,020,092 ms (33m40s) while the previous UI exposed only short command durations. Watcher now shows session/window span, Turn intervals, phase spans, Step spans, and individual execution time. The same audit found that RC8 Trajectory can omit locations for tool contributions even when the Chat index retains them; missing locations are now merged instead of misfiling 39 executions under session preparation. Historical failures were also relabelled as evidence (`有失败记录`), leaving `等待你` as the only user-action state.
+- 2026-08-21: Real 43127 review proved that phase-only aggregation hid 21 distinct executions and that `现在 / 当前 / 进行中` repeated one state across three levels. The work picture now renders every Step and occurrence, uses phase only as a semantic divider, follows occurrence-level updates, and reserves one normal liveness phrase for the header.
+- 2026-08-21: Final follow audit found a programmatic scroll could fire the user-scroll handler after returning from Inspector, silently switching `自动跟随` to `浏览历史`. A programmatic-scroll guard now keeps the mode stable. Pinned Chromium 1.61.1 / revision 1228 passed the 460x724 overview-to-Inspector-to-overview path with 61 retained records, no horizontal overflow, no unread banner, and `自动跟随` still active; the live 43127 page was also inspected with 61 retained records and one visible liveness phrase.
+- 2026-08-21: Folding/analysis review added independent Turn, phase, Step, and repeated-cluster disclosure plus `逐项 / 归类` lenses. The first live 43127 pass exposed a false Glob cluster: two patterns shared one cwd/path and were incorrectly called `同一目标`. Grouping was tightened so Bash, Glob, Grep, and search require exact normalized arguments; only mutable operation+target and exact file reads get target grouping. A real `修改 package.json ×2` cluster expanded back to Steps 85/86 and collapsed/restored without identity loss. Pinned Chromium 1.61.1 / revision 1228 passed Step collapse/restore and both observation modes at 460x724 with a 436x636 panel and no page overflow.
+- 2026-08-21: User review exposed Step 110–113 above delayed wait records from Steps 104/106/108. The rail had incorrectly treated event arrival sequence as global order; delayed approval interactions therefore split and reinserted an earlier Step. Ordering is now authoritative `Turn → Step → occurrence sequence`, locked by a red-to-green regression test and a live 43127 monotonic-order check. The same review replaced mathematical `≥` duration copy with `已记录 … / 开头未载入`, naming the missing start boundary rather than implying mysterious extra time.
+- 2026-08-21: The supplied final JSONL proved the fold contains 3 Turns, 203 Steps, and 230 tool actions, while a fresh RC8 client mount exposed only the newest tail page. Watcher now treats opening the panel as intent to inspect the whole path and automatically walks the official Session paging API. Progress is passive; only a blocked/no-progress result exposes retry, and a terminal loading state prevents stale `hasMore` renders from requesting the first page twice.

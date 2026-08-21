@@ -13,15 +13,16 @@ export interface RailScrollState {
 /**
  * Follow versus pin state for the work rail.
  *
- * The rail follows the newest visual group by default. Selecting history or
- * scrolling away pins the viewport; subsequent groups increment `unread`
- * without yanking the reader back to the bottom.
+ * The rail follows the newest recorded occurrence by default. Selecting
+ * history or scrolling away pins the viewport; later occurrences and result
+ * updates increment `unread` without yanking the reader away from evidence.
  */
 export function createFollow() {
   let follow = true
   let unread = 0
   let selectedId: string | null = null
-  let lastGroupId: string | null = null
+  let lastCursor: string | null = null
+  let observedOccurrenceIds: readonly string[] = []
 
   function snapshot(): FollowSnapshot {
     return { follow, unread, selectedId }
@@ -36,24 +37,34 @@ export function createFollow() {
   return {
     snapshot,
 
-    /** Counts newly observed groups only while the reader is pinned. */
+    /** Counts appended occurrences or a settled live result while pinned. */
     onPicture(picture: Pick<WorkPicture, 'nodes'>): FollowSnapshot {
       const groups = picture.nodes
       if (groups.length === 0) {
-        lastGroupId = null
+        lastCursor = null
+        observedOccurrenceIds = []
         catchUp()
         return snapshot()
       }
 
-      const id = groups.at(-1)?.id ?? null
-      if (id !== null && id !== lastGroupId) {
-        if (!follow && lastGroupId !== null) {
-          const previousIndex = groups.findIndex(group => group.id === lastGroupId)
-          unread += previousIndex < 0 ? 1 : Math.max(1, groups.length - 1 - previousIndex)
+      const occurrenceIds = groups.flatMap(group => group.items.map(item => `${group.id}:${item.id}`))
+      const group = groups.at(-1)
+      const item = group?.items.at(-1)
+      const cursor = group === undefined
+        ? null
+        : item === undefined
+          ? group.id
+          : `${group.id}:${item.id}:${item.status}:${item.resultSeq ?? 'open'}:${item.resultTime ?? 'open'}`
+      if (cursor !== null && cursor !== lastCursor) {
+        if (!follow && lastCursor !== null) {
+          const previousIds = new Set(observedOccurrenceIds)
+          const appended = occurrenceIds.filter(id => !previousIds.has(id)).length
+          unread += Math.max(1, appended)
         }
-        lastGroupId = id
+        lastCursor = cursor
         if (follow) selectedId = null
       }
+      observedOccurrenceIds = occurrenceIds
       return snapshot()
     },
 
@@ -85,7 +96,8 @@ export function createFollow() {
 
     reset(): FollowSnapshot {
       catchUp()
-      lastGroupId = null
+      lastCursor = null
+      observedOccurrenceIds = []
       return snapshot()
     },
   }

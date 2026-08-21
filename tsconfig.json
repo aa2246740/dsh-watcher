@@ -19,6 +19,9 @@
     },
     {
       "path": "../../packages/client/ui-primitives"
+    },
+    {
+      "path": "../../packages/session/session-stats"
     }
   ]
 }
