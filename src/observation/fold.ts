@@ -5,6 +5,7 @@ import type {
   RunningToolCall,
   ToolResultNode,
 } from '@deepseek-ai/dsh-client-runtime/client'
+import { foldModelTraceEvents, hasReasoningEvidence, type ModelStepTrace } from './model-trace.ts'
 
 /** One truthful lifecycle state. Result presence alone never means success. */
 export type WorkStatus =
@@ -27,6 +28,7 @@ export type WorkPhase =
   | 'activate'
   | 'desktop'
   | 'answer'
+  | 'model'
   | 'wait'
   | 'failure'
   | 'other'
@@ -39,6 +41,7 @@ export type WorkSource =
   | 'artifact'
   | 'interaction'
   | 'turn'
+  | 'model'
 
 export type WorkPresentation =
   | {
@@ -117,6 +120,7 @@ export interface WorkStep {
   lastSeq: number
   startTime: number | null
   endTime: number | null
+  model: ModelStepTrace | null
 }
 
 /** One consecutive phase inside one Turn. Every child Step remains addressable. */
@@ -804,6 +808,64 @@ function interactionItem(
   }
 }
 
+function modelItem(trace: ModelStepTrace): WorkItem {
+  const attempt = trace.attempts.at(-1)
+  const running = attempt?.kind === 'running'
+  const interrupted = attempt?.kind === 'interrupted'
+  const resultTime = attempt === undefined || running ? null : attempt.endedAt
+  const time = trace.startTime
+    ?? attempt?.firstTokenTime
+    ?? attempt?.firstReasoningTime
+    ?? resultTime
+    ?? 0
+  return {
+    id: `model:${trace.turn}:${trace.step}`,
+    // A streaming trace mutates lastSeq on every chunk. Ordering and React
+    // disclosure identity must stay anchored to the first observed event;
+    // lastSeq remains the activity/result cursor only.
+    seq: trace.startSeq,
+    resultSeq: running ? null : trace.lastSeq,
+    time,
+    resultTime,
+    turn: trace.turn,
+    step: trace.step,
+    source: 'model',
+    phase: 'model',
+    status: running ? 'running' : interrupted ? 'interrupted' : 'returned',
+    title: running ? '模型正在生成' : '模型响应',
+    subtitle: hasReasoningEvidence(trace) ? '包含可见推理记录' : '模型活动记录',
+    toolName: null,
+    callId: null,
+    args: {},
+    argsRaw: null,
+    rawText: '',
+    rawValue: trace,
+    presentation: { kind: 'empty' },
+    durationMs: resultTime === null ? null : Math.max(0, resultTime - time),
+    exitCode: null,
+    signal: null,
+    signature: null,
+    intentKey: null,
+    target: null,
+    retryOf: null,
+    retryIndex: 0,
+    iterationIndex: 0,
+    recoveredBy: null,
+  }
+}
+
+function withModelPlaceholders(
+  items: readonly WorkItem[],
+  traces: Iterable<ModelStepTrace>,
+): WorkItem[] {
+  const occupied = new Set(items.map(item => `${item.turn}:${item.step}`))
+  const next = [...items]
+  for (const trace of traces) {
+    if (!occupied.has(`${trace.turn}:${trace.step}`)) next.push(modelItem(trace))
+  }
+  return next
+}
+
 function coordinatesOfLocation(value: unknown): Coordinates | null {
   if (!isRecord(value)) return null
   if (value.kind === 'step') {
@@ -957,7 +1019,14 @@ function snapshotItems(snapshot: ConversationSnapshot): WorkItem[] {
       pending.payload as unknown,
     ))
   })
-  return items.sort((left, right) => left.seq - right.seq || left.time - right.time)
+  const models = snapshot.chat.timeline.turnOrder.flatMap(turn => (
+    snapshot.chat.timeline.turns.get(turn)?.steps.flatMap(step => {
+      const model = step.data.get('dsh-watcher-model-stage')
+      return model === undefined ? [] : [model]
+    }) ?? []
+  ))
+  return withModelPlaceholders(items, models)
+    .sort((left, right) => left.seq - right.seq || left.time - right.time)
 }
 
 function resultCallId(value: unknown): string | null {
@@ -1224,6 +1293,7 @@ function phasePriority(phase: WorkPhase): number {
     investigate: 50,
     plan: 40,
     answer: 30,
+    model: 25,
     other: 0,
   }
   return priorities[phase]
@@ -1250,6 +1320,7 @@ export function phaseTitle(phase: WorkPhase): string {
     activate: '激活插件',
     desktop: '操作界面',
     answer: '给出答复',
+    model: '模型响应',
     wait: '等待你决定',
     failure: '处理异常',
     other: '执行其他工作',
@@ -1264,7 +1335,7 @@ function compactTargets(items: readonly WorkItem[]): string {
   return values.length > 2 ? `${head} · +${values.length - 2}` : head
 }
 
-function stepOf(items: readonly WorkItem[], timing: TimeBounds): WorkStep {
+function stepOf(items: readonly WorkItem[], timing: TimeBounds, model: ModelStepTrace | null): WorkStep {
   const first = items[0]
   if (first === undefined) throw new Error('work step requires at least one item')
   const phase = items.reduce((winner, item) => phasePriority(item.phase) > phasePriority(winner) ? item.phase : winner, first.phase)
@@ -1293,12 +1364,14 @@ function stepOf(items: readonly WorkItem[], timing: TimeBounds): WorkStep {
     firstSeq: first.seq,
     lastSeq: items.at(-1)?.seq ?? first.seq,
     ...timing,
+    model,
   }
 }
 
 function stepsOf(
   items: readonly WorkItem[],
   timingOf: ((turn: number, step: number) => TimeBounds) | undefined,
+  modelOf: ((turn: number, step: number) => ModelStepTrace | null) | undefined,
 ): WorkStep[] {
   const steps: WorkStep[] = []
   let current: WorkItem[] = []
@@ -1308,7 +1381,11 @@ function stepsOf(
     if (current.length > 0 && itemKey !== key) {
       const first = current[0]
       if (first !== undefined) {
-        steps.push(stepOf(current, timingOf?.(first.turn, first.step) ?? { startTime: null, endTime: null }))
+        steps.push(stepOf(
+          current,
+          timingOf?.(first.turn, first.step) ?? { startTime: null, endTime: null },
+          modelOf?.(first.turn, first.step) ?? null,
+        ))
       }
       current = []
     }
@@ -1318,7 +1395,11 @@ function stepsOf(
   if (current.length > 0) {
     const first = current[0]
     if (first !== undefined) {
-      steps.push(stepOf(current, timingOf?.(first.turn, first.step) ?? { startTime: null, endTime: null }))
+      steps.push(stepOf(
+        current,
+        timingOf?.(first.turn, first.step) ?? { startTime: null, endTime: null },
+        modelOf?.(first.turn, first.step) ?? null,
+      ))
     }
   }
   return steps
@@ -1394,6 +1475,11 @@ function stepTimesFromSnapshot(snapshot: ConversationSnapshot, turn: number, ste
   }
 }
 
+function stepModelFromSnapshot(snapshot: ConversationSnapshot, turn: number, step: number): ModelStepTrace | null {
+  return snapshot.chat.timeline.turns.get(turn)?.steps
+    .find(value => value.step === step)?.data.get('dsh-watcher-model-stage') ?? null
+}
+
 function pictureOf(
   sourceItems: readonly WorkItem[],
   options: {
@@ -1402,20 +1488,27 @@ function pictureOf(
     pendingCount: number
     turnTimes?: (turn: number) => TimeBounds
     stepTimes?: (turn: number, step: number) => TimeBounds
+    modelOf?: (turn: number, step: number) => ModelStepTrace | null
   },
 ): WorkPicture {
   if (sourceItems.length === 0) return { ...EMPTY_PICTURE, running: options.running, partialHistory: options.partialHistory, pendingCount: options.pendingCount }
+  const occupiedSteps = new Set(sourceItems
+    .filter(item => item.source !== 'model')
+    .map(item => `${item.turn}:${item.step}`))
+  const visibleSourceItems = sourceItems.filter(item => (
+    item.source !== 'model' || !occupiedSteps.has(`${item.turn}:${item.step}`)
+  ))
   // Turn and Step are the authoritative conversation coordinates. Some
   // interaction records (for example a delayed approval decision) arrive
   // after events from a later Step. Event sequence therefore orders only
   // occurrences *inside* one Step; it must never reorder the Step rail.
-  const items = withPatterns([...sourceItems].sort((left, right) =>
+  const items = withPatterns([...visibleSourceItems].sort((left, right) =>
     left.turn - right.turn
     || left.step - right.step
     || left.seq - right.seq
     || left.time - right.time,
   ))
-  const steps = stepsOf(items, options.stepTimes)
+  const steps = stepsOf(items, options.stepTimes, options.modelOf)
   const groups = groupsOf(steps)
   const turns: WorkTurn[] = []
   for (const turnNumber of [...new Set(groups.map(group => group.turn))]) {
@@ -1463,6 +1556,7 @@ export function foldSnapshot(snapshot: ConversationSnapshot, options: { running?
     pendingCount: snapshot.pending.length,
     turnTimes: turn => turnTimesFromSnapshot(snapshot, turn),
     stepTimes: (turn, step) => stepTimesFromSnapshot(snapshot, turn, step),
+    modelOf: (turn, step) => stepModelFromSnapshot(snapshot, turn, step),
   })
 }
 
@@ -1482,6 +1576,12 @@ function stepTimesOfPicture(picture: WorkPicture): Map<string, TimeBounds> {
     `${step.turn}:${step.step}`,
     { startTime: step.startTime, endTime: step.endTime },
   ] as const)))
+}
+
+function stepModelsOfPicture(picture: WorkPicture): Map<string, ModelStepTrace> {
+  return new Map(picture.nodes.flatMap(group => group.steps.flatMap(step => (
+    step.model === null ? [] : [[`${step.turn}:${step.step}`, step.model] as const]
+  ))))
 }
 
 /**
@@ -1522,12 +1622,16 @@ export function mergeObservedPictures(previous: WorkPicture, current: WorkPictur
     })
   }
 
+  const models = stepModelsOfPicture(previous)
+  for (const [key, model] of stepModelsOfPicture(current)) models.set(key, model)
+
   return pictureOf([...items.values()], {
     running: current.running,
     partialHistory: current.partialHistory,
     pendingCount: current.pendingCount,
     turnTimes: turn => turns.get(turn) ?? { startTime: null, endTime: null },
     stepTimes: (turn, step) => steps.get(`${turn}:${step}`) ?? { startTime: null, endTime: null },
+    modelOf: (turn, step) => models.get(`${turn}:${step}`) ?? null,
   })
 }
 
@@ -1535,7 +1639,11 @@ export function mergeObservedPictures(previous: WorkPicture, current: WorkPictur
 export function foldEvents(events: readonly EventLike[], options: { running?: boolean } = {}): WorkPicture {
   const coordinates = eventCoordinates(events)
   const timings = eventTimingIndex(events)
-  const items = [...pairTools(events).map(toolItem), ...logMessageItems(events, coordinates), ...approvalItems(events, coordinates)]
+  const models = foldModelTraceEvents(events)
+  const items = withModelPlaceholders(
+    [...pairTools(events).map(toolItem), ...logMessageItems(events, coordinates), ...approvalItems(events, coordinates)],
+    models.values(),
+  )
   const pendingCount = items.filter(item => item.status === 'waiting').length
   return pictureOf(items, {
     running: options.running === true,
@@ -1543,6 +1651,7 @@ export function foldEvents(events: readonly EventLike[], options: { running?: bo
     pendingCount,
     turnTimes: turn => timings.turns.get(turn) ?? { startTime: null, endTime: null },
     stepTimes: (turn, step) => timings.steps.get(`${turn}:${step}`) ?? { startTime: null, endTime: null },
+    modelOf: (turn, step) => models.get(`${turn}:${step}`) ?? null,
   })
 }
 

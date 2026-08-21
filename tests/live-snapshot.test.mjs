@@ -39,7 +39,12 @@ function snapshotWithToolLocation() {
         turns: new Map([[2, {
           start: { time: 9_000 },
           end: { time: 21_000 },
-          steps: [{ step: 4, start: { time: 10_000 }, end: { time: 20_500 } }],
+          steps: [{
+            step: 4,
+            start: { time: 10_000 },
+            end: { time: 20_500 },
+            data: { get: () => undefined },
+          }],
         }]]),
       },
       locations: {

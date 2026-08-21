@@ -366,6 +366,9 @@
 .phaseToggle:focus-visible,
 .stepToggle:focus-visible,
 .analysisClusterToggle:focus-visible,
+.modelStageToggle:focus-visible,
+.reasoningToggle:focus-visible,
+.groupedModelToggle:focus-visible,
 .viewMode button:focus-visible,
 .historyNotice button:focus-visible,
 .overviewOccurrence:focus-visible,
@@ -791,6 +794,295 @@
 .overviewStep[data-parallel] .overviewOccurrences {
   padding-left: 5px;
   border-left: 1px solid var(--dsw-static-deepseek-450);
+}
+
+.modelStage {
+  min-width: 0;
+  margin: 2px 2px 7px;
+  overflow: hidden;
+  border-left: 2px solid var(--dsw-static-deepseek-450);
+  border-radius: 0 7px 7px 0;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.modelStage[data-live] {
+  box-shadow: inset 0 0 0 1px var(--dsw-alias-button-ghost-active-border);
+}
+
+.modelStageToggle {
+  display: grid;
+  grid-template-columns: 12px 8px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 42px;
+  padding: 5px 9px 5px 7px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.modelStageToggle:hover,
+.reasoningToggle:hover,
+.groupedModelToggle:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.modelStageChevron,
+.reasoningChevron,
+.groupedModelChevron {
+  color: var(--dsw-alias-label-tertiary);
+  transition: transform var(--watcher-motion-fast) var(--watcher-ease-out);
+}
+
+.modelStageToggle[aria-expanded='true'] .modelStageChevron,
+.reasoningToggle[aria-expanded='true'] .reasoningChevron,
+.groupedModelToggle[aria-expanded='true'] .groupedModelChevron {
+  transform: rotate(90deg);
+}
+
+.modelStageGlyph {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--dsw-static-deepseek-450);
+  box-shadow: 0 0 0 3px var(--dsw-alias-button-ghost-active-fill);
+}
+
+.modelStageCopy {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 8px;
+}
+
+.modelStageTitle {
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.modelStageSummary {
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modelStageBody {
+  padding: 2px 10px 10px 20px;
+}
+
+.modelStageBar {
+  display: flex;
+  gap: 2px;
+  height: 5px;
+  margin: 2px 0 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--dsw-alias-border-l2);
+}
+
+.modelStageBar > span {
+  min-width: 3px;
+  border-radius: inherit;
+}
+
+.modelStageBar [data-segment='wait'],
+.modelStageSwatch[data-segment='wait'] { background: var(--dsw-alias-label-dimmed); }
+.modelStageBar [data-segment='reasoning'],
+.modelStageSwatch[data-segment='reasoning'] { background: var(--dsw-static-deepseek-450); }
+.modelStageBar [data-segment='output'],
+.modelStageSwatch[data-segment='output'] { background: var(--dsw-alias-label-secondary); }
+.modelStageBar [data-segment='unattributed'],
+.modelStageSwatch[data-segment='unattributed'] { background: var(--dsw-alias-state-warn-primary); }
+
+.modelStageLedger {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 5px 12px;
+  margin: 0;
+}
+
+.modelStageMetric {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+}
+
+.modelStageMetric dt,
+.modelStageMetric dd { margin: 0; }
+.modelStageMetric dt { display: inline-flex; min-width: 0; align-items: center; gap: 6px; }
+.modelStageMetric dd { flex: none; color: var(--dsw-alias-label-secondary); text-align: right; }
+
+.modelStageSwatch {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+}
+
+.modelStageNote {
+  margin: 8px 0 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.reasoningAttempts {
+  margin-top: 8px;
+  padding-top: 1px;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+}
+
+.reasoningDisclosure {
+  min-width: 0;
+  margin-top: 5px;
+  overflow: hidden;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.reasoningToggle {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 34px;
+  padding: 5px 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.reasoningLabel {
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  font-weight: 550;
+  line-height: 20px;
+}
+
+.reasoningMeta {
+  grid-column: 2;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+  text-align: left;
+  white-space: normal;
+}
+
+.reasoningBody {
+  box-sizing: border-box;
+  max-height: 320px;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-markdown-code-block);
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+.reasoningBody > :global(*) { margin-top: 0; margin-bottom: 8px; }
+.reasoningBody > :global(*:last-child) { margin-bottom: 0; }
+.reasoningBody :global(.md-code-block) { max-width: 100%; }
+
+.groupedModelStages {
+  position: relative;
+  margin-bottom: 9px;
+  overflow: hidden;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 7px;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.groupedModelStages::before {
+  position: absolute;
+  top: 20px;
+  left: -12px;
+  width: 8px;
+  height: 1px;
+  background: var(--dsw-alias-border-l2);
+  content: '';
+}
+
+.groupedModelToggle {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 5px 9px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.groupedModelToggle > span {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.groupedModelToggle strong { color: var(--dsw-alias-label-primary); font-size: 13px; line-height: 20px; }
+.groupedModelToggle small {
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.groupedModelList {
+  padding: 0 7px 8px 22px;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+}
+
+.groupedModelStep { min-width: 0; padding-top: 8px; }
+.groupedModelStep + .groupedModelStep { border-top: 1px solid var(--dsw-alias-border-l2); }
+.groupedModelStepLabel {
+  display: block;
+  margin: 0 2px 4px;
+  color: var(--dsw-alias-label-tertiary);
+  font-family: var(--dsw-font-mono);
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .analysisClusters {
@@ -1503,6 +1795,9 @@
   .phaseChevron,
   .stepChevron,
   .analysisClusterChevron,
+  .modelStageChevron,
+  .reasoningChevron,
+  .groupedModelChevron,
   .occurrence,
   .overviewOccurrenceChevron,
   .occurrenceChevron {
@@ -1576,4 +1871,12 @@
   .detailHeader { grid-template-columns: 1fr; }
   .metrics { grid-template-columns: auto 1fr; }
   .metrics dd { text-align: left; }
+  .modelStageCopy { grid-template-columns: 1fr; gap: 0; }
+  .modelStageSummary { white-space: normal; }
+  .modelStageLedger { grid-template-columns: 1fr; }
+  .reasoningToggle { grid-template-columns: 12px minmax(0, 1fr); }
+  .reasoningMeta { grid-column: 2; text-align: left; white-space: normal; }
+  .groupedModelToggle > span { display: grid; gap: 0; }
+  .groupedModelToggle small { white-space: normal; }
+  .groupedModelList { padding-left: 12px; }
 }

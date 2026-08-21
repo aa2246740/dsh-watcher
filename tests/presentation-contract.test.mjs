@@ -5,6 +5,9 @@ import test from 'node:test'
 const clientSource = new URL('../src/client/Watcher.tsx', import.meta.url)
 const clientStyles = new URL('../src/client/Watcher.module.css', import.meta.url)
 const performanceSource = new URL('../src/observation/performance.ts', import.meta.url)
+const modelTraceSource = new URL('../src/observation/model-trace.ts', import.meta.url)
+const modelDefinitionSource = new URL('../src/client/model-trace-definition.ts', import.meta.url)
+const clientIndexSource = new URL('../src/client/index.tsx', import.meta.url)
 const overviewSource = new URL('../src/hub/overview.ts', import.meta.url)
 const packageSource = new URL('../package.json', import.meta.url)
 
@@ -39,7 +42,7 @@ test('the overview keeps every Step and occurrence reachable through folding and
   assert.match(source, /className=\{css\.stepToggle\}/)
   assert.match(source, /step\.items\.map/)
   assert.match(source, /className=\{css\.overviewOccurrence\}/)
-  assert.match(source, /clusterWorkItems\(group\.items\)/)
+  assert.match(source, /clusterWorkItems\(group\.items\.filter\(item => item\.source !== 'model'\)\)/)
   assert.match(source, /className=\{css\.analysisClusterToggle\}/)
   assert.match(source, /onSelectItem=\{item => selectItem\(group, item\)\}/)
   assert.match(source, />\s*逐项\s*<\/button>/)
@@ -106,4 +109,34 @@ test('wall-clock evidence is visible at every useful level without heuristic spe
   assert.match(styles, /grid-template-columns:\s*repeat\(3,/)
   assert.match(performance, /firstTokenTime/)
   assert.match(performance, /outputTokens \/ \(fold\.decodeMs \/ 1000\)/)
+})
+
+test('each Step can disclose a truthful nested model stage and provider-visible reasoning', async () => {
+  const [source, styles, modelTrace, modelDefinition, clientIndex] = await Promise.all([
+    readFile(clientSource, 'utf8'),
+    readFile(clientStyles, 'utf8'),
+    readFile(modelTraceSource, 'utf8'),
+    readFile(modelDefinitionSource, 'utf8'),
+    readFile(clientIndexSource, 'utf8'),
+  ])
+
+  assert.match(source, /function ModelStage/)
+  assert.match(source, /模型阶段/)
+  assert.match(source, /首响应等待/)
+  assert.match(source, /可见推理/)
+  assert.match(source, /输出 \/ 工具意图/)
+  assert.match(source, /分段耗时不可用/)
+  assert.match(source, /aria-expanded=\{open\}/)
+  assert.match(source, /<MarkdownText text=\{attempt\.reasoningText\}/)
+  assert.match(source, /\[modelKey\]: true/)
+  assert.match(styles, /\.modelStage\s*\{/)
+  assert.match(styles, /\.modelStageBar\s*\{/)
+  assert.match(styles, /\.reasoningDisclosure\s*\{/)
+  assert.match(modelTrace, /reasoningTokens/)
+  assert.match(modelTrace, /reasoning-delta/)
+  assert.match(modelDefinition, /buildLocationData/)
+  assert.match(modelDefinition, /key: 'dsh-watcher-model-stage'/)
+  assert.match(clientIndex, /'conversationEvents'/)
+  assert.match(clientIndex, /registerModelTraceDefinition\(ctx\)/)
+  assert.doesNotMatch(source, /隐藏思维/)
 })

@@ -112,6 +112,69 @@ test('an advancing RC8 window cannot erase occurrences already observed on this 
   assert.deepEqual(allItems(observed).map(item => item.callId), ['a', 'b'])
 })
 
+test('Step model evidence attaches to the work picture and survives an advancing window', () => {
+  const toolEvents = [
+    call(4, 1, 1, 'a', 'bash', { command: 'pnpm test' }),
+    result(5, 1, 1, 'a', '[exit code: 0]'),
+  ]
+  const observed = foldEvents([
+    { type: 'step/start', seq: 1, time: 100, data: { turn: 1, step: 1 } },
+    { type: 'assistant/chunk', seq: 2, time: 200, data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'inspect evidence' } } },
+    {
+      type: 'assistant/message',
+      seq: 3,
+      time: 300,
+      data: {
+        turn: 1,
+        step: 1,
+        message: { role: 'assistant', content: [{ type: 'reasoning', text: 'inspect evidence' }] },
+      },
+    },
+    ...toolEvents,
+  ])
+  const advanced = foldEvents(toolEvents)
+  const merged = mergeObservedPictures(observed, advanced)
+  const model = merged.turns[0].groups[0].steps[0].model
+
+  assert.ok(model)
+  assert.equal(model.attempts[0].reasoningText, 'inspect evidence')
+  assert.equal(merged.turns[0].groups[0].steps[0].items.some(item => item.source === 'model'), false)
+})
+
+test('a streaming model creates one temporary Step before any action exists', () => {
+  const picture = foldEvents([
+    { type: 'step/start', seq: 1, time: 100, data: { turn: 2, step: 7 } },
+    { type: 'assistant/chunk', seq: 2, time: 300, data: { turn: 2, step: 7, chunk: { type: 'reasoning-delta', index: 0, text: 'working' } } },
+  ], { running: true })
+  const step = picture.turns[0].groups[0].steps[0]
+
+  assert.equal(picture.stepCount, 1)
+  assert.equal(picture.actionCount, 0)
+  assert.equal(step.items.length, 1)
+  assert.equal(step.items[0].source, 'model')
+  assert.equal(step.model?.attempts[0].reasoningText, 'working')
+  assert.equal(picture.now.label, '模型正在生成')
+})
+
+test('reasoning fragments update one stable temporary Step instead of replacing its identity', () => {
+  const firstEvents = [
+    { type: 'step/start', seq: 1, time: 100, data: { turn: 2, step: 7 } },
+    { type: 'assistant/chunk', seq: 2, time: 200, data: { turn: 2, step: 7, chunk: { type: 'reasoning-delta', index: 0, text: 'inspect ' } } },
+  ]
+  const first = foldEvents(firstEvents, { running: true })
+  const next = foldEvents([
+    ...firstEvents,
+    { type: 'assistant/chunk', seq: 3, time: 300, data: { turn: 2, step: 7, chunk: { type: 'reasoning-delta', index: 0, text: 'evidence' } } },
+  ], { running: true })
+  const firstGroup = first.turns[0].groups[0]
+  const nextGroup = next.turns[0].groups[0]
+
+  assert.equal(nextGroup.id, firstGroup.id)
+  assert.equal(nextGroup.steps[0].id, firstGroup.steps[0].id)
+  assert.equal(nextGroup.steps[0].model?.attempts[0].reasoningText, 'inspect evidence')
+  assert.equal(nextGroup.steps[0].model?.attempts[0].fragments.length, 2)
+})
+
 test('a late interaction event cannot move an earlier Step below a later Step', () => {
   const events = [
     call(1, 1, 104, 'earlier', 'edit', { file_path: '/tmp/a.ts', old_string: 'a', new_string: 'b' }),

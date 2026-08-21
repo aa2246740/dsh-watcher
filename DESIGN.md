@@ -1,7 +1,7 @@
 ---
 version: alpha
 name: Watcher Work Picture
-description: A quiet, truthful observability instrument for understanding a DSH agent's turns, steps, parallel actions, retries, and evidence without reading the full transcript.
+description: A quiet, truthful observability instrument for understanding a DSH agent's turns, steps, model stages, parallel actions, retries, and evidence without reading the full transcript.
 colors:
   primary: "#4D6BFE"
   text-primary: "#17181C"
@@ -90,8 +90,9 @@ Information hierarchy:
 
 1. Current status, current action, and session wall-clock ledger.
 2. Conversation-Turn chapters with total elapsed time and performance evidence.
-3. Semantic phase dividers, then every Step and recorded occurrence with its own identity and elapsed interval.
-4. Structured result, arguments, timing, and full raw evidence after occurrence selection.
+3. Semantic phase dividers, then every Step with a nested model stage and every recorded occurrence with its own identity and elapsed interval.
+4. Inside a model stage: first-response wait, provider-visible reasoning, output/tool-intent generation, and retry/unattributed time when authoritative boundaries permit the split.
+5. Structured result, arguments, timing, and full raw evidence after occurrence selection.
 
 Observation modes:
 
@@ -114,6 +115,8 @@ The panel uses the host 12px menu radius. Rows use 8px only when they are intera
 - One collapsible chapter per Turn; it must never merge across Turn boundaries. Turn headers carry duration and useful totals, not a duplicated status dot.
 - One independently collapsible divider per consecutive user-facing phase; the closed header preserves exact Step/execution totals and elapsed time.
 - Every Step is independently collapsible beneath its phase. Its closed header preserves Step number, elapsed time, parallel count, and execution count.
+- Every Step may contain one independently collapsible `模型阶段`. Its closed row preserves total model time and visible-reasoning time; opening it reveals a proportional time rail and provider-exposed reasoning attempts without turning reasoning into a peer Step.
+- Historical model stages default closed. The latest actively streaming model stage defaults open. Provider-exposed reasoning text is a second disclosure below its timing row; explicitly opening it pins its parent model stage open across streaming settlement, and the record never disappears merely because a later tool call arrived.
 - In `逐项`, every tool/message occurrence keeps a stable numbered row. In `归类`, every occurrence remains available under one evidence-backed cluster and keeps the same stable selection identity.
 - Parallel calls retain one Step bracket and separate selectable rows. Retry and iteration labels sit on the exact affected occurrence. A cluster may show `×N` only as a reversible summary whose expanded children prove the N source records.
 - Occurrences already seen by Watcher survive RC8 history-window advancement. Opening Watcher automatically walks the public Session `loadOlder()` pages until the full log is present; a later result replaces the same stable occurrence and never removes or duplicates the running row. While pages are still arriving, whole-session projections expose loaded-versus-total progress and the visible evidence remains explicitly partial.
@@ -155,7 +158,7 @@ Overview progress and execution evidence are separate axes. Overview markers ans
 
 Do preserve Turn, Step, parallel, and per-execution identity. Do show neutral `已返回` when success is not known. Do keep commands, paths, and output readable at normal zoom. Do use DSH primitives and tokens before inventing local components.
 
-Do not merge actions merely because their tool or Chinese label matches. Different Bash commands remain separate clusters. Changed mutable inputs may share one target-based iteration cluster, but every version remains expandable and selectable. Do not call adjacency a loop. Do not infer success from the mere presence of a result. Do not silently cut raw output. Do not add steering, diagnosis, or model-visible reasoning to this observation-only surface.
+Do not merge actions merely because their tool or Chinese label matches. Different Bash commands remain separate clusters. Changed mutable inputs may share one target-based iteration cluster, but every version remains expandable and selectable. Do not call adjacency a loop. Do not infer success from the mere presence of a result. Do not silently cut raw output. Do not add steering or diagnosis. Never reconstruct, summarize as fact, search-index, or claim access to hidden chain-of-thought; only provider-exposed reasoning already present in the user's DSH session may be disclosed.
 
 ## Design Mandate
 
@@ -163,15 +166,16 @@ Do not merge actions merely because their tool or Chinese label matches. Differe
 - Deliverable: Watcher as an external DSH Web client plugin.
 - Primary audience: DSH users supervising active or completed agent sessions.
 - Core job to be done: understand the agent's current action and causal workflow, then inspect any exact execution without reading raw session JSONL.
-- Latest user override: every hierarchy level must support deliberate folding, and users need a reversible same-kind analysis view without losing the ability to inspect every original execution.
-- Success criteria: one continuous hierarchy (`会话 → 对话轮次 → 阶段 → 步骤 → 每次执行`) with independent Turn/phase/Step disclosure; a `逐项 / 归类` switch whose grouped summaries expand to exact source rows; no different-command Bash aggregation; complete/current-window session span split into time inside Turns and gaps between Turns; exact or explicitly lower-bound Turn/phase/Step/execution elapsed time; per-turn decode performance that separates model, tool, and first-token latency; progress markers that never impersonate radio buttons; no aggregate green success; precise execution drill-down; semantic Results and exact raw evidence; official WebUI compatibility; no DSH core edit; no Host restart for client-only updates, with one page refresh after first installation.
+- Original user request: expose the Agent/model Thinking time because it is often a material part of total task duration, and discuss the truthful data boundary before implementation.
+- Latest user override: implement the agreed multi-level model-stage hierarchy inside each Step.
+- Success criteria: one continuous hierarchy (`会话 → 对话轮次 → 阶段 → 步骤 → 模型阶段 / 每次执行`) with independent Turn/phase/Step/model disclosure; first-response wait, provider-visible reasoning, output/tool-intent generation, and retry/unattributed time remain semantically distinct; exposed reasoning survives streaming settlement and can be expanded by attempt; missing reasoning timing or token usage is named rather than estimated; a `逐项 / 归类` switch whose grouped summaries expand to exact source rows; no different-command Bash aggregation; complete/current-window session span split into time inside Turns and gaps between Turns; exact or explicitly lower-bound Turn/phase/Step/execution elapsed time; per-turn decode performance that separates model, tool, and first-token latency; progress markers that never impersonate radio buttons; no aggregate green success; precise execution drill-down; semantic Results and exact raw evidence; official WebUI compatibility; no DSH core edit; no Host restart for client-only updates, with one page refresh after first installation.
 - Must preserve: observation-only scope, header utility seat, DSH token language, Follow behavior, HMR lifecycle, keyboard access, and `prefers-reduced-motion`.
-- Non-goals: agent steering, hidden reasoning exposure, a second model, process control, DSH core modification, or cloning the full official Trajectory ledger.
-- Validation must check against: both supplied full-session logs; exact per-execution identity; WebUI keyboard, overflow, type-size, and reduced-motion behavior; TypeScript, bundle, and dshx contracts.
+- Non-goals: agent steering, reconstructing hidden reasoning, AI-generated reasoning summaries, default reasoning search/export, a second model, process control, DSH core modification, or cloning the full official Trajectory ledger.
+- Validation must check against: the supplied full-session log's provider-exposed reasoning stream; exact per-attempt and per-execution identity; timing labels that do not rename queue/network/prefill latency as Thinking; WebUI keyboard, overflow, type-size, and reduced-motion behavior; TypeScript, bundle, and dshx contracts.
 
 ## Content Model
 
-Canonical rail nouns are `对话轮次` (Turn; rendered as `对话轮次 N`), user-facing phases such as `理解任务`, `检查与理解`, `修改实现`, `验证结果`, and `给出答复`, `步骤 N` (recorded Step), and one numbered occurrence per recorded action. Observation modes are `逐项` and `归类`; a reversible aggregate is `同类执行`, not a loop. Avoid the game-like `回合`, ambiguous `节点`, generic unexpandable `动作 ×N`, and `循环` without proof. The first view answers “状态 / 路径 / 时间”; selection opens “证据”. `结果` is the interpreted reading view; `原始` is the exact recorded source.
+Canonical rail nouns are `对话轮次` (Turn; rendered as `对话轮次 N`), user-facing phases such as `理解任务`, `检查与理解`, `修改实现`, `验证结果`, and `给出答复`, `步骤 N` (recorded Step), `模型阶段`, its measured children `首响应等待`, `可见推理`, `输出 / 工具意图`, and one numbered occurrence per recorded action. `可见推理` means provider-exposed reasoning chunks only; `模型处理中` is used before such evidence exists. Observation modes are `逐项` and `归类`; a reversible aggregate is `同类执行`, not a loop. Avoid the game-like `回合`, ambiguous `节点`, generic unexpandable `动作 ×N`, unqualified `思考耗时`, and `循环` without proof. The first view answers “状态 / 路径 / 时间”; selection opens “证据”. `结果` is the interpreted reading view; `原始` is the exact recorded source.
 
 Empty copy explains that the first Turn will grow here. Partial-data copy names what is unavailable. Errors state both what failed and the available recovery path. Long localized copy wraps; Chinese and English tool names may coexist without sentence concatenation.
 
@@ -184,10 +188,16 @@ Performance belongs to the conversation-turn chapter because its diagnostic valu
 - `会话总跨度`: first loaded `turn/start →` final `turn/end`; while live, the end is the current wall clock. If earlier history is not loaded, the label changes to `已加载跨度` and the overview says `历史未完整加载`.
 - `轮次内耗时`: union of visible Turn intervals. It includes model, tools, approvals, and in-Turn waits, but overlapping intervals are counted once.
 - `轮次间隔`: session/window span minus the union of Turn intervals. It exposes user thinking time, idle gaps, or a paused continuation instead of hiding them inside Agent work.
-- `对话轮次总耗时`: `turn/start → turn/end`; while the latest Turn is running, the end is the current wall clock and updates once per second. If the Turn start is clipped, the UI shows a `≥` lower bound.
+- `对话轮次总耗时`: `turn/start → turn/end`; while the latest Turn is running, the end is the current wall clock and updates once per second. If the Turn start is clipped, the UI says `已记录 … · 开头未载入` instead of presenting a complete total.
 - `阶段耗时`: first Step start → last Step end within one consecutive phase.
 - `步骤耗时`: `step/start → step/end`, including model generation, tool calls, and waits recorded inside that Step.
 - `执行耗时`: `tool/call → tool/result`; a running tool uses call time → current wall clock.
+- `模型阶段`: `step/start → assistant/message`; while streaming, the end is the current wall clock. This includes retry waits and provider latency and therefore is not labelled Thinking.
+- `首响应等待`: `step/start →` first non-empty reasoning/text/tool delta. It may include queueing, network, input prefill, and internal inference, so it is never renamed `思考`.
+- `可见推理`: the union/sum of each attempt's first provider-exposed `reasoning-delta →` last `reasoning-delta` span. A single recorded delta has a measured span of 0ms; reasoning text without chunk timestamps has content but unavailable duration.
+- `输出 / 工具意图`: last visible reasoning delta → assembled `assistant/message`; without reasoning, first non-empty output delta → assembled message. It includes final text or tool-call generation, not tool execution.
+- `重试 / 未归因`: only the non-negative remainder needed to reconcile a multi-attempt model stage after the measured spans above. It appears only with retry evidence or an otherwise real uncovered interval and is not guessed into another category.
+- `推理 token`: provider-reported `reasoningTokens` only. Missing provider usage remains `未上报`; output tokens are never substituted.
 
 - `模型`: sum of recorded `step/start → assistant/message` intervals in the Turn.
 - `工具`: sum of recorded `tool/call → tool/result` intervals in the Turn.
@@ -198,11 +208,11 @@ The model/tool figures are diagnostic recorded sums, not slices of a pie: parall
 
 ## Information Architecture
 
-- Primary task: scan every Step and occurrence in the causal work rail while it grows.
-- Secondary task: fold Turn/phase/Step levels or switch to same-kind analysis without losing source identity.
+- Primary task: scan every Step, its model-time decomposition, and every occurrence in the causal work rail while it grows.
+- Secondary task: fold Turn/phase/Step/model levels or switch to same-kind analysis without losing source identity.
 - Tertiary task: select one occurrence, inspect it, then copy or expand complete raw evidence.
-- Navigation model: header trigger → work picture → observation mode → Turn → phase → Step or analysis cluster → execution → structured/raw evidence.
-- Required states: empty, opening, following, pinned/unread, expanded/collapsed, itemized/grouped, running, parallel, returned-neutral, success, failure, waiting-user, interrupted, partial-history, and reduced-motion.
+- Navigation model: header trigger → work picture → observation mode → Turn → phase → Step → model stage / reasoning attempt or execution → structured/raw evidence.
+- Required states: empty, opening, following, pinned/unread, expanded/collapsed, itemized/grouped, model-waiting, reasoning-streaming, reasoning-settled, reasoning-content-without-timing, reasoning-unavailable, running, parallel, returned-neutral, success, failure, waiting-user, interrupted, partial-history, and reduced-motion.
 
 ## Taste Signature
 
@@ -252,7 +262,7 @@ Implementation markers: `data-ud-motion="watcher-eye-scan"`, `data-ud-motion="wa
 - Execution mode: single-agent implementation.
 - Active references loaded: information architecture, state language, semantic binding, taste engine, necessary design judgment, typography system, data visualization, motion language, motion contract, accessibility/usability, responsive interaction, tokens/components, and design-to-code governance.
 - Support references: request integrity, web-product branch, content model, audit/polish, visual verification, and quality gates.
-- Constraints extracted: observation-only DSH Web client; native semantic tokens and result primitives; no cross-Turn grouping; every disclosure and aggregate is reversible; no unproven retry, iteration, loop, or success claims; body/code at least 13px; metadata at least 12px; bounded motion with a static reduced-motion fallback.
+- Constraints extracted: observation-only DSH Web client; provider-exposed reasoning only; `模型阶段` is a Step child rather than a peer action; native semantic tokens and result primitives; no cross-Turn grouping; every disclosure and aggregate is reversible; no unproven retry, iteration, loop, success, hidden-thinking, or token claims; body/code at least 13px; metadata at least 12px; bounded motion with a static reduced-motion fallback.
 - Deliberate exceptions: live approval duration is shown only when an authoritative registered view exposes it; offline golden replay may inspect the complete historical event stream.
 - Verification hooks: `data-ud-check` on both panels; `data-ud-motion` on the eye, panel, and selection; golden replay assertions; computed-style and overflow browser checks.
 
@@ -283,10 +293,14 @@ Implementation markers: `data-ud-motion="watcher-eye-scan"`, `data-ud-motion="wa
 - A filled neutral marker means historical settled work; blue means current, amber means an authoritative wait for the user, red means failure/interruption evidence, and dashed means partial data. Every non-settled state also has visible text.
 - No overview marker is an empty ring, and overview never turns green from an aggregate `some(success)` rule.
 - In `逐项`, every Step and occurrence is present in time order. Turn, phase, and Step headers expose independent `aria-expanded` disclosure and preserve counts/duration while closed.
+- A Step with provider/model evidence exposes one independently foldable `模型阶段` before its execution occurrences. Its collapsed row preserves model elapsed time and visible-reasoning duration; current streaming evidence may open it automatically, while settled historical model stages remain user-controlled.
+- `首响应等待`, `可见推理`, and `输出 / 工具意图` use recorded event boundaries and remain separately labelled. No queue/network/prefill interval is called Thinking, and a multi-attempt uncovered remainder is labelled `重试 / 未归因` rather than forced into another segment.
+- Provider-exposed reasoning text is nested under its exact attempt, defaults collapsed, remains available after completion, and is never silently replaced by a generated summary. Reasoning content without timestamps remains readable with `分段耗时不可用`.
+- Chunk-level forensic timestamps remain reachable without rendering every token fragment as a default rail row. `reasoningTokens` appears only when the provider reports it; missing values say `未上报` or stay absent.
 - In `归类`, singleton actions remain direct rows. Only evidence-backed repeated clusters may show `×N`; expanding a cluster restores every stable numbered occurrence with Step, duration, status, retry, and iteration evidence.
 - Different Bash commands never merge. Glob, Grep, and search calls require exact normalized arguments; a shared cwd, broad path, tool name, or translated title is insufficient. Mutable calls may group by exact operation plus target, and reads may group by one exact file target.
 - Normal liveness has one visible phrase in the header. `现在`, `当前`, and `进行中` must not appear simultaneously across header, Turn, phase, or occurrence.
-- While following, an appended occurrence scrolls into view. While browsing history, it remains appended and increments `N 条新进展`; a running occurrence settling updates the same stable row instead of disappearing.
+- While following, an appended occurrence scrolls into view. While browsing history, only a newly visible occurrence or an existing occurrence entering a terminal state increments `N 条新进展`; reasoning/text/tool-argument stream fragments update their existing record in place and never count as progress of their own. A running occurrence settling updates the same stable row instead of disappearing.
 - Advancing the official RC8 history window cannot erase an occurrence already observed in the mounted page; changing sessions resets this observation ledger.
 - The header ledger shows `会话总跨度` only for complete loaded history; partial history says `已加载跨度` and `历史未完整加载`. It splits that span into `轮次内耗时` and `轮次间隔`.
 - Collapsed conversation-turn headers expose exact elapsed time or an explicit `≥` lower bound and measured `tok/s`; expanded headers separate model time, tool time, and first-token latency without adding a dashboard-card layer.
@@ -337,3 +351,8 @@ Implementation markers: `data-ud-motion="watcher-eye-scan"`, `data-ud-motion="wa
 - 2026-08-21: Folding/analysis review added independent Turn, phase, Step, and repeated-cluster disclosure plus `逐项 / 归类` lenses. The first live 43127 pass exposed a false Glob cluster: two patterns shared one cwd/path and were incorrectly called `同一目标`. Grouping was tightened so Bash, Glob, Grep, and search require exact normalized arguments; only mutable operation+target and exact file reads get target grouping. A real `修改 package.json ×2` cluster expanded back to Steps 85/86 and collapsed/restored without identity loss. Pinned Chromium 1.61.1 / revision 1228 passed Step collapse/restore and both observation modes at 460x724 with a 436x636 panel and no page overflow.
 - 2026-08-21: User review exposed Step 110–113 above delayed wait records from Steps 104/106/108. The rail had incorrectly treated event arrival sequence as global order; delayed approval interactions therefore split and reinserted an earlier Step. Ordering is now authoritative `Turn → Step → occurrence sequence`, locked by a red-to-green regression test and a live 43127 monotonic-order check. The same review replaced mathematical `≥` duration copy with `已记录 … / 开头未载入`, naming the missing start boundary rather than implying mysterious extra time.
 - 2026-08-21: The supplied final JSONL proved the fold contains 3 Turns, 203 Steps, and 230 tool actions, while a fresh RC8 client mount exposed only the newest tail page. Watcher now treats opening the panel as intent to inspect the whole path and automatically walks the official Session paging API. Progress is passive; only a blocked/no-progress result exposes retry, and a terminal loading state prevents stale `hasMore` renders from requesting the first page twice.
+- 2026-08-21: Provider-event audit of the supplied final JSONL found 91 reasoning-bearing Steps, 1,448 `reasoning-delta` events, 93 durable reasoning blocks, and no reported `reasoningTokens`. The 15m22s model span on those Steps decomposes into 6m17s before first visible reasoning, 4m05s of visible reasoning-stream span, and 4m59s from final reasoning to assembled output. Contract updated to place a foldable `模型阶段` inside each Step, preserve provider-exposed reasoning by attempt, and forbid renaming first-response latency or hidden model work as Thinking.
+- 2026-08-21: Critique 1 on the live 43127 page found two P2 reading defects in the first model-stage render: the Step repeated the same `19 s` as both Step and model duration, and the deep reasoning metadata truncated into one cramped line. The repair deduplicates equal Step/model durations, labels unequal parent time as `总`, keeps the deep timing ledger in one column, and lets reasoning metadata wrap onto a second line.
+- 2026-08-21: Critique 2 passed on the real five-Turn session at 894x960 and 390x844. The hierarchy remained `对话轮次 → 阶段 → Step → 模型阶段 → 推理记录/尝试 → 工具执行`; `逐项 / 归类`, grouped model-stage disclosure, and reasoning disclosure retained independent state; the grouped view preserved one model record per Step instead of merging prose. Both viewports had document and panel `scrollWidth === clientWidth`, the viewport portal stayed above the Composer, and the user viewport was reset to 894x960. No Watcher P0/P1 remained; the unrelated DSH header collision at 390px is outside the plugin surface.
+- 2026-08-21: Live-stream review exposed one identity defect behind two symptoms: the temporary model item used mutable `lastSeq` as its ordering identity, so every `reasoning-delta` replaced the phase/Step id, reset disclosure keys, and incremented unread despite adding no visible node. The regression first reproduced `seq:2 → seq:3` plus `unread 0 → 1`; the repair anchors identity to the first observed model event while retaining `lastSeq` only as an activity/result cursor. Opening a nested reasoning record now also pins its parent model stage open across settlement.
+- 2026-08-21: Final same-page 43127 HMR acceptance observed one live reasoning record grow from 28 to 68 fragments while remaining `aria-expanded=true` and keeping unread at 0. At settlement it held 527 fragments, both model and reasoning disclosures remained open, and unread became exactly 1 for the semantic running-to-complete transition. The isolated browser tab was closed afterward; the original 43127 tab and Host process were left running.

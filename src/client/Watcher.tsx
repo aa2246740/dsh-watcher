@@ -55,6 +55,12 @@ import {
   type SessionTiming,
   type TurnPerformance,
 } from '../observation/performance.ts'
+import {
+  hasReasoningEvidence,
+  modelStageMetrics,
+  type ModelAttempt,
+  type ModelStepTrace,
+} from '../observation/model-trace.ts'
 
 export interface WatcherInjected {
   loadAllHistory: (signal: AbortSignal) => Promise<CompleteHistoryResult>
@@ -526,6 +532,184 @@ function clusterBasisLabel(cluster: WorkCluster): string | null {
   return null
 }
 
+function reasoningAttemptDuration(attempt: ModelAttempt, now: number): number | null {
+  if (attempt.firstReasoningTime === null || attempt.lastReasoningTime === null) return null
+  const end = attempt.kind === 'running' && attempt.firstOutputTime === null
+    ? now
+    : attempt.lastReasoningTime
+  return Math.max(0, end - attempt.firstReasoningTime)
+}
+
+function reasoningAttemptState(attempt: ModelAttempt): string {
+  if (attempt.kind === 'running') return '生成中'
+  if (attempt.kind === 'retried') return '已重试'
+  if (attempt.kind === 'interrupted') return '已中断'
+  return '已完成'
+}
+
+type ModelStageSegment = {
+  key: 'wait' | 'reasoning' | 'output' | 'unattributed'
+  label: string
+  durationMs: number | null
+  unavailableLabel: string
+}
+
+function ModelStage({
+  trace,
+  stepId,
+  now,
+  open,
+  reasoningDisclosure,
+  onToggle,
+  onToggleReasoning,
+}: {
+  trace: ModelStepTrace
+  stepId: string
+  now: number
+  open: boolean
+  reasoningDisclosure: Readonly<Record<string, boolean>>
+  onToggle: () => void
+  onToggleReasoning: (key: string, open: boolean) => void
+}) {
+  const metrics = modelStageMetrics(trace, now)
+  const hasReasoning = hasReasoningEvidence(trace)
+  const total = formatDuration(metrics.totalMs)
+  const visibleReasoning = formatDuration(metrics.visibleReasoningMs)
+  const reasoningAttempts = trace.attempts.filter(attempt => attempt.reasoningText.trim() !== '')
+  const summary = [
+    total === null ? '时间不完整' : `模型 ${total}`,
+    hasReasoning
+      ? visibleReasoning === null ? '可见推理已记录' : `可见推理 ${visibleReasoning}`
+      : null,
+    trace.reasoningTokens === null ? null : `${trace.reasoningTokens.toLocaleString('zh-CN')} 推理 token`,
+    metrics.live ? '进行中' : null,
+  ].filter((value): value is string => value !== null).join(' · ')
+  const segments: ModelStageSegment[] = [
+    {
+      key: 'wait',
+      label: '首响应等待',
+      durationMs: metrics.firstResponseMs,
+      unavailableLabel: '时间戳不可用',
+    },
+    {
+      key: 'reasoning',
+      label: '可见推理',
+      durationMs: metrics.visibleReasoningMs,
+      unavailableLabel: hasReasoning ? '分段耗时不可用' : '未记录',
+    },
+    {
+      key: 'output',
+      label: '输出 / 工具意图',
+      durationMs: metrics.outputMs,
+      unavailableLabel: '时间戳不可用',
+    },
+    ...metrics.unattributedMs !== null && metrics.unattributedMs > 0
+      ? [{
+          key: 'unattributed' as const,
+          label: '重试 / 未归因',
+          durationMs: metrics.unattributedMs,
+          unavailableLabel: '不可用',
+        }]
+      : [],
+  ]
+  const measuredSegments = segments.filter((segment): segment is ModelStageSegment & { durationMs: number } => (
+    segment.durationMs !== null && segment.durationMs > 0
+  ))
+  const bodyId = `watcher-model-stage-${stepId}`
+
+  return (
+    <section className={css.modelStage} data-live={metrics.live ? '' : undefined}>
+      <button
+        type="button"
+        className={css.modelStageToggle}
+        aria-expanded={open}
+        aria-controls={bodyId}
+        title="模型阶段只使用 DSH 会话中供应商公开写入的事件"
+        onClick={onToggle}
+      >
+        <IconChevronRightOutline14 size={11} className={css.modelStageChevron} />
+        <span className={css.modelStageGlyph} aria-hidden="true" />
+        <span className={css.modelStageCopy}>
+          <span className={css.modelStageTitle}>模型阶段</span>
+          <span className={css.modelStageSummary}>{summary}</span>
+        </span>
+      </button>
+
+      <div id={bodyId} className={css.modelStageBody} hidden={!open}>
+        {measuredSegments.length === 0
+          ? null
+          : (
+            <div className={css.modelStageBar} aria-label="模型阶段耗时比例">
+              {measuredSegments.map(segment => (
+                <span
+                  key={segment.key}
+                  data-segment={segment.key}
+                  style={{ flexGrow: Math.max(segment.durationMs, 1) }}
+                  title={`${segment.label} ${formatDuration(segment.durationMs) ?? ''}`}
+                />
+              ))}
+            </div>
+          )}
+
+        <dl className={css.modelStageLedger}>
+          {segments.map(segment => (
+            <div key={segment.key} className={css.modelStageMetric}>
+              <dt>
+                <span className={css.modelStageSwatch} data-segment={segment.key} aria-hidden="true" />
+                {segment.label}
+              </dt>
+              <dd>{formatDuration(segment.durationMs) ?? segment.unavailableLabel}</dd>
+            </div>
+          ))}
+        </dl>
+
+        {reasoningAttempts.length === 0
+          ? <p className={css.modelStageNote}>本 Step 没有供应商可见推理记录</p>
+          : (
+            <div className={css.reasoningAttempts}>
+              <p className={css.modelStageNote}>仅展示供应商写入 DSH 会话的可见 reasoning；不补写未记录内容。</p>
+              {reasoningAttempts.map(attempt => {
+                const key = `${stepId}:attempt:${attempt.attempt}`
+                const reasoningOpen = reasoningDisclosure[key] ?? false
+                const duration = formatDuration(reasoningAttemptDuration(attempt, now))
+                const meta = [
+                  reasoningAttemptState(attempt),
+                  duration ?? '分段耗时不可用',
+                  `${attempt.fragments.length} 个流片段`,
+                  attempt.kind === 'retried' ? `等待重试 ${formatDuration(attempt.retryDelayMs) ?? '—'}` : null,
+                ].filter((value): value is string => value !== null).join(' · ')
+                return (
+                  <section key={key} className={css.reasoningDisclosure} data-open={reasoningOpen ? '' : undefined}>
+                    <button
+                      type="button"
+                      className={css.reasoningToggle}
+                      aria-expanded={reasoningOpen}
+                      aria-controls={`watcher-reasoning-${key}`}
+                      onClick={() => onToggleReasoning(key, reasoningOpen)}
+                    >
+                      <IconChevronRightOutline14 size={11} className={css.reasoningChevron} />
+                      <span className={css.reasoningLabel}>
+                        {reasoningAttempts.length === 1 ? '推理记录' : `尝试 ${attempt.attempt}`}
+                      </span>
+                      <span className={css.reasoningMeta}>{meta}</span>
+                    </button>
+                    <article
+                      id={`watcher-reasoning-${key}`}
+                      className={css.reasoningBody}
+                      hidden={!reasoningOpen}
+                    >
+                      <MarkdownText text={attempt.reasoningText} codeLabels={MARKDOWN_CODE_LABELS} />
+                    </article>
+                  </section>
+                )
+              })}
+            </div>
+          )}
+      </div>
+    </section>
+  )
+}
+
 function OverviewOccurrenceButton({
   item,
   occurrenceNumber,
@@ -585,9 +769,13 @@ function PhaseOverview({
   open,
   stepDisclosure,
   clusterDisclosure,
+  modelDisclosure,
+  reasoningDisclosure,
   onToggle,
   onToggleStep,
   onToggleCluster,
+  onToggleModel,
+  onToggleReasoning,
   onSelectItem,
 }: {
   group: WorkGroup
@@ -600,9 +788,13 @@ function PhaseOverview({
   open: boolean
   stepDisclosure: Readonly<Record<string, boolean>>
   clusterDisclosure: Readonly<Record<string, boolean>>
+  modelDisclosure: Readonly<Record<string, boolean>>
+  reasoningDisclosure: Readonly<Record<string, boolean>>
   onToggle: () => void
   onToggleStep: (step: WorkStep, defaultOpen: boolean) => void
   onToggleCluster: (cluster: WorkCluster, defaultOpen: boolean) => void
+  onToggleModel: (key: string, defaultOpen: boolean) => void
+  onToggleReasoning: (key: string, defaultOpen: boolean, modelKey: string) => void
   onSelectItem: (item: WorkItem) => void
 }) {
   const phaseState = overviewStateOf(group.status, isNow)
@@ -613,8 +805,12 @@ function PhaseOverview({
     phaseDuration,
   ].filter((part): part is string => part !== null).join(' · ')
   const latestItemId = group.items.at(-1)?.id ?? null
-  const clusters = clusterWorkItems(group.items)
+  const clusters = clusterWorkItems(group.items.filter(item => item.source !== 'model'))
   const latestClusterId = clusters.at(-1)?.id ?? null
+  const modelSteps = group.steps.filter((step): step is WorkStep & { model: ModelStepTrace } => step.model !== null)
+  const groupedModelsKey = `${group.id}:model-list`
+  const groupedModelsDefaultOpen = isNow && running
+  const groupedModelsOpen = modelDisclosure[groupedModelsKey] ?? groupedModelsDefaultOpen
 
   return (
     <section
@@ -656,6 +852,12 @@ function PhaseOverview({
                 const stepLive = isNow && running && step.items.some(item => item.id === latestItemId && item.status === 'running')
                 const stepDuration = formatDuration(stepElapsedMs(step, stepLive, now))
                 const stepOpen = stepDisclosure[step.id] ?? true
+                const modelMetrics = step.model === null ? null : modelStageMetrics(step.model, now)
+                const modelDuration = formatDuration(modelMetrics?.totalMs ?? null)
+                const showStepTotal = stepDuration !== null && stepDuration !== modelDuration
+                const modelDefaultOpen = modelMetrics?.live === true
+                const modelOpen = modelDisclosure[step.id] ?? modelDefaultOpen
+                const occurrenceItems = step.items.filter(item => item.source !== 'model')
                 return (
                   <section
                     key={step.id}
@@ -675,14 +877,28 @@ function PhaseOverview({
                         <IconChevronRightOutline14 size={11} className={css.stepChevron} />
                         <span className={css.overviewStepLabel}>步骤 {step.step || '—'}</span>
                         <span className={css.overviewStepSignals}>
-                          <span>{step.executionCount} 次</span>
+                          {step.executionCount > 0 ? <span>{step.executionCount} 次</span> : null}
                           {step.parallel ? <span className={css.parallelLabel}>{step.executionCount} 项并行</span> : null}
-                          {stepDuration === null ? null : <span>{stepDuration}</span>}
+                          {modelDuration === null ? null : <span>模型 {modelDuration}</span>}
+                          {showStepTotal ? <span>总 {stepDuration}</span> : null}
                         </span>
                       </button>
                     </header>
                     <div id={`watcher-step-body-${step.id}`} className={css.overviewOccurrences} hidden={!stepOpen}>
-                      {step.items.map((item, itemIndex) => (
+                      {step.model === null
+                        ? null
+                        : (
+                          <ModelStage
+                            trace={step.model}
+                            stepId={step.id}
+                            now={now}
+                            open={modelOpen}
+                            reasoningDisclosure={reasoningDisclosure}
+                            onToggle={() => onToggleModel(step.id, modelOpen)}
+                            onToggleReasoning={(key, defaultOpen) => onToggleReasoning(key, defaultOpen, step.id)}
+                          />
+                        )}
+                      {occurrenceItems.map((item, itemIndex) => (
                         <OverviewOccurrenceButton
                           key={item.id}
                           item={item}
@@ -703,6 +919,50 @@ function PhaseOverview({
           )
           : (
             <div className={css.analysisClusters} data-observation-mode="grouped">
+              {modelSteps.length === 0
+                ? null
+                : (
+                  <section className={css.groupedModelStages} data-open={groupedModelsOpen ? '' : undefined}>
+                    <button
+                      type="button"
+                      className={css.groupedModelToggle}
+                      aria-expanded={groupedModelsOpen}
+                      aria-controls={`watcher-grouped-models-${group.id}`}
+                      onClick={() => onToggleModel(groupedModelsKey, groupedModelsOpen)}
+                    >
+                      <IconChevronRightOutline14 size={11} className={css.groupedModelChevron} />
+                      <span>
+                        <strong>模型阶段汇总</strong>
+                        <small>{modelSteps.length} 个 Step · 按 Step 保留，不合并推理</small>
+                      </span>
+                    </button>
+                    <div
+                      id={`watcher-grouped-models-${group.id}`}
+                      className={css.groupedModelList}
+                      hidden={!groupedModelsOpen}
+                    >
+                      {modelSteps.map(step => {
+                        const metrics = modelStageMetrics(step.model, now)
+                        const defaultOpen = metrics.live
+                        const modelOpen = modelDisclosure[step.id] ?? defaultOpen
+                        return (
+                          <div key={step.id} className={css.groupedModelStep}>
+                            <span className={css.groupedModelStepLabel}>步骤 {step.step || '—'}</span>
+                            <ModelStage
+                              trace={step.model}
+                              stepId={`${step.id}:grouped`}
+                              now={now}
+                              open={modelOpen}
+                              reasoningDisclosure={reasoningDisclosure}
+                              onToggle={() => onToggleModel(step.id, modelOpen)}
+                              onToggleReasoning={(key, defaultOpen) => onToggleReasoning(key, defaultOpen, step.id)}
+                            />
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </section>
+                )}
               {clusters.map(cluster => {
                 if (cluster.executionCount === 1) {
                   const item = cluster.items[0]
@@ -812,7 +1072,7 @@ export function Watcher({ useSession, useSessions, useProjection, sessionId, loa
   const lastItem = lastGroup?.items.at(-1)
   const latestActivityKey = lastItem === undefined
     ? lastGroupId
-    : `${lastGroupId}:${lastItem.id}:${lastItem.status}:${lastItem.resultSeq ?? 'open'}:${lastItem.resultTime ?? 'open'}`
+    : `${lastGroupId}:${lastItem.id}:${lastItem.seq}:${lastItem.status}:${lastItem.resultSeq ?? 'open'}:${lastItem.resultTime ?? 'open'}`
   const [open, setOpen] = useState(false)
   const [ui, setUi] = useState(() => ({ follow: true, unread: 0, selectedId: null as string | null }))
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
@@ -821,6 +1081,8 @@ export function Watcher({ useSession, useSessions, useProjection, sessionId, loa
   const [phaseDisclosure, setPhaseDisclosure] = useState<Record<string, boolean>>({})
   const [stepDisclosure, setStepDisclosure] = useState<Record<string, boolean>>({})
   const [clusterDisclosure, setClusterDisclosure] = useState<Record<string, boolean>>({})
+  const [modelDisclosure, setModelDisclosure] = useState<Record<string, boolean>>({})
+  const [reasoningDisclosure, setReasoningDisclosure] = useState<Record<string, boolean>>({})
   const [historyLoad, setHistoryLoad] = useState<HistoryLoadState>({ kind: 'idle' })
   const now = useLiveClock(open && picture.running)
   const sessionTiming = deriveSessionTiming(picture, now)
@@ -875,6 +1137,8 @@ export function Watcher({ useSession, useSessions, useProjection, sessionId, loa
     setPhaseDisclosure({})
     setStepDisclosure({})
     setClusterDisclosure({})
+    setModelDisclosure({})
+    setReasoningDisclosure({})
   }, [sessionId])
 
   useEffect(() => () => {
@@ -1247,6 +1511,8 @@ export function Watcher({ useSession, useSessions, useProjection, sessionId, loa
                                       open={phaseOpen}
                                       stepDisclosure={stepDisclosure}
                                       clusterDisclosure={clusterDisclosure}
+                                      modelDisclosure={modelDisclosure}
+                                      reasoningDisclosure={reasoningDisclosure}
                                       onToggle={() => {
                                         pinForDisclosure()
                                         setPhaseDisclosure(current => ({ ...current, [group.id]: !phaseOpen }))
@@ -1258,6 +1524,20 @@ export function Watcher({ useSession, useSessions, useProjection, sessionId, loa
                                       onToggleCluster={(cluster, defaultOpen) => {
                                         pinForDisclosure()
                                         setClusterDisclosure(current => ({ ...current, [cluster.id]: !defaultOpen }))
+                                      }}
+                                      onToggleModel={(key, defaultOpen) => {
+                                        pinForDisclosure()
+                                        setModelDisclosure(current => ({ ...current, [key]: !defaultOpen }))
+                                      }}
+                                      onToggleReasoning={(key, defaultOpen, modelKey) => {
+                                        pinForDisclosure()
+                                        if (!defaultOpen) {
+                                          // Opening a nested reasoning record is explicit reading intent.
+                                          // Keep its parent open when the live model settles and its
+                                          // automatic default changes from open to closed.
+                                          setModelDisclosure(current => ({ ...current, [modelKey]: true }))
+                                        }
+                                        setReasoningDisclosure(current => ({ ...current, [key]: !defaultOpen }))
                                       }}
                                       onSelectItem={item => selectItem(group, item)}
                                     />
