@@ -62,6 +62,13 @@ import {
   type ModelStepTrace,
 } from '../observation/model-trace.ts'
 import { stepTimelineEntries } from './step-timeline.ts'
+import {
+  chooseTurnDisclosureMode,
+  createTurnDisclosureState,
+  resetTurnDisclosureOverrides,
+  toggleTurnDisclosure,
+  turnDisclosureOpen,
+} from './turn-disclosure.ts'
 
 export interface WatcherInjected {
   loadAllHistory: (signal: AbortSignal) => Promise<CompleteHistoryResult>
@@ -1083,7 +1090,7 @@ export function Watcher({ useSession, useSessions, useProjection, sessionId, loa
   const [ui, setUi] = useState(() => ({ follow: true, unread: 0, selectedId: null as string | null }))
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const [observationMode, setObservationMode] = useState<ObservationMode>('itemized')
-  const [turnDisclosure, setTurnDisclosure] = useState<Record<number, boolean>>({})
+  const [turnDisclosure, setTurnDisclosure] = useState(createTurnDisclosureState)
   const [phaseDisclosure, setPhaseDisclosure] = useState<Record<string, boolean>>({})
   const [stepDisclosure, setStepDisclosure] = useState<Record<string, boolean>>({})
   const [clusterDisclosure, setClusterDisclosure] = useState<Record<string, boolean>>({})
@@ -1139,7 +1146,7 @@ export function Watcher({ useSession, useSessions, useProjection, sessionId, loa
     followRef.current.reset()
     setUi(followRef.current.snapshot())
     setSelectedItemId(null)
-    setTurnDisclosure({})
+    setTurnDisclosure(resetTurnDisclosureOverrides)
     setPhaseDisclosure({})
     setStepDisclosure({})
     setClusterDisclosure({})
@@ -1370,8 +1377,27 @@ export function Watcher({ useSession, useSessions, useProjection, sessionId, loa
                     归类
                   </button>
                 </div>
+                <button
+                  type="button"
+                  className={css.turnOverviewToggle}
+                  data-active={turnDisclosure.mode === 'macro' ? '' : undefined}
+                  aria-pressed={turnDisclosure.mode === 'macro'}
+                  title={turnDisclosure.mode === 'macro'
+                    ? '退出轮次概览，恢复自动展开最新轮次'
+                    : '收起所有轮次；新进展和未来轮次也保持收起'}
+                  onClick={() => {
+                    pinForDisclosure()
+                    setTurnDisclosure(current => chooseTurnDisclosureMode(
+                      current.mode === 'macro' ? 'automatic' : 'macro',
+                    ))
+                  }}
+                >
+                  轮次概览
+                </button>
                 <span className={css.viewModeHint}>
-                  {observationMode === 'itemized' ? '完整时间线' : '可展开原始记录'}
+                  {turnDisclosure.mode === 'macro'
+                    ? '新进展保持收起'
+                    : observationMode === 'itemized' ? '完整时间线' : '可展开原始记录'}
                 </span>
               </div>
 
@@ -1436,8 +1462,8 @@ export function Watcher({ useSession, useSessions, useProjection, sessionId, loa
                       {picture.turns.map(turn => {
                         const isLatestTurn = turn.turn === latestTurnNumber
                         const turnState = overviewStateOf(turn.status, isLatestTurn)
-                        const defaultOpen = turnNeedsDefaultDisclosure(turnState, isLatestTurn)
-                        const turnOpen = turnDisclosure[turn.turn] ?? defaultOpen
+                        const automaticDefaultOpen = turnNeedsDefaultDisclosure(turnState, isLatestTurn)
+                        const turnOpen = turnDisclosureOpen(turnDisclosure, turn.turn, automaticDefaultOpen)
                         const turnTitle = turn.turn === 0 ? '会话准备' : `对话轮次 ${turn.turn}`
                         const turnSummary = turnOverviewSummary(turn)
                         const performance = performanceByTurn.get(turn.turn)
@@ -1464,13 +1490,15 @@ export function Watcher({ useSession, useSessions, useProjection, sessionId, loa
                                   className={css.turnToggle}
                                   aria-expanded={turnOpen}
                                   aria-controls={`watcher-turn-body-${turn.turn}`}
-                                  aria-label={`${turnTitle}，${OVERVIEW_STATE_LABEL[turnState]}，${turnSummary}${durationAria}${tokenSpeed === null ? '' : `，生成速度 ${tokenSpeed}`}`}
+                                  aria-label={`${turnTitle}，${OVERVIEW_STATE_LABEL[turnState]}，${turnSummary}${durationAria}${tokenSpeed === null ? '' : `，生成速度 ${tokenSpeed}`}，${turnOpen ? '收起轮次' : '展开轮次'}`}
+                                  title={turnOpen ? '收起此轮次；新进展仍会继续更新' : '展开此轮次'}
                                   onClick={() => {
                                     pinForDisclosure()
-                                    setTurnDisclosure(current => ({
-                                      ...current,
-                                      [turn.turn]: !(current[turn.turn] ?? defaultOpen),
-                                    }))
+                                    setTurnDisclosure(current => toggleTurnDisclosure(
+                                      current,
+                                      turn.turn,
+                                      automaticDefaultOpen,
+                                    ))
                                   }}
                                 >
                                   <IconChevronRightOutline14 size={13} className={css.turnChevron} />

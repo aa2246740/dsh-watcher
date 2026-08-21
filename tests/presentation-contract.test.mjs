@@ -35,6 +35,9 @@ test('the overview keeps every Step and occurrence reachable through folding and
 
   assert.match(source, /className=\{css\.turnToggle\}/)
   assert.match(source, /aria-expanded=\{turnOpen\}/)
+  assert.match(source, /className=\{css\.turnOverviewToggle\}/)
+  assert.match(source, />\s*轮次概览\s*<\/button>/)
+  assert.match(source, /新进展保持收起/)
   assert.match(source, /className=\{css\.phaseMarker\}/)
   assert.match(source, /className=\{css\.phaseToggle\}/)
   assert.match(source, /data-overview-state=\{phaseState\}/)
@@ -57,6 +60,7 @@ test('the overview keeps every Step and occurrence reachable through folding and
   assert.match(styles, /\.phaseMarker\[data-state='partial'\]/)
   assert.match(styles, /\.overviewOccurrenceTitle\s*\{[^}]*font-size:\s*14px/s)
   assert.match(styles, /\.phaseToggle\[aria-expanded='true'\] \.phaseChevron/)
+  assert.match(styles, /\.turnOverviewToggle\[data-active\]/)
   assert.match(styles, /\.stepToggle\[aria-expanded='true'\] \.stepChevron/)
   assert.match(styles, /\.analysisClusterToggle\[aria-expanded='true'\] \.analysisClusterChevron/)
   assert.match(styles, /@keyframes watcher-live-append/)
