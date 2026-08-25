@@ -1,0 +1,5 @@
+# Official bundle layer. `dsh plugin add` applies this into the profile.
+# Rows resolve by package name so the installed copy is what boots.
+- insert:
+    - id: dsh-watcher
+      name: dsh-watcher

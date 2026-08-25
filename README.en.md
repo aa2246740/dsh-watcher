@@ -32,22 +32,31 @@ The model stage shows only provider-visible reasoning already written into the S
 
 ## Install
 
-From a DeepSeek Harness tree that already runs:
+You do **not** need dshx. The default path is official `dsh`.
 
 ```sh
-cd /path/to/deepseek-harness
-git clone https://github.com/aa2246740/dsh-watcher.git my-plugins/dsh-watcher
-pnpm --dir my-plugins/dsh-watcher install --ignore-workspace
-pnpm --dir my-plugins/dsh-watcher build
-dshx --harness "$PWD" check dsh-watcher
-dshx --harness "$PWD" activation-plan dsh-watcher --change new-client
-dshx --harness "$PWD" activate-new-client dsh-watcher --profile web --port 43127
+dsh plugin --profile web add github:aa2246740/dsh-watcher
 ```
 
-First install is `new-client`: the Host can hot-mount, but a page that is already open will not grow a new client row by itself. Refresh or reopen WebUI once after the command succeeds.
+Or from a clone:
 
-Later, if you only change the Watcher UI, `pnpm --dir my-plugins/dsh-watcher build` is enough for HMR on the current page.
+```sh
+git clone https://github.com/aa2246740/dsh-watcher.git
+dsh plugin --profile web add ./dsh-watcher
+```
 
-DeepSeek Harness `0.1.0-rc.8` · Node `^22.19.0` or `>=24` · [dshx](https://github.com/aa2246740/dsh-external-plugin-devkit) `0.6.x`
+Then **restart that DSH Host** and **reload the page**. `dsh plugin add` writes the profile; it does not hot-load a running Host.
+
+Remove:
+
+```sh
+dsh plugin --profile web remove dsh-watcher
+```
+
+DeepSeek Harness `0.1.0-rc.8` · Node `^22.19.0` or `>=24`.
 
 The interaction contract lives in [DESIGN.md](./DESIGN.md). MIT. Watcher is not an official DeepSeek project.
+
+## Optional: dshx
+
+Already using an Agent against a Harness checkout? Install [dshx](https://github.com/aa2246740/dsh-external-plugin-devkit), then give the Agent both that repo and this one (`https://github.com/aa2246740/dsh-watcher`). It can take it from there.

@@ -32,22 +32,31 @@
 
 ## 装上
 
-在已经能跑的 DeepSeek Harness 仓库里：
+不需要 dshx。默认走官方 `dsh`。
 
 ```sh
-cd /path/to/deepseek-harness
-git clone https://github.com/aa2246740/dsh-watcher.git my-plugins/dsh-watcher
-pnpm --dir my-plugins/dsh-watcher install --ignore-workspace
-pnpm --dir my-plugins/dsh-watcher build
-dshx --harness "$PWD" check dsh-watcher
-dshx --harness "$PWD" activation-plan dsh-watcher --change new-client
-dshx --harness "$PWD" activate-new-client dsh-watcher --profile web --port 43127
+dsh plugin --profile web add github:aa2246740/dsh-watcher
 ```
 
-第一次是 `new-client`：Host 能热挂，已经打开的页面不会自己长出新的 client。命令成功后刷新或重开 WebUI 一次。
+或本地 clone：
 
-以后只改 Watcher 界面，重新 `pnpm --dir my-plugins/dsh-watcher build` 即可走当前页 HMR。
+```sh
+git clone https://github.com/aa2246740/dsh-watcher.git
+dsh plugin --profile web add ./dsh-watcher
+```
 
-DeepSeek Harness `0.1.0-rc.8` · Node `^22.19.0` 或 `>=24` · [dshx](https://github.com/aa2246740/dsh-external-plugin-devkit) `0.6.x`
+然后**重启这个 DSH Host**，**刷新页面**。`dsh plugin add` 只写 profile，不会热挂正在跑的 Host。
+
+卸载：
+
+```sh
+dsh plugin --profile web remove dsh-watcher
+```
+
+DeepSeek Harness `0.1.0-rc.8` · Node `^22.19.0` 或 `>=24`。
 
 交互约定在 [DESIGN.md](./DESIGN.md)。MIT。Watcher 不代表 DeepSeek 官方。
+
+## Optional: dshx
+
+已经在用 Agent 对着一份 Harness 检出干活？先装 [dshx](https://github.com/aa2246740/dsh-external-plugin-devkit)，再把那个仓库和本仓库（`https://github.com/aa2246740/dsh-watcher`）一起交给 Agent。后面它自己会装。

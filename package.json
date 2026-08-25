@@ -28,6 +28,9 @@
         "@deepseek-ai/dsh-client-ui-primitives"
       ],
       "platform": "web"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
     }
   },
   "files": [
@@ -35,7 +38,8 @@
     "lib/*.js.map",
     "lib/types/**/*.d.ts",
     "cordis.yml",
-    "README.md"
+    "README.md",
+    "cordis.patch.yml"
   ],
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
