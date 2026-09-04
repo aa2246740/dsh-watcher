@@ -1,12 +1,15 @@
-import type { ClientContext, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type {} from '@deepseek-ai/dsh-client-ui-session/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { loadCompleteHistory } from '../hub/history.ts'
 import { Watcher, type WatcherInjected } from './Watcher.tsx'
 import { registerModelTraceDefinition } from './model-trace-definition.ts'
 
 export const name = 'dsh-watcher-client'
-export const inject = ['slots', 'sessions', 'conversationEvents']
+export const inject = ['slots', 'sessions', 'uiConversation']
 
 /**
  * Native session-header utility. Order 50 sits after Session log (0)
@@ -27,13 +30,16 @@ export function apply(ctx: ClientContext) {
           signal,
           loadOlder: () => session.loadOlder(),
           read: () => {
-            const snapshot = session.getSnapshot()
-            const firstNode = snapshot.nodes[0]
-            const firstTurn = snapshot.chat.timeline.turnOrder[0]
+            const sessionSnapshot = session.getSnapshot()
+            const conversation = ctx.uiConversation.binding(sessionId).snapshot.getSnapshot()
+            const chat = conversation.views.get('chat')
+            if (chat === undefined) throw new Error('dsh-watcher: Chat conversation target is unavailable')
+            const firstNode = chat.legacy.nodes[0]
+            const firstTurn = chat.timeline.turnOrder[0]
             return {
-              hasMore: snapshot.hasMore,
-              loadingOlder: snapshot.loadingOlder,
-              headKey: `${firstTurn ?? 'none'}:${firstNode?.seq ?? 'none'}:${snapshot.nodes.length}`,
+              hasMore: sessionSnapshot.hasMore,
+              loadingOlder: sessionSnapshot.loadingOlder,
+              headKey: `${firstTurn ?? 'none'}:${firstNode?.seq ?? 'none'}:${chat.legacy.nodes.length}`,
             }
           },
         }),

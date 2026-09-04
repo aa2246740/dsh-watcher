@@ -1,4 +1,5 @@
-import type { ClientContext, ConversationNodeDefinition } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { ConversationNodeDefinition } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import {
   modelTraceEventOf,
   startModelStepTrace,
@@ -6,7 +7,7 @@ import {
   type ModelStepTrace,
 } from '../observation/model-trace.ts'
 
-declare module '@deepseek-ai/dsh-client-runtime/client' {
+declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
   interface ConversationStepDataMap {
     /** Provider-exposed model activity retained for one Step. */
     'dsh-watcher-model-stage': ModelStepTrace
@@ -53,5 +54,5 @@ const modelTraceDefinition: ConversationNodeDefinition<ModelStepTrace> = {
 
 /** Register the Step-scoped, read-only model-stage projection. */
 export function registerModelTraceDefinition(ctx: ClientContext): void {
-  ctx.conversationEvents.register(modelTraceDefinition)
+  ctx.uiConversation.events.register(modelTraceDefinition)
 }

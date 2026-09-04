@@ -1,4 +1,4 @@
-import type { ConversationNode } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ConversationNode } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { WorkGroup, WorkItem, WorkPicture, WorkStep, WorkTurn } from './fold.ts'
 
 /** A measured decode rate or an explicit absence of enough source evidence. */
