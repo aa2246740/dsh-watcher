@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import type { ConversationSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
+import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {} from '@deepseek-ai/dsh-session-stats/client'
 import {
   DiffBlock,
@@ -16,7 +16,12 @@ import {
   TerminalBlock,
   useAnchoredPosition,
   writeClipboard,
+  type DiffBlockLabels,
+  type JsonTreeLabels,
+  type MarkdownLabels,
+  type ReadBlockLabels,
   type StateDotState,
+  type TerminalBlockLabels,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -36,6 +41,7 @@ import {
   type WorkStatus,
   type WorkStep,
   type WorkTurn,
+  type WatcherSnapshot,
 } from '../observation/fold.ts'
 import css from './Watcher.module.css'
 import {
@@ -92,7 +98,54 @@ type HistoryLoadState =
 const PANEL_GAP = 8
 const PANEL_MARGIN = 12
 const UNPLACED_PANEL_STYLE: CSSProperties = { visibility: 'hidden', left: 0, top: 0 }
-const MARKDOWN_CODE_LABELS = Object.freeze({ copyLabel: '复制', copiedLabel: '已复制' })
+const MARKDOWN_LABELS: MarkdownLabels = Object.freeze({
+  code: Object.freeze({ copyLabel: '复制', copiedLabel: '已复制' }),
+  footnotes: '脚注',
+})
+const TERMINAL_LABELS: TerminalBlockLabels = Object.freeze({
+  signal: (signal: string) => `信号 ${signal}`,
+  exitCode: (exitCode: number) => `退出码 ${exitCode}`,
+  running: '运行中',
+  failed: '失败',
+  done: '完成',
+  copy: '复制',
+  copied: '已复制',
+  noOutput: '没有输出',
+  collapseAria: '收起终端输出',
+  collapse: '收起',
+  expandAria: (hidden: number) => `展开其余 ${hidden} 行终端输出`,
+  expand: (hidden: number) => `展开 ${hidden} 行`,
+})
+const READ_LABELS: ReadBlockLabels = Object.freeze({
+  window: (shown: number, total: number) => `显示 ${shown}/${total} 行`,
+  copy: '复制',
+  copied: '已复制',
+  collapseAria: '收起文件内容',
+  expandAria: (hidden: number) => `展开其余 ${hidden} 行文件内容`,
+  collapse: '收起',
+  expand: (hidden: number) => `展开 ${hidden} 行`,
+})
+const DIFF_LABELS: DiffBlockLabels = Object.freeze({
+  copy: '复制',
+  copied: '已复制',
+  collapseAria: '收起变更内容',
+  expandAria: (hidden: number) => `展开其余 ${hidden} 行变更`,
+  collapse: '收起',
+  expand: (hidden: number) => `展开 ${hidden} 行`,
+  files: (count: number) => `${count} 个文件`,
+})
+const JSON_LABELS: JsonTreeLabels = Object.freeze({
+  copyValue: '复制值',
+  copyJson: '复制 JSON',
+  copyPath: '复制路径',
+  copyPrettyJson: '复制格式化 JSON',
+  copyCompactJson: '复制紧凑 JSON',
+  copied: '已复制',
+  copyFailed: '复制失败',
+  collapseNode: '收起节点',
+  expandNode: '展开节点',
+  copyButtonTitle: (action: string) => action,
+})
 
 const STATUS_LABEL: Record<WorkStatus, string> = {
   running: '进行中',
@@ -258,6 +311,7 @@ function ResultPresentation({ presentation }: { presentation: WorkPresentation }
           signal={presentation.signal ?? undefined}
           running={presentation.running}
           maxLines={18}
+          labels={TERMINAL_LABELS}
         />
       )
     case 'read':
@@ -268,16 +322,17 @@ function ResultPresentation({ presentation }: { presentation: WorkPresentation }
           lines={presentation.lines}
           totalLines={presentation.totalLines}
           maxLines={18}
+          labels={READ_LABELS}
         />
       )
     case 'diff':
-      return <DiffBlock diffs={presentation.diffs} maxLines={18} />
+      return <DiffBlock diffs={presentation.diffs} maxLines={18} labels={DIFF_LABELS} />
     case 'json':
-      return <div className={css.jsonSurface}><JsonTree data={presentation.data} label="结构化结果" /></div>
+      return <div className={css.jsonSurface}><JsonTree data={presentation.data} label="结构化结果" labels={JSON_LABELS} /></div>
     case 'text':
       return (
         <article className={css.documentResult} data-watcher-document="">
-          <MarkdownText text={presentation.text} codeLabels={MARKDOWN_CODE_LABELS} />
+          <MarkdownText text={presentation.text} labels={MARKDOWN_LABELS} />
         </article>
       )
     case 'image':
@@ -287,7 +342,7 @@ function ResultPresentation({ presentation }: { presentation: WorkPresentation }
           <strong>图片附件</strong>
           <span>附件已保留在本次会话记录中</span>
           {isJsonValue(presentation.attachment)
-            ? <div className={css.jsonSurface}><JsonTree data={presentation.attachment} label="图片附件信息" /></div>
+            ? <div className={css.jsonSurface}><JsonTree data={presentation.attachment} label="图片附件信息" labels={JSON_LABELS} /></div>
             : null}
         </div>
       )
@@ -457,7 +512,7 @@ function ExecutionInspector({
             {tab === 'result' ? <ResultPresentation presentation={selected.presentation} /> : null}
             {tab === 'input'
               ? hasInput
-                ? <div className={css.jsonSurface}><JsonTree data={selected.args} label="执行输入" /></div>
+                ? <div className={css.jsonSurface}><JsonTree data={selected.args} label="执行输入" labels={JSON_LABELS} /></div>
                 : <div className={css.detailEmpty}>这条记录没有工具输入</div>
               : null}
             {tab === 'raw'
@@ -711,7 +766,7 @@ function ModelStage({
                       className={css.reasoningBody}
                       hidden={!reasoningOpen}
                     >
-                      <MarkdownText text={attempt.reasoningText} codeLabels={MARKDOWN_CODE_LABELS} />
+                      <MarkdownText text={attempt.reasoningText} labels={MARKDOWN_LABELS} />
                     </article>
                   </section>
                 )
@@ -1051,9 +1106,31 @@ function PhaseOverview({
 }
 
 /** Native session-header utility: exact work picture, typed evidence, no steering. */
-export function Watcher({ useSession, useSessions, useProjection, sessionId, loadAllHistory }: WatcherProps) {
-  const running = useSessions(list => Boolean(list.byId[sessionId]?.running))
-  const snapshot = useSession((state: ConversationSnapshot) => state)
+export function Watcher({
+  useSession,
+  useConversation,
+  useSessionPendingInteraction,
+  useProjection,
+  sessionId,
+  loadAllHistory,
+}: WatcherProps) {
+  const sessionSnapshot = useSession(state => state)
+  const conversation = useConversation(state => state)
+  const pending = useSessionPendingInteraction(state => state.get(sessionId))
+  const chat = conversation.views.get('chat')
+  if (chat === undefined) throw new Error('dsh-watcher: Chat conversation target is unavailable')
+  const snapshot = useMemo<WatcherSnapshot>(() => ({
+    views: conversation.views,
+    chat,
+    nodes: chat.legacy.nodes,
+    turnTimings: chat.legacy.turnTimings,
+    runningCalls: chat.legacy.runningCalls,
+    pending: pending === undefined ? [] : [pending],
+    blank: sessionSnapshot.blank,
+    running: sessionSnapshot.running,
+    hasMore: sessionSnapshot.hasMore,
+  }), [chat, conversation.views, pending, sessionSnapshot.blank, sessionSnapshot.hasMore, sessionSnapshot.running])
+  const running = snapshot.running
   const wholeSessionStats = useProjection('sessionStats')
   const snapshotPicture = useMemo(() => foldSnapshot(snapshot, { running }), [snapshot, running])
   const observedRef = useRef<{ sessionId: string; picture: typeof snapshotPicture } | null>(null)

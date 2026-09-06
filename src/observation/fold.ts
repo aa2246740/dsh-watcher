@@ -1,11 +1,26 @@
 import type {
   AssistantMessageNode,
   ConversationNode,
-  ConversationSnapshot,
+  ConversationViewSnapshotStore,
   RunningToolCall,
   ToolResultNode,
-} from '@deepseek-ai/dsh-client-runtime/client'
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
+import type { SessionPendingInteractionBase } from '@deepseek-ai/dsh-client-ui-session/client'
 import { foldModelTraceEvents, hasReasoningEvidence, type ModelStepTrace } from './model-trace.ts'
+
+/** Watcher-owned projection assembled from the public RC1 Session and Conversation stores. */
+export interface WatcherSnapshot {
+  readonly views: ConversationViewSnapshotStore
+  readonly chat: ChatSnapshot
+  readonly nodes: readonly ConversationNode[]
+  readonly turnTimings: ReadonlyMap<number, { readonly startTime: number; readonly endTime?: number }>
+  readonly runningCalls: readonly RunningToolCall[]
+  readonly pending: readonly SessionPendingInteractionBase[]
+  readonly blank: boolean
+  readonly running: boolean
+  readonly hasMore: boolean
+}
 
 /** One truthful lifecycle state. Result presence alone never means success. */
 export type WorkStatus =
@@ -880,7 +895,7 @@ function coordinatesOfLocation(value: unknown): Coordinates | null {
   return null
 }
 
-function snapshotLocations(snapshot: ConversationSnapshot): Map<number, Coordinates> {
+function snapshotLocations(snapshot: WatcherSnapshot): Map<number, Coordinates> {
   const locations = new Map<number, Coordinates>()
   const views = snapshot.views as unknown as { get: (target: string) => unknown }
   const trajectory = views.get('trajectory')
@@ -915,7 +930,7 @@ function snapshotLocations(snapshot: ConversationSnapshot): Map<number, Coordina
   return locations
 }
 
-function trajectoryNodes(snapshot: ConversationSnapshot): readonly ConversationNode[] {
+function trajectoryNodes(snapshot: WatcherSnapshot): readonly ConversationNode[] {
   const views = snapshot.views as unknown as { get: (target: string) => unknown }
   const trajectory = views.get('trajectory')
   if (isRecord(trajectory) && Array.isArray(trajectory.eventNodes)) return trajectory.eventNodes as readonly ConversationNode[]
@@ -937,8 +952,8 @@ function pairFromSettled(node: ToolResultNode): ToolPair {
     argsRaw,
     result: { content: node.content, isError: node.isError, error: node.error },
     meta: node.meta,
-    callView: node.callView,
-    resultView: node.resultView,
+    callView: null,
+    resultView: null,
     orphan: node.call === null,
   }
 }
@@ -957,14 +972,14 @@ function pairFromRunning(call: RunningToolCall, index: number): ToolPair {
     argsRaw: call.argsRaw,
     result: null,
     meta: null,
-    callView: call.callView,
+    callView: null,
     resultView: null,
     orphan: false,
   }
 }
 
-/** ConversationSnapshot → occurrence-preserving tool pairs. */
-export function pairsFromSnapshot(snapshot: ConversationSnapshot): ToolPair[] {
+/** Public RC1 Session/Conversation projection to occurrence-preserving tool pairs. */
+export function pairsFromSnapshot(snapshot: WatcherSnapshot): ToolPair[] {
   const locations = snapshotLocations(snapshot)
   const pairs: ToolPair[] = []
   for (const node of trajectoryNodes(snapshot)) {
@@ -980,7 +995,7 @@ export function pairsFromSnapshot(snapshot: ConversationSnapshot): ToolPair[] {
   return pairs
 }
 
-function snapshotItems(snapshot: ConversationSnapshot): WorkItem[] {
+function snapshotItems(snapshot: WatcherSnapshot): WorkItem[] {
   const locations = snapshotLocations(snapshot)
   const items = pairsFromSnapshot(snapshot).map(toolItem)
   for (const node of trajectoryNodes(snapshot)) {
@@ -1016,7 +1031,7 @@ function snapshotItems(snapshot: ConversationSnapshot): WorkItem[] {
       'waiting',
       name,
       null,
-      pending.payload as unknown,
+      pending,
     ))
   })
   const models = snapshot.chat.timeline.turnOrder.flatMap(turn => (
@@ -1458,7 +1473,7 @@ function groupsOf(steps: readonly WorkStep[]): WorkGroup[] {
   return groups
 }
 
-function turnTimesFromSnapshot(snapshot: ConversationSnapshot, turn: number): TimeBounds {
+function turnTimesFromSnapshot(snapshot: WatcherSnapshot, turn: number): TimeBounds {
   const location = snapshot.chat.timeline.turns.get(turn)
   const timing = snapshot.turnTimings.get(turn)
   return {
@@ -1467,7 +1482,7 @@ function turnTimesFromSnapshot(snapshot: ConversationSnapshot, turn: number): Ti
   }
 }
 
-function stepTimesFromSnapshot(snapshot: ConversationSnapshot, turn: number, step: number): TimeBounds {
+function stepTimesFromSnapshot(snapshot: WatcherSnapshot, turn: number, step: number): TimeBounds {
   const location = snapshot.chat.timeline.turns.get(turn)?.steps.find(value => value.step === step)
   return {
     startTime: location?.start?.time ?? null,
@@ -1475,7 +1490,7 @@ function stepTimesFromSnapshot(snapshot: ConversationSnapshot, turn: number, ste
   }
 }
 
-function stepModelFromSnapshot(snapshot: ConversationSnapshot, turn: number, step: number): ModelStepTrace | null {
+function stepModelFromSnapshot(snapshot: WatcherSnapshot, turn: number, step: number): ModelStepTrace | null {
   return snapshot.chat.timeline.turns.get(turn)?.steps
     .find(value => value.step === step)?.data.get('dsh-watcher-model-stage') ?? null
 }
@@ -1542,7 +1557,7 @@ function pictureOf(
 }
 
 /** Fold the official RC8 snapshot without flattening Turn/Step identity. */
-export function foldSnapshot(snapshot: ConversationSnapshot, options: { running?: boolean } = {}): WorkPicture {
+export function foldSnapshot(snapshot: WatcherSnapshot, options: { running?: boolean } = {}): WorkPicture {
   if (snapshot.blank) {
     return {
       ...EMPTY_PICTURE,
