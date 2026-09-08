@@ -1,39 +1,11 @@
 {
-  "extends": "../../tsconfig.base.client.json",
   "compilerOptions": {
-    "rootDir": "src",
-    "outDir": "lib/types"
+    "target": "ES2022", "module": "NodeNext", "moduleResolution": "NodeNext",
+    "lib": ["ES2023", "DOM", "DOM.Iterable", "ESNext.Disposable"],
+    "jsx": "react-jsx", "strict": true, "skipLibCheck": true,
+    "allowJs": true, "checkJs": false, "declaration": true,
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": "src", "outDir": "lib/types", "esModuleInterop": true
   },
-  "include": [
-    "src"
-  ],
-  "references": [
-    {
-      "path": "../../vendor/cordis"
-    },
-    {
-      "path": "../../packages/client/ui-chat"
-    },
-    {
-      "path": "../../packages/client/ui-conversation"
-    },
-    {
-      "path": "../../packages/client/ui-primitives"
-    },
-    {
-      "path": "../../packages/client/ui-renderer"
-    },
-    {
-      "path": "../../packages/client/ui-session"
-    },
-    {
-      "path": "../../packages/client/ui-slots"
-    },
-    {
-      "path": "../../packages/core/session"
-    },
-    {
-      "path": "../../packages/session/session-stats"
-    }
-  ]
+  "include": ["src"]
 }
