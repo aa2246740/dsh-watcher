@@ -2,7 +2,7 @@ name: Insights trial build
 on:
   push:
     branches: [feat/session-insights-rc1]
-    paths-ignore: ['lib/**', 'package-lock.json', 'pnpm-lock.yaml']
+    paths-ignore: ['lib/**','package-lock.json','pnpm-lock.yaml','docs/**']
   workflow_dispatch:
 permissions:
   contents: write
@@ -12,7 +12,7 @@ concurrency:
 jobs:
   build:
     if: github.ref == 'refs/heads/feat/session-insights-rc1'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -21,7 +21,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: node scripts/apply-insights-patch.mjs
+      - run: node scripts/apply-insights-patch.mjs && node scripts/finalize-insights.mjs
       - run: npm install --ignore-scripts
       - run: npm run build
       - name: Full test suite
@@ -30,7 +30,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src package.json package-lock.json README.md DESIGN.md
+          git add src tests package.json package-lock.json README.md DESIGN.md
           git add -f lib/*.js lib/*.js.map
-          git diff --cached --quiet || git commit -m 'build: materialize and compile tested RC1 insights trial [skip ci]'
+          git diff --cached --quiet || git commit -m 'build: compile tested RC1 insights trial [skip ci]'
           git push origin HEAD:refs/heads/feat/session-insights-rc1

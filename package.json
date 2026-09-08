@@ -1,96 +1,60 @@
 {
-  "name": "dsh-watcher",
-  "version": "0.3.0",
-  "description": "Read-only Agent work-path observer for DeepSeek Harness, with truthful status and execution evidence",
-  "type": "module",
-  "main": "lib/dsh-watcher.js",
-  "types": "lib/types/dsh-watcher.d.ts",
-  "scripts": {
-    "build": "tsc -p tsconfig.json && tsdown",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsc -p tsconfig.json && node --test tests/*.test.mjs"
+  "name":"dsh-watcher",
+  "version":"0.4.0-insights.1",
+  "description":"Read-only DSH session insights and local model usage statistics",
+  "type":"module",
+  "main":"lib/dsh-watcher.js",
+  "types":"lib/types/dsh-watcher.d.ts",
+  "scripts":{
+    "build":"node scripts/apply-insights-patch.mjs && node scripts/finalize-insights.mjs && tsc -p tsconfig.json && node scripts/build.mjs",
+    "typecheck":"node scripts/apply-insights-patch.mjs && node scripts/finalize-insights.mjs && tsc -p tsconfig.json --noEmit",
+    "test":"node scripts/apply-insights-patch.mjs && node scripts/finalize-insights.mjs && tsc -p tsconfig.json && node --test tests/*.test.mjs",
+    "test:insights":"node --test tests/insights.test.mjs"
   },
-  "exports": {
-    ".": {
-      "types": "./lib/types/dsh-watcher.d.ts",
-      "default": "./lib/dsh-watcher.js"
-    },
-    "./client": {
-      "types": "./lib/types/client/index.d.ts",
-      "default": "./lib/client.js"
-    },
-    "./package.json": "./package.json"
+  "exports":{
+    ".":{"types":"./lib/types/dsh-watcher.d.ts","default":"./lib/dsh-watcher.js"},
+    "./client":{"types":"./lib/types/client/index.d.ts","default":"./lib/client.js"},
+    "./package.json":"./package.json"
   },
-  "dsh": {
-    "client": {
-      "inject": [
-        "@deepseek-ai/dsh-client-ui-chat",
-        "@deepseek-ai/dsh-client-ui-conversation",
-        "@deepseek-ai/dsh-client-ui-primitives",
-        "@deepseek-ai/dsh-client-ui-renderer",
-        "@deepseek-ai/dsh-client-ui-session"
-      ],
-      "platform": "web"
-    },
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    }
+  "dsh":{
+    "client":{"inject":["@deepseek-ai/dsh-client-ui-chat","@deepseek-ai/dsh-client-ui-conversation","@deepseek-ai/dsh-client-ui-primitives","@deepseek-ai/dsh-client-ui-renderer","@deepseek-ai/dsh-client-ui-session","@deepseek-ai/dsh-client-ui-settings","@deepseek-ai/dsh-api-remotes"],"platform":"web"},
+    "bundle":{"patch":"./cordis.patch.yml"}
   },
-  "files": [
-    "lib/*.js",
-    "lib/*.js.map",
-    "lib/types/**/*.d.ts",
-    "cordis.yml",
-    "README.md",
-    "cordis.patch.yml"
-  ],
-  "engines": {
-    "node": "^22.19.0 || >=24.0.0"
+  "files":["lib/*.js","lib/*.js.map","lib/types/**/*.d.ts","cordis.yml","README.md","cordis.patch.yml"],
+  "engines":{"node":"^22.19.0 || >=24.0.0"},
+  "repository":{"type":"git","url":"git+https://github.com/aa2246740/dsh-watcher.git"},
+  "homepage":"https://github.com/aa2246740/dsh-watcher#readme",
+  "bugs":{"url":"https://github.com/aa2246740/dsh-watcher/issues"},
+  "license":"MIT",
+  "peerDependencies":{
+    "@deepseek-ai/cordis":"^4.0.2",
+    "@deepseek-ai/dsh-client-ui-chat":"^0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-conversation":"^0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-primitives":"^0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-renderer":"^0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-session":"^0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-slots":"^0.1.2-rc.1",
+    "@deepseek-ai/dsh-session":"^0.1.2-rc.1",
+    "@deepseek-ai/dsh-session-stats":"^0.1.2-rc.1",
+    "@deepseek-ai/dsh-session-projection":"^0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-settings":"^0.1.2-rc.1",
+    "@deepseek-ai/dsh-api-remotes":"^0.1.2-rc.1"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/aa2246740/dsh-watcher.git"
-  },
-  "homepage": "https://github.com/aa2246740/dsh-watcher#readme",
-  "bugs": {
-    "url": "https://github.com/aa2246740/dsh-watcher/issues"
-  },
-  "keywords": [
-    "deepseek-harness",
-    "dsh",
-    "watcher",
-    "agent",
-    "observability",
-    "workflow",
-    "plugin"
-  ],
-  "license": "MIT",
-  "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.2",
-    "@deepseek-ai/dsh-client-ui-chat": "^0.1.2-rc.1",
-    "@deepseek-ai/dsh-client-ui-conversation": "^0.1.2-rc.1",
-    "@deepseek-ai/dsh-client-ui-primitives": "^0.1.2-rc.1",
-    "@deepseek-ai/dsh-client-ui-renderer": "^0.1.2-rc.1",
-    "@deepseek-ai/dsh-client-ui-session": "^0.1.2-rc.1",
-    "@deepseek-ai/dsh-client-ui-slots": "^0.1.2-rc.1",
-    "@deepseek-ai/dsh-session": "^0.1.2-rc.1",
-    "@deepseek-ai/dsh-session-stats": "^0.1.2-rc.1"
-  },
-  "devDependencies": {
-    "@deepseek-ai/cordis": "^4.0.2",
-    "@deepseek-ai/dsh-client-ui-chat": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-client-ui-conversation": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-client-ui-primitives": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-client-ui-renderer": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-client-ui-session": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-client-ui-slots": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-session": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-session-stats": "0.1.2-rc.1",
-    "@types/react": "~18.3.1",
-    "@types/react-dom": "~18.3.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "tsdown": "^0.22.2",
-    "typescript": "^6.0.3"
+  "dependencies":{"zod":"^4.4.3"},
+  "devDependencies":{
+    "@deepseek-ai/cordis":"^4.0.2",
+    "@deepseek-ai/dsh-client-ui-chat":"0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-conversation":"0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-primitives":"0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-renderer":"0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-session":"0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-slots":"0.1.2-rc.1",
+    "@deepseek-ai/dsh-session":"0.1.2-rc.1",
+    "@deepseek-ai/dsh-session-stats":"0.1.2-rc.1",
+    "@deepseek-ai/dsh-session-projection":"0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-settings":"0.1.2-rc.1",
+    "@deepseek-ai/dsh-api-remotes":"0.1.2-rc.1",
+    "@types/node":"^24.0.0","@types/react":"~18.3.1","@types/react-dom":"~18.3.0",
+    "react":"^18.2.0","react-dom":"^18.2.0","esbuild":"0.25.0","typescript":"^6.0.3"
   }
 }

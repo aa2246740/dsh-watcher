@@ -1,4 +1,4 @@
-/** Read-only RC1 log fold. No text is retained; fingerprints stay Host-side. */
+/** Read-only DSH 0.1.2-rc.1 log fold. No prompt, reasoning or tool body is retained. */
 import { createHash } from 'node:crypto';
 export const KEY = 'watcherInsights';
 const record = v => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -12,9 +12,9 @@ export function emptyStats() {
 }
 export function initialState(header = {}, inherited = 0) {
   const s = { version: 1, sessionId: String(header.id ?? ''), skip: inherited, seq: -1,
-    updatedAt: 0, route: { provider: 'unknown', model: 'unknown' },
-    totals: emptyStats(), models: [], turn: null, open: null, tools: [],
-    previousFailure: null, findings: [], findingCount: 0 };
+    updatedAt: 0, route: { provider: 'unknown', model: 'unknown' }, totals: emptyStats(),
+    models: [], turn: null, open: null, tools: [], previousFailure: null,
+    findings: [], findingCount: 0 };
   s.wire = buildView(s);
   return s;
 }
@@ -41,14 +41,16 @@ function fingerprint(v) {
     return createHash('sha256').update(text).digest('hex');
   } catch { return null; }
 }
+function signatureOf(name, args) {
+  const hash = fingerprint(args);
+  return hash === null ? null : fingerprint([name, hash]);
+}
 function modelRow(s, route) {
   let row = s.models.find(m => m.provider === route.provider && m.model === route.model);
   if (!row) { row = { ...route, ...emptyStats() }; s.models.push(row); }
   return row;
 }
-function books(s, route = s.route) {
-  return [s.totals, modelRow(s, route), ...(s.turn ? [s.turn.stats] : [])];
-}
+function books(s, route = s.route) { return [s.totals, modelRow(s, route), ...(s.turn ? [s.turn.stats] : [])]; }
 function begin(s, d, time, uncertain = false) {
   s.open = { turn: d.turn, step: d.step, start: uncertain ? null : time, first: null,
     reasoningFirst: null, reasoningLast: null, lastContentAt: null, usage: null, route: { ...s.route } };
@@ -59,7 +61,7 @@ function settle(s, time, usage, source) {
   const route = record(source) && typeof source.provider === 'string' && typeof source.model === 'string'
     ? { provider: source.provider, model: source.model } : a.route;
   s.route = route;
-  const u = normalizeUsage(usage) ?? a.usage;
+  const u = usage === undefined || usage === null ? a.usage : normalizeUsage(usage);
   for (const b of books(s, route)) {
     b.calls++;
     if (a.start !== null) { b.timedCalls++; b.modelMs += elapsed(a.start, time); }
@@ -73,13 +75,15 @@ function settle(s, time, usage, source) {
   }
   s.open = null;
 }
-const interesting = new Set(['request/header', 'turn/start', 'step/start', 'assistant/chunk', 'assistant/message', 'llm/retry', 'tool/call', 'tool/result', 'step/end', 'turn/end']);
-/** Duplicate seqs are ignored. The fork-inherited prefix supplies config, never new charges. */
+const interesting = new Set(['request/header', 'user/message', 'turn/start', 'step/start', 'assistant/chunk', 'assistant/message', 'llm/retry', 'tool/call', 'tool/result', 'step/end', 'turn/end']);
 export function reduceEvent(state, event) {
   if (!record(event) || !interesting.has(event.type) || !count(event.seq) || !Number.isFinite(event.time) || !record(event.data)) return state;
   if (event.seq <= state.seq) return state;
   const d = event.data;
   if (event.seq < state.skip && event.type !== 'request/header') return state;
+  if (event.type === 'user/message' && !state.previousFailure) return state;
+  if (!['request/header', 'user/message'].includes(event.type) && !count(d.turn)) return state;
+  if (!['request/header', 'user/message', 'turn/start', 'turn/end'].includes(event.type) && !count(d.step)) return state;
   const c = d.chunk;
   if (event.type === 'assistant/chunk') {
     if (!state.open || state.open.turn !== d.turn || state.open.step !== d.step || !record(c)) return state;
@@ -95,10 +99,9 @@ export function reduceEvent(state, event) {
       s.route = { provider: config.provider, model: config.model };
       if (s.open) s.open.route = { ...s.route };
     }
-    s.wire = buildView(s);
-    return s;
-  }
-  if (event.type === 'turn/start') {
+  } else if (event.type === 'user/message') {
+    s.previousFailure = null;
+  } else if (event.type === 'turn/start') {
     if (s.open) settle(s, event.time, null, null);
     s.turn = { number: d.turn, startedAt: event.time, endedAt: null, steps: 0, stats: emptyStats() };
     s.previousFailure = null; s.tools = [];
@@ -109,8 +112,7 @@ export function reduceEvent(state, event) {
   } else if (event.type === 'assistant/chunk') {
     if (c.type === 'usage') s.open.usage = normalizeUsage(c.usage);
     else {
-      s.open.first ??= event.time;
-      s.open.lastContentAt = event.time;
+      s.open.first ??= event.time; s.open.lastContentAt = event.time;
       if (c.type === 'reasoning-delta') { s.open.reasoningFirst ??= event.time; s.open.reasoningLast = event.time; }
     }
   } else if (event.type === 'assistant/message') {
@@ -122,22 +124,22 @@ export function reduceEvent(state, event) {
       begin(s, d, event.time, true);
     }
   } else if (event.type === 'tool/call') {
-    const call = d.call ?? d;
-    const id = call.id ?? d.callId;
-    const name = call.name ?? d.name;
+    const id = d.callId, name = d.name;
     if (typeof id === 'string' && typeof name === 'string' && !s.tools.some(t => t.id === id)) {
       s.tools.push({ id, name, start: event.time, seq: event.seq, step: d.step,
-        route: { ...s.route }, signature: fingerprint({ name, arguments: call.arguments ?? d.arguments }) });
+        route: { ...s.route }, signature: signatureOf(name, d.arguments) });
       for (const b of books(s)) b.tools++;
     }
   } else if (event.type === 'tool/result') {
-    const id = d.callId ?? d.result?.toolCallId;
+    // RC1 stores a ToolResultMessage, not top-level callId/result fields.
+    const block = d.message?.content?.find?.(b => b?.type === 'tool-result');
+    const id = block?.toolCallId ?? d.message?.source?.callId;
     const index = s.tools.findIndex(t => t.id === id);
     if (index >= 0) {
       const t = s.tools.splice(index, 1)[0];
-      const failed = d.result?.isError === true || d.isError === true;
+      const failed = block?.isError === true || record(d.error);
       for (const b of books(s, t.route)) { b.toolMs += elapsed(t.start, event.time); b.toolErrors += Number(failed); }
-      const resultHash = fingerprint(d.result ? { content: d.result.content, isError: failed } : null);
+      const resultHash = block ? fingerprint({ content: block.content, isError: failed, code: d.error?.code ?? null }) : null;
       const prev = s.previousFailure;
       if (failed && t.signature && resultHash) {
         const same = prev?.signature === t.signature && prev?.resultHash === resultHash && prev?.turn === d.turn;
@@ -146,8 +148,8 @@ export function reduceEvent(state, event) {
         s.previousFailure = failure;
         if (failure.seqs.length >= 3) {
           const id = `repeat:${d.turn}:${failure.seqs[0]}`;
-          const finding = { id, kind: 'repeated-failure', turn: d.turn,
-            seqs: failure.seqs, steps: failure.steps, title: `同一操作连续失败 ${failure.seqs.length} 次`,
+          const finding = { id, kind: 'repeated-failure', turn: d.turn, seqs: failure.seqs, steps: failure.steps,
+            title: `同一操作连续失败 ${failure.seqs.length} 次`,
             detail: '参数与错误结果指纹相同；这是重复失败证据，不是确定的空转或质量判决。' };
           const old = s.findings.findIndex(f => f.id === id);
           if (old >= 0) s.findings[old] = finding;
