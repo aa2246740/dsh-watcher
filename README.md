@@ -37,6 +37,18 @@ dsh plugin --profile web add ./dsh-watcher
 dsh plugin --profile web remove dsh-watcher
 ```
 
-需要 DeepSeek Harness `0.1.0-rc.8`，Node `^22.19.0` 或 `>=24`。
+需要 DeepSeek Harness `0.1.2-rc.1`，Node `^22.19.0` 或 `>=24`。
 
 交互约定在 [DESIGN.md](./DESIGN.md)。MIT。
+
+## 从源码构建
+
+使用已完成构建的 DSH 0.1.2-rc.1 checkout；插件可以放在独立目录。
+
+```sh
+node scripts/link-harness-dependencies.mjs /path/to/harness
+DSHX_HARNESS=/path/to/harness npm run build
+npm test
+```
+
+冷会话的 Chat 数据尚未到达时，Watcher 显示等待提示，数据到达后再挂载面板。

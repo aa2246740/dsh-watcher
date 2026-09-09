@@ -1106,7 +1106,13 @@ function PhaseOverview({
 }
 
 /** Native session-header utility: exact work picture, typed evidence, no steering. */
-export function Watcher({
+export function Watcher(props: WatcherProps) {
+  const chat = props.useConversation(state => state.views.get('chat'))
+  if (chat === undefined) return <span role="status">Watcher 正在等待会话记录…</span>
+  return <ReadyWatcher {...props} />
+}
+
+function ReadyWatcher({
   useSession,
   useConversation,
   useSessionPendingInteraction,
