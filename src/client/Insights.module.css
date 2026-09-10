@@ -1085,7 +1085,10 @@
   color: var(--dsw-alias-label-tertiary);
   text-align: center;
   line-height: 1;
-  overflow: hidden;
+  /* The 30-day stack gives each column ~15px while "9/10" needs ~19px, so a
+     hidden overflow clipped the last digit. Labels are sparse (every fifth
+     column), so letting them draw past their own column cannot collide. */
+  overflow: visible;
   white-space: nowrap;
 }
 

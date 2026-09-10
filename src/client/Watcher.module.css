@@ -81,14 +81,19 @@
   right: auto;
   left: auto;
   z-index: 1100;
-  --watcher-panel-max-height: min(680px, calc(100vh - 24px));
+  /* The measurement hook writes both limits in unzoomed layout pixels, because
+     `100vw`/`100vh` are resolved before `html { zoom: … }` and a zoomed page
+     would otherwise let the panel grow past the real viewport. */
+  --watcher-panel-limit-w: calc(100vw - 24px);
+  --watcher-panel-limit-h: calc(100vh - 24px);
+  --watcher-panel-max-height: min(680px, var(--watcher-panel-limit-h));
   --watcher-motion-fast: 140ms;
   --watcher-motion-panel: 180ms;
   --watcher-ease-out: cubic-bezier(.2, .8, .2, 1);
   box-sizing: border-box;
   display: flex;
   align-items: stretch;
-  max-width: calc(100vw - 24px);
+  max-width: var(--watcher-panel-limit-w);
   max-height: var(--watcher-panel-max-height);
   overflow: hidden;
   border: 1px solid var(--dsw-alias-border-l2);
@@ -104,16 +109,19 @@
   isolation: isolate;
 }
 
+/* Translate only: a scale here would shrink the panel's measured box during the
+   entry frame, and the placement hook reads that box to learn the page zoom. */
 @keyframes watcher-panel-enter {
-  from { opacity: 0; transform: translateY(-5px) scale(.992); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .workPicture {
   display: flex;
-  flex: none;
+  /* Shrinkable: a limit that binds must narrow the picture, not clip it. */
+  flex: 0 1 auto;
   flex-direction: column;
-  width: min(720px, calc(100vw - 32px));
+  width: min(720px, var(--watcher-panel-limit-w));
   min-width: 0;
   min-height: 290px;
   max-height: var(--watcher-panel-max-height);
@@ -1365,9 +1373,10 @@
 
 .inspector {
   display: flex;
-  flex: none;
+  /* Shrinkable for the same reason as the work picture. */
+  flex: 0 1 auto;
   flex-direction: column;
-  width: 438px;
+  width: min(438px, var(--watcher-panel-limit-w));
   min-width: 0;
   max-height: var(--watcher-panel-max-height);
   border-right: 1px solid var(--dsw-alias-border-l2);
@@ -1837,8 +1846,11 @@
 @media (max-width: 860px) {
   .menu {
     flex-direction: column-reverse;
-    width: min(720px, calc(100vw - 24px));
-    max-height: calc(100vh - 88px);
+    /* `- 64px` keeps the same headroom the old `100vh - 88px` meant, now
+       measured against the real (zoom-corrected) viewport. */
+    --watcher-panel-max-height: min(680px, calc(var(--watcher-panel-limit-h) - 64px));
+    width: min(720px, var(--watcher-panel-limit-w));
+    max-height: var(--watcher-panel-max-height);
   }
 
   .workPicture {
@@ -1848,7 +1860,7 @@
   }
 
   .menu:not(:has(.inspector)) {
-    height: min(680px, calc(100vh - 88px));
+    height: var(--watcher-panel-max-height);
   }
 
   .menu:not(:has(.inspector)) .workPicture {
@@ -1862,7 +1874,7 @@
   }
 
   .menu:has(.inspector) {
-    height: min(680px, calc(100vh - 88px));
+    height: var(--watcher-panel-max-height);
   }
 
   .menu:has(.inspector) .workPicture {
@@ -1881,7 +1893,7 @@
 }
 
 @media (max-width: 520px) {
-  .menu { width: calc(100vw - 24px); }
+  .menu { width: var(--watcher-panel-limit-w); }
   .pictureHeader { padding: 14px 12px; }
   .now { font-size: 16px; }
   .turns { padding-inline: 6px; }

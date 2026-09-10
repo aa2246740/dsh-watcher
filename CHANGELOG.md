@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+### Fitted to the real screen
+
+- Replaced the shared `useAnchoredPosition` primitive with a local, zoom-aware
+  `useAnchoredPanel`. The primitive mixed two coordinate spaces — visual
+  `getBoundingClientRect()`/`innerWidth` against unzoomed `offsetWidth` — so a
+  page-level `html { zoom: 1.1 }` (the font-scale plugin) placed the panel about
+  176px past the right edge. Placement, the panel's own size limits, and the
+  work-picture/inspector widths now all derive from one measured zoom factor.
+- Made the panel's two children shrinkable and capped them by the measured
+  `--watcher-panel-limit-w`, so a binding limit narrows the panel instead of
+  clipping it; the narrow-screen rules now use the measured height limit rather
+  than `100vh`, which is resolved before zoom.
+- Dropped the `scale(.992)` keyframe from the panel's entry animation and
+  re-place on `animationend`: a scaling keyframe shrank the measured box for the
+  frame the placement hook reads, which under-clamped the panel by 0.9%.
+- Fixed the timing popover ("文件读写与其它工具" and friends): its box math mixed
+  layout and visual pixels too, and `white-space: nowrap` let long rows spill out
+  of a `max-width`-capped box. It now converts once, wraps, and shrinks with a
+  narrow bar box.
+- Stopped the Insights heatmap day labels from clipping their last digit in the
+  30-day stack, where each column is ~15px and a label needs ~19px.
+
 ### Adapted to DeepSeek Harness `0.1.5-rc.1`
 
 - Read attempt timing from the durable stream `0.1.5-rc.1` embeds in

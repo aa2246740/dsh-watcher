@@ -146,3 +146,58 @@ test('each Step can disclose a truthful nested model stage and provider-visible 
   assert.doesNotMatch(source, /隐藏思维/)
 })
 
+const panelPositionSource = new URL('../src/client/panel-position.ts', import.meta.url)
+const timingPanelSource = new URL('../src/client/TimingPanel.tsx', import.meta.url)
+const timingStyles = new URL('../src/client/TimingPanel.module.css', import.meta.url)
+const insightsStyles = new URL('../src/client/Insights.module.css', import.meta.url)
+
+test('panel placement survives a page zoom instead of landing off-screen', async () => {
+  const [position, client, styles] = await Promise.all([
+    readFile(panelPositionSource, 'utf8'),
+    readFile(clientSource, 'utf8'),
+    readFile(clientStyles, 'utf8'),
+  ])
+
+  // The primitives hook mixes visual rects with unzoomed offset sizes, which is
+  // what pushed the panel past the right edge under `html { zoom: 1.1 }`.
+  assert.doesNotMatch(client, /useAnchoredPosition/)
+  assert.match(client, /useAnchoredPanel/)
+  assert.match(position, /measured\.width \/ layoutWidth/)
+  assert.match(position, /window\.innerWidth - margin \* 2 \* scale/)
+  assert.match(position, /'--watcher-panel-limit-w'/)
+  assert.match(position, /'--watcher-panel-limit-h'/)
+  assert.match(position, /addEventListener\('animationend', place\)/)
+
+  // Every panel length is capped by the measured limit, never by raw vw/vh.
+  assert.match(styles, /max-width: var\(--watcher-panel-limit-w\)/)
+  assert.match(styles, /--watcher-panel-max-height: min\(680px, var\(--watcher-panel-limit-h\)\)/)
+  assert.match(styles, /\.workPicture \{[\s\S]*?width: min\(720px, var\(--watcher-panel-limit-w\)\)/)
+  assert.match(styles, /\.workPicture \{[\s\S]*?flex: 0 1 auto/)
+  assert.match(styles, /\.inspector \{[\s\S]*?width: min\(438px, var\(--watcher-panel-limit-w\)\)/)
+  assert.doesNotMatch(styles, /@media \(max-width: 860px\) \{[\s\S]*?calc\(100vh - 88px\)/)
+
+  // A scaling keyframe would make the measured box lie about the page zoom.
+  assert.match(styles, /@keyframes watcher-panel-enter \{\n {2}from \{ opacity: 0; transform: translateY\(-5px\); \}/)
+  assert.doesNotMatch(styles, /watcher-panel-enter \{\n {2}from \{[^}]*scale\(/)
+})
+
+test('the timing popover wraps and clamps instead of spilling off the panel', async () => {
+  const [timing, styles, insights] = await Promise.all([
+    readFile(timingPanelSource, 'utf8'),
+    readFile(timingStyles, 'utf8'),
+    readFile(insightsStyles, 'utf8'),
+  ])
+
+  // Layout pixels for the box, visual pixels for the hovered slice: convert once.
+  assert.match(timing, /parentRect\.width \/ box\.offsetWidth/)
+  assert.match(timing, /const boxWidth = box\.offsetWidth/)
+  assert.doesNotMatch(timing, /Math\.max\(300, parentRect\.width - 16\)/)
+
+  assert.match(styles, /\.popover \{[\s\S]*?max-width: calc\(100% - 16px\)/)
+  assert.match(styles, /\.popover \{[\s\S]*?overflow-wrap: anywhere/)
+  assert.match(styles, /\.popRight \{[\s\S]*?white-space: nowrap;/)
+  assert.doesNotMatch(styles, /\.popTitle \{[^}]*white-space: nowrap/)
+
+  // Sparse day labels may draw past their own ~15px column; hiding them clipped digits.
+  assert.match(insights, /\.dayLabel \{[\s\S]*?overflow: visible/)
+})

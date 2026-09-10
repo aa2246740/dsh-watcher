@@ -99,18 +99,24 @@ export function TimingPanel({
 
   const handleSliceHover = (slice: SliceKind, e: React.MouseEvent<HTMLElement>) => {
     setHoverSlice(slice)
-    if (chartBoxRef.current) {
-      const rect = e.currentTarget.getBoundingClientRect()
-      const parentRect = chartBoxRef.current.getBoundingClientRect()
-      const sliceCenter = rect.left - parentRect.left + (rect.width / 2)
-      // 适度舒展浮层宽度至 360px，充分利用父容器宽度，杜绝文字拥挤换行
-      const popoverWidth = Math.min(360, Math.max(300, parentRect.width - 16))
-      const left = Math.max(8, Math.min(parentRect.width - popoverWidth - 8, sliceCenter - (popoverWidth / 2)))
-      setPopoverLeft(left)
-      // 计算箭头在浮层内部的相对横坐标，确保无论浮层被边缘怎么限制，箭头都 100% 精确垂直对准切片中心
-      const arrowPos = Math.max(16, Math.min(popoverWidth - 16, sliceCenter - left))
-      setArrowLeft(arrowPos)
-    }
+    const box = chartBoxRef.current
+    if (box === null) return
+    // `left`/`width` below are layout pixels, while a rect is visual pixels: on
+    // a zoomed page (html { zoom }) the two spaces differ, and mixing them let
+    // the popover start past its own container. Convert once, then clamp.
+    const rect = e.currentTarget.getBoundingClientRect()
+    const parentRect = box.getBoundingClientRect()
+    const zoom = box.offsetWidth > 0 && parentRect.width > 0 ? parentRect.width / box.offsetWidth : 1
+    const boxWidth = box.offsetWidth
+    const sliceCenter = (rect.left - parentRect.left + rect.width / 2) / zoom
+    // 适度舒展浮层宽度至 360px，充分利用父容器宽度；容器更窄时随容器收缩，由 CSS 的 max-width 兜底
+    const popoverWidth = Math.min(360, Math.max(0, boxWidth - 16))
+    const maxLeft = Math.max(8, boxWidth - popoverWidth - 8)
+    const left = Math.max(8, Math.min(maxLeft, sliceCenter - popoverWidth / 2))
+    setPopoverLeft(left)
+    // 箭头在浮层内的相对横坐标：无论浮层被边缘怎么限制，都垂直对准切片中心
+    const arrowPos = Math.max(16, Math.min(Math.max(16, popoverWidth - 16), sliceCenter - left))
+    setArrowLeft(arrowPos)
   }
 
   return (
