@@ -2,6 +2,51 @@
 
 ## Unreleased
 
+### Fitted to the real screen
+
+- Replaced the shared `useAnchoredPosition` primitive with a local, zoom-aware
+  `useAnchoredPanel`. The primitive mixed two coordinate spaces — visual
+  `getBoundingClientRect()`/`innerWidth` against unzoomed `offsetWidth` — so a
+  page-level `html { zoom: 1.1 }` (the font-scale plugin) placed the panel about
+  176px past the right edge. Placement, the panel's own size limits, and the
+  work-picture/inspector widths now all derive from one measured zoom factor.
+- Made the panel's two children shrinkable and capped them by the measured
+  `--watcher-panel-limit-w`, so a binding limit narrows the panel instead of
+  clipping it; the narrow-screen rules now use the measured height limit rather
+  than `100vh`, which is resolved before zoom.
+- Dropped the `scale(.992)` keyframe from the panel's entry animation and
+  re-place on `animationend`: a scaling keyframe shrank the measured box for the
+  frame the placement hook reads, which under-clamped the panel by 0.9%.
+- Fixed the timing popover ("文件读写与其它工具" and friends): its box math mixed
+  layout and visual pixels too, and `white-space: nowrap` let long rows spill out
+  of a `max-width`-capped box. It now converts once, wraps, and shrinks with a
+  narrow bar box.
+- Stopped the Insights heatmap day labels from clipping their last digit in the
+  30-day stack, where each column is ~15px and a label needs ~19px.
+
+### Adapted to DeepSeek Harness `0.1.5-rc.1`
+
+- Read attempt timing from the durable stream `0.1.5-rc.1` embeds in
+  `assistant/message` (and `assistant/attempt`). The version stopped writing
+  `assistant/chunk` rows, so first-response, last-content, and reasoning-span
+  evidence was silently zero on every new log; the packed `time0`/`dt` delta
+  runs inside `stream` carry it instead. Legacy `assistant/chunk` and
+  `chunkrow/*` rows still fold, so older transcripts keep working.
+- Renamed the live stream event to `assistant/live-chunk` (the `assistant/chunk`
+  spelling no longer exists in the Session event map).
+- Added an evidence-only fold for `assistant/attempt`, so an attempt that
+  settled without a surface message still contributes the timing its stream
+  proves before `llm/retry` closes it.
+- Raised the Insights projection `stateVersion` to 2: rows folded by the old
+  semantics keep reporting zero timing, and the projection cache discards a
+  version mismatch instead of migrating it.
+- Replaced the external `dshx` build adapter (`tools/dshx/src/client-build.js`,
+  absent from the Harness) with `tsdown.config.ts`, which restates the two
+  artifact contracts against the Harness's own `packages/client/tsdown.client.ts`
+  preset and reads the platform module list from the Harness at build time.
+  `scripts/link-harness-dependencies.mjs` links against the 0.1.5-rc.1 layout.
+- Raised every `@deepseek-ai/*` peer and dev dependency to `^0.1.5-rc.1`.
+
 - Opening Watcher now restores every older conversation Turn automatically through RC8's public Session paging API. Normal use has no manual "load all" step; paging progress is passive, and a retry appears only when the official loader is busy or cannot advance.
 - Added whole-session Turn/Step projections so the progressive UI can show loaded-versus-total evidence while RC8 pages arrive.
 

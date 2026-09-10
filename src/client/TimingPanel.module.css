@@ -224,11 +224,14 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   pointer-events: none;
   width: 360px;
+  /* A narrow bar box must shrink the popover, and a long row must wrap inside
+     it: nowrap plus max-width let the text spill past the box and off-screen. */
   max-width: calc(100% - 16px);
   z-index: 50;
   animation: popIn 120ms ease-out;
   box-sizing: border-box;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .popover::after {
@@ -251,7 +254,10 @@
   margin-bottom: 6px;
   font-weight: 600;
   gap: 16px;
-  white-space: nowrap;
+}
+
+.popTitle span {
+  min-width: 0;
 }
 
 .popList {
@@ -266,7 +272,6 @@
   justify-content: space-between;
   padding: 2px 0;
   gap: 16px;
-  white-space: nowrap;
 }
 
 .popLeft {
@@ -274,8 +279,8 @@
   align-items: center;
   gap: 6px;
   color: rgba(255, 255, 255, 0.85);
-  white-space: nowrap;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 .popRight {
@@ -285,6 +290,12 @@
   white-space: nowrap;
   flex-shrink: 0;
   text-align: right;
+}
+
+/* 窄容器下数值列允许换行，避免整行溢出浮层 */
+@media (max-width: 520px) {
+  .popRow { flex-wrap: wrap; gap: 2px 8px; }
+  .popRight { text-align: left; }
 }
 
 .activeVal {

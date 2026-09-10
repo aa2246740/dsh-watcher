@@ -14,7 +14,6 @@ import {
   ReadBlock,
   StateDot,
   TerminalBlock,
-  useAnchoredPosition,
   writeClipboard,
   type DiffBlockLabels,
   type JsonTreeLabels,
@@ -44,6 +43,7 @@ import {
   type WatcherSnapshot,
 } from '../observation/fold.ts'
 import css from './Watcher.module.css'
+import { useAnchoredPanel } from './panel-position.ts'
 import { SessionInsights } from './Insights.tsx'
 import {
   OVERVIEW_STATE_LABEL,
@@ -1148,7 +1148,7 @@ function ReadyWatcher({
   const railRef = useRef<HTMLDivElement>(null)
   const programmaticScrollRef = useRef(false)
   const historyAbortRef = useRef<AbortController | null>(null)
-  const panelPosition = useAnchoredPosition({
+  const panelPosition = useAnchoredPanel({
     open,
     anchorRef: triggerRef,
     panelRef,

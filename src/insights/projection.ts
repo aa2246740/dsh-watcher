@@ -29,7 +29,13 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
   interface SessionProjectionMap {watcherInsights:InsightsView}
 }
 export function installProjection(ctx:Context):void {
-  ctx.sessionProjections.register<'watcherInsights',InsightsState>({key:'watcherInsights',stateVersion:1,stateSchema,
+  // stateVersion 2: 0.1.5-rc.1 moved attempt timing into the durable
+  // `assistant/message.stream` array, so a row folded by the previous
+  // semantics would keep reporting zero first-response and reasoning time.
+  // The projection cache discards a version mismatch instead of migrating it,
+  // which is exactly the re-fold this change needs. The wire view keeps
+  // `version: 1`: its shape is unchanged, only the evidence it carries is.
+  ctx.sessionProjections.register<'watcherInsights',InsightsState>({key:'watcherInsights',stateVersion:2,stateSchema,
     init:(header,inherited)=>stateSchema.parse(initialState(header,inherited)),apply:(state,event)=>reduceEvent(state,event),
     wire:{viewSchema,view:state=>viewOf(state)}})
   ctx.inject(['sessions'], c => {
