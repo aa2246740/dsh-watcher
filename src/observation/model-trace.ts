@@ -59,11 +59,12 @@ type ModelTraceEventBase = {
   readonly step: number
   readonly seq: number
   readonly time: number
+  readonly lastSeq?: number
 }
 
 export type ModelTraceEvent = ModelTraceEventBase & (
   | { readonly kind: 'step-start' }
-  | { readonly kind: 'reasoning-delta'; readonly text: string }
+  | { readonly kind: 'reasoning-delta'; readonly text: string; readonly fragments?: readonly ReasoningFragment[] }
   | { readonly kind: 'output-delta' }
   | { readonly kind: 'usage'; readonly reasoningTokens: number | null }
   | {
@@ -137,6 +138,28 @@ export function modelTraceEventOf(value: unknown): ModelTraceEvent | null {
       reasoningText: reasoningTextOf(data.message),
       reasoningTokens: reasoningTokensOf(data.usage),
     }
+  }
+  // RC1 historical chunkrow envelopes preserve fragment times and sequence identities.
+  if (['chunkrow/reasoning-chunks', 'chunkrow/text-chunks', 'chunkrow/tool-call-chunks'].includes(value.type)) {
+    const tool = value.type === 'chunkrow/tool-call-chunks'
+    const parts = tool ? data.args : data.texts
+    const gaps = data.dt
+    if (!Array.isArray(parts) || !parts.length || !parts.every(p => typeof p === 'string')
+      || !Array.isArray(gaps) || gaps.length !== parts.length - 1 || !gaps.every(Number.isSafeInteger)) return null
+    let time = location.time
+    const fragments: ReasoningFragment[] = []
+    for (let i = 0; i < parts.length; i++) {
+      if (i > 0) time += gaps[i - 1] as number
+      if (!Number.isSafeInteger(time)) return null
+      const text = parts[i] as string
+      if (text !== '' || (tool && typeof data.name === 'string')) fragments.push({ seq: location.seq + i, time, text })
+    }
+    const first = fragments[0]
+    if (!first) return null
+    const base = { ...location, time: first.time, lastSeq: location.seq + parts.length - 1 }
+    return value.type === 'chunkrow/reasoning-chunks'
+      ? { ...base, kind: 'reasoning-delta', text: fragments.map(f => f.text).join(''), fragments }
+      : { ...base, kind: 'output-delta' }
   }
   if (value.type !== 'assistant/chunk' || !isRecord(data.chunk) || typeof data.chunk.type !== 'string') {
     return null
@@ -218,7 +241,7 @@ function sameStep(trace: ModelStepTrace, event: ModelTraceEventBase): boolean {
 /** Fold one normalized event without discarding reasoning from a retried attempt. */
 export function updateModelStepTrace(trace: ModelStepTrace, event: ModelTraceEvent): ModelStepTrace {
   if (!sameStep(trace, event) || event.kind === 'step-start') return trace
-  const current = { ...trace, lastSeq: Math.max(trace.lastSeq, event.seq) }
+  const current = { ...trace, lastSeq: Math.max(trace.lastSeq, event.lastSeq ?? event.seq) }
   const attempt = trace.attempts.at(-1)
   if (attempt === undefined) return trace
 
@@ -227,16 +250,16 @@ export function updateModelStepTrace(trace: ModelStepTrace, event: ModelTraceEve
   }
   if (event.kind === 'reasoning-delta') {
     if (attempt.kind !== 'running') return current
-    const fragment = { seq: event.seq, time: event.time, text: event.text }
+    const fragments = event.fragments ?? [{ seq: event.seq, time: event.time, text: event.text }]
     return {
       ...current,
       attempts: replaceLast(trace.attempts, {
         ...attempt,
         firstTokenTime: attempt.firstTokenTime ?? event.time,
         firstReasoningTime: attempt.firstReasoningTime ?? event.time,
-        lastReasoningTime: event.time,
+        lastReasoningTime: fragments.at(-1)?.time ?? event.time,
         reasoningText: attempt.reasoningText + event.text,
-        fragments: [...attempt.fragments, fragment],
+        fragments: [...attempt.fragments, ...fragments],
       }),
     }
   }
@@ -322,15 +345,15 @@ function firstTokenTime(trace: ModelStepTrace): number | null {
   return null
 }
 
-function visibleReasoningDuration(trace: ModelStepTrace, now: number): number | null {
+function visibleReasoningDuration(trace: ModelStepTrace, _now: number): number | null {
   let sampled = false
   let total = 0
   for (const attempt of trace.attempts) {
     if (attempt.firstReasoningTime === null || attempt.lastReasoningTime === null) continue
+    if (attempt.firstOutputTime !== null && attempt.lastReasoningTime > attempt.firstOutputTime) continue // interleaved timing remains unattributed
     sampled = true
-    const end = attempt.kind === 'running' && attempt.firstOutputTime === null
-      ? now
-      : attempt.lastReasoningTime
+    // An open request does not prove continuously emitted reasoning.
+    const end = attempt.lastReasoningTime
     total += Math.max(0, end - attempt.firstReasoningTime)
   }
   return sampled ? total : null
@@ -348,7 +371,7 @@ export function modelStageMetrics(trace: ModelStepTrace, now: number): ModelStag
     : Math.max(0, firstToken - trace.startTime)
   const visibleReasoningMs = visibleReasoningDuration(trace, now)
   const finalReasoning = last?.lastReasoningTime ?? null
-  const outputStart = finalReasoning ?? last?.firstOutputTime ?? last?.firstTokenTime ?? null
+  const outputStart = last?.firstOutputTime ?? null
   const outputMs = outputStart === null || end === null || (live && finalReasoning !== null && last?.firstOutputTime === null)
     ? null
     : Math.max(0, end - outputStart)

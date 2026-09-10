@@ -1,5 +1,5 @@
 {
-  "extends": "../../tsconfig.base.client.json",
+  "extends": "../../runtime/tsconfig.base.client.json",
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "lib/types"
@@ -9,31 +9,37 @@
   ],
   "references": [
     {
-      "path": "../../vendor/cordis"
+      "path": "../../runtime/vendor/cordis"
     },
     {
-      "path": "../../packages/client/ui-chat"
+      "path": "../../runtime/packages/client/ui-chat"
     },
     {
-      "path": "../../packages/client/ui-conversation"
+      "path": "../../runtime/packages/client/ui-conversation"
     },
     {
-      "path": "../../packages/client/ui-primitives"
+      "path": "../../runtime/packages/client/ui-primitives"
     },
     {
-      "path": "../../packages/client/ui-renderer"
+      "path": "../../runtime/packages/client/ui-renderer"
     },
     {
-      "path": "../../packages/client/ui-session"
+      "path": "../../runtime/packages/client/ui-session"
     },
     {
-      "path": "../../packages/client/ui-slots"
+      "path": "../../runtime/packages/client/ui-slots"
     },
     {
-      "path": "../../packages/core/session"
+      "path": "../../runtime/packages/core/session"
     },
     {
-      "path": "../../packages/session/session-stats"
+      "path": "../../runtime/packages/session/session-stats"
+    },
+    {
+      "path": "../../runtime/packages/session/session-projection"
+    },
+    {
+      "path": "../../runtime/packages/client/ui-settings"
     }
   ]
 }

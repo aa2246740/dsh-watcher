@@ -72,7 +72,7 @@ test('the overview keeps every Step and occurrence reachable through folding and
   assert.doesNotMatch(styles, /\.groupDot|\.nowTag/)
 })
 
-test('opening a partial first window automatically restores every earlier conversation Turn', async () => {
+test('partial history stays explicitly loadable without blocking Host summary', async () => {
   const [source, styles] = await Promise.all([
     readFile(clientSource, 'utf8'),
     readFile(clientStyles, 'utf8'),
@@ -81,7 +81,7 @@ test('opening a partial first window automatically restores every earlier conver
   assert.match(source, /正在补齐历史/)
   assert.match(source, /snapshot\.hasMore/)
   assert.match(source, /if \(!open \|\| !snapshot\.hasMore \|\| historyLoad\.kind !== 'idle'\) return/)
-  assert.match(source, /startHistoryLoad\(\)/)
+  assert.match(source, /onClick=\{startHistoryLoad\}/)
   assert.doesNotMatch(source, /载入全部轮次/)
   assert.match(styles, /\.historyNotice\s*\{/)
 })
@@ -99,9 +99,8 @@ test('wall-clock evidence is visible at every useful level without heuristic spe
   assert.match(source, /已记录/)
   assert.match(source, /开头未载入/)
   assert.doesNotMatch(source, /≥/)
-  assert.match(source, /会话总跨度/)
-  assert.match(source, /轮次内耗时/)
-  assert.match(source, /轮次间隔/)
+  assert.match(source, /<SessionInsights/)
+  assert.match(source, /wholeSessionInsights/)
   assert.match(source, /首 token/)
   assert.match(source, /tok\/s/)
   assert.doesNotMatch(source, /回合/)

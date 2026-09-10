@@ -1,0 +1,1343 @@
+/* 紧凑 Telemetry HUD */
+.hudBox {
+  box-sizing: border-box;
+  width: 100%;
+  flex: none;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-specific-menu);
+  font-family: var(--dsw-font-family);
+}
+
+/* 顶栏：范围切换 + 模型标识 + 实时上下文与 Token 水位 */
+.hudTop {
+  padding: 8px 14px;
+  background: var(--dsw-alias-bg-layer-2);
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.hudTopLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.hudHeading {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+}
+
+.currentModelTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--dsw-alias-interactive-bg-hover);
+  font-size: 11px;
+}
+
+.modelTagText {
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.effortTag {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--dsw-static-deepseek-450, #5686fe);
+  background: rgba(86, 134, 254, 0.12);
+  padding: 0 5px;
+  border-radius: 3px;
+  line-height: 14px;
+}
+
+.contextTag {
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary, #5f636d);
+  background: var(--dsw-alias-bg-layer-1, #ffffff);
+  padding: 1px 7px;
+  border-radius: 4px;
+  border: 1px solid var(--dsw-alias-border-l2, #e2e8f0);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.hudTopRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.tokenStat {
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tokenStat strong {
+  color: var(--dsw-alias-label-primary);
+}
+
+.scopeGroup {
+  display: inline-flex;
+  padding: 1px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 5px;
+  background: var(--dsw-alias-bg-layer-1);
+  gap: 1px;
+}
+
+.scopeBtn {
+  padding: 2px 7px;
+  font-size: 11px;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  border-radius: 3px;
+  cursor: pointer;
+  line-height: 14px;
+  transition: all 120ms ease;
+  white-space: nowrap;
+}
+
+.scopeBtn[data-active] {
+  background: var(--dsw-specific-menu);
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+  box-shadow: var(--dsw-shadow-lv1);
+}
+
+/* 多模型切换 Tab 栏 */
+.modelTabBar {
+  display: flex;
+  gap: 4px;
+  padding: 6px 14px;
+  background: var(--dsw-alias-bg-layer-1);
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  overflow-x: auto;
+}
+
+.modelTabBtn {
+  padding: 2px 8px;
+  font-size: 11px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 4px;
+  background: var(--dsw-specific-menu);
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 120ms;
+}
+
+.modelTabBtn[data-active] {
+  background: var(--dsw-static-deepseek-450, #5686fe);
+  color: #fff;
+  border-color: var(--dsw-static-deepseek-450, #5686fe);
+  font-weight: 600;
+}
+
+/* 核心内容区 */
+.hudBody {
+  padding: 10px 14px 10px;
+}
+
+/* 异常提醒卡片 */
+.alertSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.alertCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: 6px;
+  gap: 8px;
+}
+
+.alertCardDanger {
+  background: rgba(229, 72, 77, 0.08);
+  border: 1px solid rgba(229, 72, 77, 0.25);
+}
+
+.alertCardWarn {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.alertLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.alertTag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: #fff;
+  flex: none;
+}
+
+.tagDanger {
+  background: var(--dsw-alias-state-error-primary, #e5484d);
+}
+
+.tagWarn {
+  background: #f59e0b;
+}
+
+.alertTexts {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.alertMainText {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.alertSubText {
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.alertActionBtn {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dsw-static-deepseek-450, #5686fe);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  padding: 2px 6px;
+}
+
+/* =========================================
+ * Settings 页面驾驶舱 (总-分-下钻体系)
+ * ========================================= */
+.settingsContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding: 0 0 24px 0;
+  color: var(--dsw-alias-label-primary);
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+.cockpitHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.cockpitTitleArea h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--dsw-alias-label-primary);
+  letter-spacing: -0.3px;
+}
+
+.cockpitSubTitle {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.headerRightControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rangeSwitchGroup {
+  display: flex;
+  background: var(--dsw-alias-bg-layer-2);
+  padding: 2px;
+  border-radius: 6px;
+  border: 1px solid var(--dsw-alias-border-l2);
+}
+
+.rangeBtn {
+  border: none;
+  background: transparent;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 120ms;
+}
+
+.rangeBtn[data-active] {
+  background: var(--dsw-specific-menu);
+  color: var(--dsw-alias-label-primary);
+  box-shadow: var(--dsw-shadow-lv1);
+}
+
+.settingsScanBtn {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 120ms;
+}
+
+/* 1. 总账单大数横幅 */
+.heroStatsRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.heroBigNum {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: var(--dsw-alias-label-primary);
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.heroUnit {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.heroMetaCol {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.heroMetaCol strong {
+  color: var(--dsw-alias-label-primary);
+}
+
+/* 2. 趣味风云榜：适配 settings 面板宽度 (~560px)，采用两列黄金排版 */
+.roastGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 440px) {
+  .roastGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.roastItem {
+  background: var(--dsw-specific-menu);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 136px;
+  box-shadow: var(--dsw-shadow-lv1);
+  cursor: pointer;
+  transition: all 120ms ease;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+.roastItem:hover {
+  background: var(--dsw-alias-bg-layer-2);
+  border-color: var(--dsw-alias-border-l3);
+  transform: translateY(-1px);
+}
+
+.roastItemActive {
+  border-color: var(--dsw-static-deepseek-450, #5686fe) !important;
+  background: var(--dsw-alias-bg-layer-2);
+  box-shadow: 0 0 0 1px var(--dsw-static-deepseek-450, #5686fe);
+}
+
+.roastHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.roastTag {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.roastCategoryBadge {
+  font-size: 9px;
+  color: var(--dsw-alias-label-tertiary);
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border-l1, rgba(0,0,0,0.06));
+  border-radius: 3px;
+  padding: 1px 4px;
+  line-height: 1.2;
+}
+
+.roastTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--dsw-alias-label-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 18px;
+}
+
+.roastDesc {
+  font-size: 10px;
+  color: var(--dsw-alias-label-tertiary);
+  line-height: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+
+.roastVal {
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin-top: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roastFooter {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--dsw-alias-border-l2);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  color: var(--dsw-alias-label-tertiary);
+  line-height: 1;
+}
+
+.roastFooterLeft {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 110px;
+}
+
+.roastAction {
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+  transition: color 120ms;
+  flex-shrink: 0;
+}
+
+.roastItem:hover .roastAction,
+.roastItemActive .roastAction {
+  color: var(--dsw-static-deepseek-450, #5686fe);
+}
+
+/* 2.1 卡片就地下钻透视面板 */
+.drilldownPanel {
+  background: var(--dsw-specific-menu);
+  border: 1px solid var(--dsw-static-deepseek-450, #5686fe);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: var(--dsw-shadow-lv2, 0 4px 12px rgba(0,0,0,0.08));
+  animation: slideDown 150ms ease-out;
+  min-width: 0;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.drilldownHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  padding-bottom: 8px;
+  gap: 12px;
+  min-width: 0;
+}
+
+.drilldownTitleGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.drilldownTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--dsw-alias-label-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drilldownSub {
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drilldownCloseBtn {
+  background: transparent;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 4px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  padding: 3px 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 120ms;
+}
+
+.drilldownCloseBtn:hover {
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  border-color: var(--dsw-alias-border-l3);
+}
+
+.drilldownEmpty {
+  padding: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* 柱状排行榜条（响应式排版，绝不出框） */
+.rankList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rankItem {
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border-l1, rgba(0,0,0,0.06));
+  border-radius: 6px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.rankItemTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rankItemLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.rankBadge {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-specific-menu);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 3px;
+  padding: 1px 5px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.rankBadgeGold {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #d97706;
+}
+
+.rankName {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rankValMain {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--dsw-alias-label-primary);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.rankTrack {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--dsw-specific-menu);
+  overflow: hidden;
+  width: 100%;
+}
+
+.rankBar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 200ms ease;
+}
+
+.rankSubText {
+  font-size: 10px;
+  color: var(--dsw-alias-label-tertiary);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rankSubText strong {
+  color: var(--dsw-alias-label-primary);
+}
+
+/* 工具耗时深度透视 */
+.toolDrillSection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.toolCompoundBox {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.toolCompoundTrack {
+  height: 10px;
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-layer-2);
+  display: flex;
+  overflow: hidden;
+  gap: 1px;
+}
+
+.toolSliceBash {
+  background: var(--dsw-static-green-500, #10b981);
+  height: 100%;
+}
+
+.toolSliceFile {
+  background: #0ea5e9;
+  height: 100%;
+}
+
+.toolCompoundLegend {
+  display: flex;
+  gap: 16px;
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+  flex-wrap: wrap;
+}
+
+.toolCompoundLegend span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toolCompoundLegend strong {
+  color: var(--dsw-alias-label-primary);
+}
+
+.toolGridCards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 600px) {
+  .toolGridCards {
+    grid-template-columns: 1fr;
+  }
+}
+
+.toolMiniCard {
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.toolMiniTitle {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolMiniNum {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--dsw-alias-label-primary);
+  font-variant-numeric: tabular-nums;
+  margin: 2px 0;
+}
+
+.toolMiniDesc {
+  font-size: 10px;
+  color: var(--dsw-alias-label-tertiary);
+  line-height: 14px;
+}
+
+.toolTopList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px dashed var(--dsw-alias-border-l2);
+  padding-top: 8px;
+}
+
+.toolTopListTitle {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+  margin-bottom: 2px;
+}
+
+/* 异常与报错透视 */
+.errorDrillSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.errorAllGoodBox {
+  padding: 16px;
+  border-radius: 6px;
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: var(--dsw-static-green-500, #10b981);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.errorSessionList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.errorSessionRow {
+  display: grid;
+  grid-template-columns: 28px 110px 1fr 75px 75px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-layer-2);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+}
+
+/* 3. 分栏数据可视化：单列纵向流，完美契合设置面板宽度约束 */
+.vizSplitGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.vizPanel {
+  background: var(--dsw-specific-menu);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: var(--dsw-shadow-lv1);
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.vizHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}
+
+.vizTitle {
+  font-weight: 700;
+  color: var(--dsw-alias-label-primary);
+}
+
+.vizSub {
+  font-size: 10px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* 环形图：在单列下采用左右水平排列（左图右文），极大节省横向空间且不局促 */
+.donutWrap {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 480px) {
+  .donutWrap {
+    flex-direction: column;
+    align-items: center;
+  }
+}
+
+.donutSvgBox {
+  position: relative;
+  width: 140px;
+  height: 140px;
+}
+
+.donutSvg {
+  width: 100%;
+  height: 100%;
+}
+
+.donutCenterText {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+  width: 68px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.donutCenterNum {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--dsw-alias-label-primary);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.donutCenterSub {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-tertiary);
+  margin-top: 2px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.donutLegendList {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  min-width: 0;
+  flex: 1;
+}
+
+.donutLegendRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 120ms;
+  min-width: 0;
+}
+
+.donutLegendRow:hover,
+.donutLegendRowActive {
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.dlLeft {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+  margin-right: 8px;
+}
+
+.dlDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.dlName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-primary);
+  min-width: 0;
+}
+
+.dlRight {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* 饼图下方专属全名透视条：彻底舒展超长模型名 */
+.donutInspectBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  font-size: 11px;
+  margin-top: 2px;
+  min-width: 0;
+}
+
+.donutInspectName {
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.donutInspectTag {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--dsw-static-deepseek-450, #5686fe);
+  background: rgba(86, 134, 254, 0.12);
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  line-height: 1.2;
+}
+
+.donutInspectVal {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* 堆叠走势面积图与日柱 */
+.dayStack {
+  display: flex;
+  align-items: stretch;
+  gap: 3px;
+  height: 160px;
+  min-width: 0;
+}
+
+.dayStackWeek {
+  gap: 12px;
+  justify-content: center;
+}
+
+.dayStackWeek .dayCol {
+  max-width: 48px;
+}
+
+.dayCol {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.dayColFill {
+  flex: 1;
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: flex-start;
+  background: var(--dsw-alias-bg-layer-2);
+  border-radius: 4px;
+  overflow: hidden;
+  min-height: 0;
+  transition: filter 120ms;
+}
+
+.dayColFill:hover {
+  filter: brightness(1.1);
+}
+
+.daySeg { width: 100%; flex: none; min-height: 0; }
+
+.dayEmptyDot {
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--dsw-alias-border-l2);
+  margin-top: auto;
+}
+
+.dayLabel {
+  font-size: 10px;
+  color: var(--dsw-alias-label-tertiary);
+  text-align: center;
+  line-height: 1;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.chartAreaBox {
+  position: relative;
+  width: 100%;
+  height: 180px;
+}
+
+.chartSvg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.chartAxisLabel {
+  font-size: 9px;
+  fill: var(--dsw-alias-label-tertiary);
+}
+
+.chartGridLine {
+  stroke: var(--dsw-alias-border-l2);
+  stroke-dasharray: 2, 3;
+}
+
+.chartFoot {
+  font-size: 10px;
+  color: var(--dsw-alias-label-tertiary);
+  border-top: 1px solid var(--dsw-alias-border-l2);
+  padding-top: 6px;
+}
+
+/* 4. 底层会话账单表格：严格排序、多维切换 */
+.tableTitleGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tableSortGroup {
+  display: flex;
+  background: var(--dsw-alias-bg-layer-2);
+  padding: 2px;
+  border-radius: 6px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.sortBtn {
+  border: none;
+  background: transparent;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+  line-height: 16px;
+  transition: all 120ms;
+  white-space: nowrap;
+}
+
+.sortBtn:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+.sortBtn[data-active] {
+  background: var(--dsw-specific-menu);
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+  box-shadow: var(--dsw-shadow-lv1);
+}
+
+.sessionTableBox {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.sessionTableHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 0.7fr) minmax(0, 0.7fr) 14px;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-tertiary);
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-2);
+  border-radius: 6px;
+  box-sizing: border-box;
+}
+
+.sessionItemRow {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2);
+  overflow: hidden;
+  transition: border-color 120ms;
+}
+
+.sessionItemRow:hover {
+  border-color: var(--dsw-alias-border-l3);
+}
+
+.tableRankNum {
+  font-size: 10px;
+  color: var(--dsw-alias-label-secondary);
+  font-variant-numeric: tabular-nums;
+  margin-right: 4px;
+}
+
+.sessionItemHead {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 0.7fr) minmax(0, 0.7fr) 14px;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  box-sizing: border-box;
+}
+
+.sessionTokenCell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sessionTokenBar {
+  height: 2px;
+  border-radius: 1px;
+  background: var(--dsw-static-deepseek-450, #5686fe);
+  max-width: 100%;
+}
+
+.sessionModelCell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.statusOk { color: var(--dsw-static-green-500, #10b981); }
+.statusWarn { color: #b45309; }
+.statusBad { color: var(--dsw-alias-state-error-primary, #ef4444); font-weight: 600; }
+
+.sessionIdTag {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.arrowIcon {
+  color: var(--dsw-alias-label-tertiary);
+  transition: transform 120ms;
+}
+
+.sessionItemOpen .arrowIcon {
+  transform: rotate(90deg);
+}
+
+.sessionItemDrawer {
+  padding: 10px 12px;
+  background: var(--dsw-specific-menu);
+  border-top: 1px dashed var(--dsw-alias-border-l2);
+  font-size: 11px;
+}
+
+.drawerTitle {
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.drawerBarTrack {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-layer-2);
+  display: flex;
+  overflow: hidden;
+  gap: 1px;
+  margin-bottom: 6px;
+}
+
+.drawerSliceModel { background: var(--dsw-static-deepseek-450, #5686fe); height: 100%; }
+.drawerSliceTool { background: var(--dsw-static-green-500, #10b981); height: 100%; }
+
+.drawerMetaRow {
+  display: flex;
+  justify-content: space-between;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 10px;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* 5. 底部完全隐形的折叠抽屉 */
+.settingsDrawer {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+  background: var(--dsw-specific-menu);
+}
+
+.settingsSummary {
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.settingsDrawerContent {
+  padding-top: 10px;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.settingInlineItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settingsMiniInput {
+  width: 50px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font-size: 11px;
+  text-align: right;
+  outline: none;
+}
+
+.settingsMiniSaveBtn {
+  padding: 3px 10px;
+  border-radius: 4px;
+  background: var(--dsw-static-deepseek-450, #5686fe);
+  color: #fff;
+  border: none;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.emptyScan {
+  padding: 20px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}

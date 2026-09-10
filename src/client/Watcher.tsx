@@ -44,6 +44,7 @@ import {
   type WatcherSnapshot,
 } from '../observation/fold.ts'
 import css from './Watcher.module.css'
+import { SessionInsights } from './Insights.tsx'
 import {
   OVERVIEW_STATE_LABEL,
   overviewStateOf,
@@ -51,14 +52,12 @@ import {
   turnOverviewSummary,
 } from '../hub/overview.ts'
 import {
-  deriveSessionTiming,
   deriveTurnPerformance,
   formatTokensPerSecond,
   groupElapsedMs,
   itemElapsedMs,
   stepElapsedMs,
   turnElapsedReading,
-  type SessionTiming,
   type TurnPerformance,
 } from '../observation/performance.ts'
 import {
@@ -230,29 +229,6 @@ function TurnMetricStrip({ performance }: { performance: TurnPerformance }) {
     <dl className={css.turnMetrics} aria-label="对话轮次性能分解">
       {metrics.map(([label, value]) => (
         <div key={label} className={css.turnMetric}>
-          <dt>{label}</dt>
-          <dd>{value}</dd>
-        </div>
-      ))}
-    </dl>
-  )
-}
-
-function SessionTimeLedger({ timing }: { timing: SessionTiming }) {
-  if (timing.kind === 'unavailable') return null
-  const metrics = [
-    [timing.coverage === 'complete' ? '会话总跨度' : '已加载跨度', formatDuration(timing.elapsedMs)],
-    ['轮次内耗时', formatDuration(timing.activeTurnMs)],
-    ['轮次间隔', formatDuration(timing.betweenTurnMs)],
-  ]
-  return (
-    <dl
-      className={css.sessionTiming}
-      aria-label="会话墙钟时间分解"
-      title="会话跨度等于轮次内耗时与轮次之间间隔；已加载跨度表示更早历史尚未载入"
-    >
-      {metrics.map(([label, value]) => (
-        <div key={label} className={css.sessionTimingMetric}>
           <dt>{label}</dt>
           <dd>{value}</dd>
         </div>
@@ -1106,21 +1082,34 @@ function PhaseOverview({
 }
 
 /** Native session-header utility: exact work picture, typed evidence, no steering. */
-export function Watcher({
+export function Watcher(props: WatcherProps) {
+  const conversation = props.useConversation(state => state)
+  const chat = conversation.views.get('chat')
+  // Restoring the selected session mounts header slots before its chat target.
+  // Keep this subscription alive instead of permanently tripping the slot boundary.
+  if (chat === undefined) return (
+    <div className={css.root} data-dsh-watcher="header">
+      <button type="button" className={css.trigger} disabled aria-label="Watcher，正在加载会话" title="Watcher · 正在加载会话">
+        <IconLivingEye />
+      </button>
+    </div>
+  )
+  return <ReadyWatcher {...props} chat={chat} views={conversation.views} />
+}
+
+function ReadyWatcher({
   useSession,
-  useConversation,
   useSessionPendingInteraction,
   useProjection,
   sessionId,
   loadAllHistory,
-}: WatcherProps) {
+  chat,
+  views,
+}: WatcherProps & Pick<WatcherSnapshot, 'chat' | 'views'>) {
   const sessionSnapshot = useSession(state => state)
-  const conversation = useConversation(state => state)
   const pending = useSessionPendingInteraction(state => state.get(sessionId))
-  const chat = conversation.views.get('chat')
-  if (chat === undefined) throw new Error('dsh-watcher: Chat conversation target is unavailable')
   const snapshot = useMemo<WatcherSnapshot>(() => ({
-    views: conversation.views,
+    views,
     chat,
     nodes: chat.legacy.nodes,
     turnTimings: chat.legacy.turnTimings,
@@ -1129,9 +1118,10 @@ export function Watcher({
     blank: sessionSnapshot.blank,
     running: sessionSnapshot.running,
     hasMore: sessionSnapshot.hasMore,
-  }), [chat, conversation.views, pending, sessionSnapshot.blank, sessionSnapshot.hasMore, sessionSnapshot.running])
+  }), [chat, views, pending, sessionSnapshot.blank, sessionSnapshot.hasMore, sessionSnapshot.running])
   const running = snapshot.running
   const wholeSessionStats = useProjection('sessionStats')
+  const wholeSessionInsights = useProjection('watcherInsights')
   const snapshotPicture = useMemo(() => foldSnapshot(snapshot, { running }), [snapshot, running])
   const observedRef = useRef<{ sessionId: string; picture: typeof snapshotPicture } | null>(null)
   const picture = useMemo(() => {
@@ -1159,7 +1149,6 @@ export function Watcher({
   const [disclosure, setDisclosure] = useState(createDisclosureState)
   const [historyLoad, setHistoryLoad] = useState<HistoryLoadState>({ kind: 'idle' })
   const now = useLiveClock(open && picture.running)
-  const sessionTiming = deriveSessionTiming(picture, now)
   const followRef = useRef(createFollow())
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -1241,19 +1230,19 @@ export function Watcher({
     : totalTurnCount > picture.turnCount
       ? `${picture.turnCount}/${totalTurnCount} 个对话轮次`
       : `${picture.stepCount} 个步骤已载入`
-  const nowLabel = picture.now.label || (picture.nodes.length > 0 ? '整理工作路径' : '等待第一步')
   const hasEdgeAlert = picture.pendingCount > 0
     || picture.now.status === 'failure'
     || picture.now.status === 'interrupted'
   const summaryState = picture.pendingCount > 0
-    ? '等待你'
+    ? '等待确认'
     : picture.running
       ? '正在执行'
       : picture.now.status === 'failure'
-        ? '最近一步失败'
+        ? '执行失败'
         : picture.now.status === 'interrupted'
           ? '已中断'
-          : picture.nodes.length > 0 ? '已停稳' : '等待任务'
+          : picture.nodes.length > 0 ? '就绪' : '待命'
+  const nowLabel = picture.now.label || (picture.nodes.length > 0 ? '执行路径已就绪' : '等待指令')
 
   const selectItem = (group: WorkGroup, item: WorkItem) => {
     setUi(followRef.current.onSelect(group.id))
@@ -1324,8 +1313,8 @@ export function Watcher({
   }
 
   useEffect(() => {
+    // Full history is an explicit choice. Summary comes from the Host projection.
     if (!open || !snapshot.hasMore || historyLoad.kind !== 'idle') return
-    startHistoryLoad()
   }, [open, snapshot.hasMore, historyLoad.kind, sessionId])
 
   useEffect(() => {
@@ -1381,23 +1370,39 @@ export function Watcher({
             <section className={css.workPicture} aria-label="Agent 工作路径" data-ud-check="watcher-work-picture" data-ud-role="panel">
               <header className={css.pictureHeader}>
                 <div className={css.nowBlock} aria-live="polite">
-                  <div className={css.eyebrow} data-alert={hasEdgeAlert ? '' : undefined}>
-                    <span>{summaryState}</span>
+                  {picture.running || hasEdgeAlert || summaryState !== '就绪' ? (
+                    <div className={css.eyebrow} data-alert={hasEdgeAlert ? '' : undefined}>
+                      <span>{summaryState}</span>
+                    </div>
+                  ) : null}
+                  <div className={css.now} title={picture.running ? nowLabel : 'DSH-Watcher'}>
+                    {picture.running ? nowLabel : 'DSH-Watcher'}
                   </div>
-                  <div className={css.now} title={nowLabel}>{nowLabel}</div>
                   <div className={css.summary}>
                     <span>
                       {snapshot.hasMore && totalTurnCount > picture.turnCount
-                        ? `已载入 ${picture.turnCount}/${totalTurnCount} 个对话轮次`
-                        : `${picture.turnCount} 个对话轮次`}
+                        ? `已载入 ${picture.turnCount}/${totalTurnCount} 轮`
+                        : `${picture.turnCount} 轮`}
                     </span>
                     <span>
                       {snapshot.hasMore && totalStepCount > picture.stepCount
-                        ? `${picture.stepCount}/${totalStepCount} 个步骤`
-                        : `${picture.stepCount} 个步骤`}
+                        ? `${picture.stepCount}/${totalStepCount} 步`
+                        : `${picture.stepCount} 步`}
                     </span>
                     <span>{picture.actionCount} 次执行</span>
-                    {snapshot.hasMore ? <span data-partial="">仅最近历史</span> : null}
+                    {snapshot.hasMore || historyLoad.kind === 'loading' || historyLoad.kind === 'error' ? (
+                      <button
+                        type="button"
+                        className={css.loadAllInlineBtn}
+                        onClick={startHistoryLoad}
+                        disabled={historyLoad.kind === 'loading'}
+                      >
+                        {historyLoad.kind === 'loading' ? '正在补齐历史…' : historyLoad.kind === 'error' ? '重试载入' : '载入全部历史 →'}
+                      </button>
+                    ) : null}
+                    {historyLoad.kind === 'loading' || historyLoad.kind === 'error' ? (
+                      <span role="status">{historyLoad.kind === 'error' ? historyLoad.message : `已载入 ${historyProgress}`}</span>
+                    ) : null}
                   </div>
                 </div>
                 <Pill
@@ -1415,7 +1420,11 @@ export function Watcher({
                 </Pill>
               </header>
 
-              <SessionTimeLedger timing={sessionTiming} />
+              <SessionInsights value={wholeSessionInsights} now={now} running={picture.running} waiting={picture.pendingCount > 0} onEvidence={e => {
+                pinForDisclosure()
+                setDisclosure(chooseDisclosureDepth('detail'))
+                requestAnimationFrame(() => document.getElementById('watcher-turn-' + e.turn)?.scrollIntoView({ block: 'nearest' }))
+              }} />
 
               <div className={css.viewToolbar} aria-label="路径视图设置">
                 <div className={css.viewControl}>
@@ -1465,44 +1474,6 @@ export function Watcher({
                   </div>
                 </div>
               </div>
-
-              {snapshot.hasMore || historyLoad.kind === 'loading'
-                ? (
-                  <div className={css.historyNotice} data-state={historyLoad.kind} role="status" aria-live="polite">
-                    <span className={css.historyNoticeCopy}>
-                      <strong>
-                        {historyLoad.kind === 'loading'
-                          ? '正在补齐历史'
-                          : historyLoad.kind === 'error'
-                            ? '历史载入受阻'
-                            : historyLoad.kind === 'complete'
-                              ? '历史已补齐'
-                              : '准备补齐历史'}
-                      </strong>
-                      <span>
-                        {historyLoad.kind === 'loading'
-                          ? `已载入 ${historyProgress}`
-                          : historyLoad.kind === 'error'
-                            ? historyLoad.message
-                            : historyLoad.kind === 'complete'
-                              ? `已载入 ${historyProgress}`
-                              : `当前 ${historyProgress}，即将自动载入更早记录`}
-                      </span>
-                    </span>
-                    {historyLoad.kind === 'error'
-                      ? (
-                        <button
-                          type="button"
-                          onClick={startHistoryLoad}
-                          title="通过 RC8 官方会话分页重试补齐更早历史"
-                        >
-                          重试载入
-                        </button>
-                      )
-                      : null}
-                  </div>
-                )
-                : null}
 
               {!ui.follow && ui.unread > 0
                 ? (
