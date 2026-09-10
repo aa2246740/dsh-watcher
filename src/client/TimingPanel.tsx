@@ -103,7 +103,8 @@ export function TimingPanel({
       const rect = e.currentTarget.getBoundingClientRect()
       const parentRect = chartBoxRef.current.getBoundingClientRect()
       const sliceCenter = rect.left - parentRect.left + (rect.width / 2)
-      const popoverWidth = 250
+      // 适度舒展浮层宽度至 360px，充分利用父容器宽度，杜绝文字拥挤换行
+      const popoverWidth = Math.min(360, Math.max(300, parentRect.width - 16))
       const left = Math.max(8, Math.min(parentRect.width - popoverWidth - 8, sliceCenter - (popoverWidth / 2)))
       setPopoverLeft(left)
       // 计算箭头在浮层内部的相对横坐标，确保无论浮层被边缘怎么限制，箭头都 100% 精确垂直对准切片中心

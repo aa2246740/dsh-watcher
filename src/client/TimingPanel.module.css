@@ -30,7 +30,8 @@
   align-items: center;
   margin-bottom: 8px;
   font-size: 11px;
-  gap: 8px;
+  gap: 12px;
+  white-space: nowrap;
 }
 
 .titleArea {
@@ -38,7 +39,8 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
-  flex-wrap: wrap;
+  white-space: nowrap;
+  flex-wrap: nowrap;
 }
 
 .mainTitle {
@@ -149,15 +151,17 @@
   align-items: center;
   font-size: 11px;
   color: var(--dsw-alias-label-secondary, #5f636d);
-  flex-wrap: wrap;
-  gap: 6px;
+  flex-wrap: nowrap;
+  gap: 8px;
+  white-space: nowrap;
 }
 
 .legendGroup {
   display: flex;
   align-items: center;
   gap: 12px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 .legendItem {
@@ -207,22 +211,24 @@
   color: #b91c1c;
 }
 
-/* 悬停专业分析浮层：自适应贴合上方，箭头精准指向切片 */
+/* 悬停专业分析浮层：舒展宽度充分利用空间，箭头精准指向切片，杜绝文字拥挤换行 */
 .popover {
   position: absolute;
   bottom: calc(100% + 8px);
   top: auto;
   background: #0f172a;
   color: #f8fafc;
-  padding: 10px 12px;
+  padding: 10px 14px;
   border-radius: 8px;
   font-size: 11px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   pointer-events: none;
-  width: 240px;
+  width: 360px;
+  max-width: calc(100% - 16px);
   z-index: 50;
   animation: popIn 120ms ease-out;
   box-sizing: border-box;
+  white-space: nowrap;
 }
 
 .popover::after {
@@ -239,10 +245,13 @@
 .popTitle {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   border-bottom: 1px solid rgba(255, 255, 255, 0.15);
-  padding-bottom: 4px;
+  padding-bottom: 5px;
   margin-bottom: 6px;
   font-weight: 600;
+  gap: 16px;
+  white-space: nowrap;
 }
 
 .popList {
@@ -256,7 +265,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 2px 0;
-  gap: 8px;
+  gap: 16px;
+  white-space: nowrap;
 }
 
 .popLeft {
@@ -264,11 +274,17 @@
   align-items: center;
   gap: 6px;
   color: rgba(255, 255, 255, 0.85);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .popRight {
   font-variant-numeric: tabular-nums;
-  font-weight: 500;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  flex-shrink: 0;
+  text-align: right;
 }
 
 .activeVal {
