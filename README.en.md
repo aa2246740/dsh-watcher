@@ -37,13 +37,13 @@ Then restart that DSH Host and reload the page. `dsh plugin add` writes the prof
 dsh plugin --profile web remove dsh-watcher
 ```
 
-DeepSeek Harness `0.1.2-rc.1`. Node `^22.19.0` or `>=24`.
+Verified on DeepSeek Harness `0.1.2-rc.1` and `0.1.5-rc.2`. Node `^22.19.0` or `>=24`.
 
 The interaction contract lives in [DESIGN.md](./DESIGN.md). MIT.
 
 ## Build from source
 
-Use a prepared DSH 0.1.2-rc.1 checkout. The plugin may live outside the Harness tree.
+Use a prepared DSH 0.1.5-rc.2 checkout. The plugin may live outside the Harness tree.
 
 ```sh
 node scripts/link-harness-dependencies.mjs /path/to/harness

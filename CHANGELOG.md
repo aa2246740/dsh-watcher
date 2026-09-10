@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Declared compatibility widened to DeepSeek Harness `0.1.5-rc.1` / `0.1.5-rc.2`: peer ranges now accept both the `0.1.2-rc.1` line and the `0.1.5-rc.x` line, and the build pins `0.1.5-rc.2`. Verified against `0.1.5-rc.2`: host plugin loads, client module enters the boot manifest, the Watcher settings section renders, no console exceptions.
 - Opening Watcher now restores every older conversation Turn automatically through RC8's public Session paging API. Normal use has no manual "load all" step; paging progress is passive, and a retry appears only when the official loader is busy or cannot advance.
 - Added whole-session Turn/Step projections so the progressive UI can show loaded-versus-total evidence while RC8 pages arrive.
 
