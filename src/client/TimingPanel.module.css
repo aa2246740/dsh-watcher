@@ -207,10 +207,11 @@
   color: #b91c1c;
 }
 
-/* 悬停专业分析浮层 */
+/* 悬停专业分析浮层：自适应贴合上方，箭头精准指向切片 */
 .popover {
   position: absolute;
-  top: -140px;
+  bottom: calc(100% + 8px);
+  top: auto;
   background: #0f172a;
   color: #f8fafc;
   padding: 10px 12px;
@@ -221,13 +222,14 @@
   width: 240px;
   z-index: 50;
   animation: popIn 120ms ease-out;
+  box-sizing: border-box;
 }
 
 .popover::after {
   content: "";
   position: absolute;
   bottom: -5px;
-  left: 50%;
+  left: var(--arrow-left, 50%);
   transform: translateX(-50%);
   border-width: 5px 5px 0;
   border-style: solid;

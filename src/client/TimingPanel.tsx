@@ -11,6 +11,8 @@ const duration = (ms: number) => {
 
 const fmtNum = (n: number) => new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 0 }).format(n)
 
+type SliceKind = 'ttft' | 'think' | 'output' | 'bash' | 'file'
+
 export function TimingPanel({
   stats,
   scope,
@@ -20,8 +22,9 @@ export function TimingPanel({
   scope: 'turn' | 'session'
   tokensPerSecond?: number | null
 }) {
-  const [hoverType, setHoverType] = useState<'model' | 'tool' | null>(null)
+  const [hoverSlice, setHoverSlice] = useState<SliceKind | null>(null)
   const [popoverLeft, setPopoverLeft] = useState<number>(0)
+  const [arrowLeft, setArrowLeft] = useState<number>(120)
   const chartBoxRef = useRef<HTMLDivElement>(null)
 
   // 1. 各项绝对耗时
@@ -78,23 +81,28 @@ export function TimingPanel({
   let statusText = '✓ 0 报错 · 0 重试 (稳定)'
   let statusClass = css.statusOk
   if (hasError && hasRetry) {
-    statusText = `⚠ ${stats.toolErrors} 报错 · ${stats.retries} 次重试`
+    statusText = `! ${stats.toolErrors} 报错 · ${stats.retries} 次重试`
     statusClass = css.statusDanger
   } else if (hasError) {
-    statusText = `⚠ ${stats.toolErrors} 次工具报错`
+    statusText = `! ${stats.toolErrors} 次工具报错`
     statusClass = css.statusDanger
   } else if (hasRetry) {
-    statusText = `⚠ ${stats.retries} 次网络重试排队`
+    statusText = `! ${stats.retries} 次网络重试排队`
     statusClass = css.statusWarn
   }
 
-  const handleSliceHover = (type: 'model' | 'tool', e: React.MouseEvent<HTMLElement>) => {
-    setHoverType(type)
+  const handleSliceHover = (slice: SliceKind, e: React.MouseEvent<HTMLElement>) => {
+    setHoverSlice(slice)
     if (chartBoxRef.current) {
       const rect = e.currentTarget.getBoundingClientRect()
       const parentRect = chartBoxRef.current.getBoundingClientRect()
-      const left = rect.left - parentRect.left + (rect.width / 2) - 120
-      setPopoverLeft(Math.max(8, Math.min(parentRect.width - 248, left)))
+      const sliceCenter = rect.left - parentRect.left + (rect.width / 2)
+      const popoverWidth = 240
+      const left = Math.max(8, Math.min(parentRect.width - popoverWidth - 8, sliceCenter - (popoverWidth / 2)))
+      setPopoverLeft(left)
+      // 计算箭头在浮层内部的相对横坐标，确保无论浮层被边缘怎么限制，箭头都 100% 精确垂直对准切片中心
+      const arrowPos = Math.max(16, Math.min(popoverWidth - 16, sliceCenter - left))
+      setArrowLeft(arrowPos)
     }
   }
 
@@ -123,18 +131,15 @@ export function TimingPanel({
       {/* 核心复合柱图：颜色严格认知映射，微切片一目了然 */}
       <div className={css.chartBox} ref={chartBoxRef}>
         <div className={css.barTrack} role="img" aria-label="耗时复合柱图">
-          {/* 1. 模型大类（占 modelPct） */}
-          <div
-            className={css.modelCluster}
-            style={{ width: `${modelPct}%` }}
-            onMouseEnter={e => handleSliceHover('model', e)}
-            onMouseLeave={() => setHoverType(null)}
-          >
+          {/* 1. 模型大类 */}
+          <div className={css.modelCluster} style={{ width: `${modelPct}%` }}>
             {/* 首字等待 (冷雾灰蓝) */}
             {ttftSubPct > 0 ? (
               <div
                 className={`${css.slice} ${css.sliceTtft}`}
                 style={{ width: `${ttftSubPct}%` }}
+                onMouseEnter={e => handleSliceHover('ttft', e)}
+                onMouseLeave={() => setHoverSlice(null)}
               />
             ) : null}
             {/* 深度思考 (DeepSeek深蓝) */}
@@ -142,6 +147,8 @@ export function TimingPanel({
               <div
                 className={`${css.slice} ${css.sliceThink}`}
                 style={{ width: `${thinkSubPct}%` }}
+                onMouseEnter={e => handleSliceHover('think', e)}
+                onMouseLeave={() => setHoverSlice(null)}
               />
             ) : null}
             {/* 正文输出 (明亮天蓝) */}
@@ -149,22 +156,21 @@ export function TimingPanel({
               <div
                 className={`${css.slice} ${css.sliceOutput}`}
                 style={{ width: `${outputSubPct}%` }}
+                onMouseEnter={e => handleSliceHover('output', e)}
+                onMouseLeave={() => setHoverSlice(null)}
               />
             ) : null}
           </div>
 
-          {/* 2. 工具大类（占 toolPct） */}
-          <div
-            className={css.toolCluster}
-            style={{ width: `${toolPct}%` }}
-            onMouseEnter={e => handleSliceHover('tool', e)}
-            onMouseLeave={() => setHoverType(null)}
-          >
+          {/* 2. 工具大类 */}
+          <div className={css.toolCluster} style={{ width: `${toolPct}%` }}>
             {/* 终端执行 (深翠绿) */}
             {bashSubPct > 0 ? (
               <div
                 className={`${css.slice} ${css.sliceBash}`}
                 style={{ width: `${bashSubPct}%` }}
+                onMouseEnter={e => handleSliceHover('bash', e)}
+                onMouseLeave={() => setHoverSlice(null)}
               />
             ) : null}
             {/* 文件及其他读写 (薄荷浅绿) */}
@@ -172,87 +178,166 @@ export function TimingPanel({
               <div
                 className={`${css.slice} ${css.sliceFile}`}
                 style={{ width: `${fileSubPct}%` }}
+                onMouseEnter={e => handleSliceHover('file', e)}
+                onMouseLeave={() => setHoverSlice(null)}
               />
             ) : null}
           </div>
         </div>
 
-        {/* 悬停专业分析浮层 */}
-        {hoverType ? (
-          <div className={css.popover} style={{ left: `${popoverLeft}px` }}>
+        {/* 悬停专业分析浮层：位置精准对齐具体切片 */}
+        {hoverSlice ? (
+          <div
+            className={css.popover}
+            style={{
+              left: `${popoverLeft}px`,
+              ['--arrow-left' as any]: `${arrowLeft}px`,
+            }}
+          >
             <div className={css.popTitle}>
-              <span>{hoverType === 'model' ? '模型请求各阶段拆解' : '工具执行耗时排行'}</span>
-              <span>{hoverType === 'model' ? `${duration(modelTotalMs)} (${Math.round(modelPct)}%)` : `${duration(toolTotalMs)} (${Math.round(toolPct)}%)`}</span>
+              <span>
+                {hoverSlice === 'think' && '深度推导 (思考过程)'}
+                {hoverSlice === 'ttft' && '首字排队响应 (TTFT)'}
+                {hoverSlice === 'output' && '正文流式输出'}
+                {hoverSlice === 'bash' && '本地终端命令 (Bash)'}
+                {hoverSlice === 'file' && '文件操作与通用工具'}
+              </span>
+              <span>
+                {hoverSlice === 'think' && `${duration(thinkMs)} (${thinkSubPct}%)`}
+                {hoverSlice === 'ttft' && `${duration(ttftMs)} (${ttftSubPct}%)`}
+                {hoverSlice === 'output' && `${duration(outputMs)} (${outputSubPct}%)`}
+                {hoverSlice === 'bash' && `${duration(bashMs)} (${bashSubPct}%)`}
+                {hoverSlice === 'file' && `${duration(fileMs)} (${fileSubPct}%)`}
+              </span>
             </div>
             <div className={css.popList}>
-              {hoverType === 'model' ? (
+              {hoverSlice === 'think' && (
                 <>
                   <div className={css.popRow}>
                     <div className={css.popLeft}>
                       <i className={css.dot} style={{ background: 'var(--c-think)' }} />
-                      <span>可见深度推导</span>
+                      <span>思考阶段耗时</span>
                     </div>
-                    <span className={`${css.popRight} ${thinkMs >= ttftMs && thinkMs >= outputMs && thinkMs > 0 ? css.activeVal : ''}`}>
-                      {duration(thinkMs)} ({ttftSubPct + thinkSubPct + outputSubPct > 0 ? Math.round((thinkMs / modelTotalMs) * 100) : 0}%)
-                    </span>
-                  </div>
-                  <div className={css.popRow}>
-                    <div className={css.popLeft}>
-                      <i className={css.dot} style={{ background: 'var(--c-ttft)' }} />
-                      <span>{ttftLabel}</span>
-                    </div>
-                    <span className={`${css.popRight} ${ttftMs > thinkMs && ttftMs > outputMs ? css.activeVal : ''}`}>
-                      {duration(ttftMs)} ({ttftSubPct}%)
-                    </span>
-                  </div>
-                  <div className={css.popRow}>
-                    <div className={css.popLeft}>
-                      <i className={css.dot} style={{ background: 'var(--c-output)' }} />
-                      <span>正文与代码生成</span>
-                    </div>
-                    <span className={`${css.popRight} ${outputMs > thinkMs && outputMs > ttftMs ? css.activeVal : ''}`}>
-                      {duration(outputMs)} ({outputSubPct}%)
-                    </span>
+                    <span className={css.popRight}>{duration(thinkMs)} ({thinkSubPct}%)</span>
                   </div>
                   {stats.reasoning ? (
-                    <div className={css.popRow} style={{ borderTop: '1px dashed rgba(255,255,255,0.15)', marginTop: '4px', paddingTop: '4px' }}>
+                    <div className={css.popRow}>
                       <div className={css.popLeft}>
                         <i className={css.dot} style={{ background: 'var(--c-think)' }} />
                         <span>思考消耗 Token</span>
                       </div>
-                      <span className={css.popRight}>
-                        {fmtNum(stats.reasoning)} ({stats.output > 0 ? Math.round((stats.reasoning / stats.output) * 100) : 0}% 输出)
-                      </span>
+                      <span className={css.popRight}>{fmtNum(stats.reasoning)} Token</span>
+                    </div>
+                  ) : null}
+                  <div className={css.popRow}>
+                    <div className={css.popLeft}>
+                      <span>占模型输出比例</span>
+                    </div>
+                    <span className={css.popRight}>
+                      {stats.output > 0 && stats.reasoning ? `${Math.round((stats.reasoning / stats.output) * 100)}%` : '—'}
+                    </span>
+                  </div>
+                  <div className={css.popRow}>
+                    <div className={css.popLeft}>
+                      <span>模型总处理耗时</span>
+                    </div>
+                    <span className={css.popRight}>{duration(modelTotalMs)}</span>
+                  </div>
+                </>
+              )}
+              {hoverSlice === 'ttft' && (
+                <>
+                  <div className={css.popRow}>
+                    <div className={css.popLeft}>
+                      <i className={css.dot} style={{ background: 'var(--c-ttft)' }} />
+                      <span>首响应耗时</span>
+                    </div>
+                    <span className={css.popRight}>{ttftLabel}</span>
+                  </div>
+                  <div className={css.popRow}>
+                    <div className={css.popLeft}>
+                      <span>占模型耗时比例</span>
+                    </div>
+                    <span className={css.popRight}>{ttftSubPct}%</span>
+                  </div>
+                  <div className={css.popRow}>
+                    <div className={css.popLeft}>
+                      <span>累计首字采样次数</span>
+                    </div>
+                    <span className={css.popRight}>{samples} 次</span>
+                  </div>
+                </>
+              )}
+              {hoverSlice === 'output' && (
+                <>
+                  <div className={css.popRow}>
+                    <div className={css.popLeft}>
+                      <i className={css.dot} style={{ background: 'var(--c-output)' }} />
+                      <span>正文流式输出耗时</span>
+                    </div>
+                    <span className={css.popRight}>{duration(outputMs)} ({outputSubPct}%)</span>
+                  </div>
+                  <div className={css.popRow}>
+                    <div className={css.popLeft}>
+                      <span>输出 Token 数量</span>
+                    </div>
+                    <span className={css.popRight}>{fmtNum(stats.output)} Token</span>
+                  </div>
+                  {tokensPerSecond && tokensPerSecond > 0 ? (
+                    <div className={css.popRow}>
+                      <div className={css.popLeft}>
+                        <span>实际推流吞吐速率</span>
+                      </div>
+                      <span className={css.popRight}>{tokensPerSecond >= 10 ? Math.round(tokensPerSecond) : tokensPerSecond.toFixed(1)} t/s</span>
                     </div>
                   ) : null}
                 </>
-              ) : (
+              )}
+              {hoverSlice === 'bash' && (
                 <>
                   <div className={css.popRow}>
                     <div className={css.popLeft}>
                       <i className={css.dot} style={{ background: 'var(--c-bash)' }} />
-                      <span>终端命令 bash</span>
+                      <span>终端 Bash 耗时</span>
                     </div>
-                    <span className={`${css.popRight} ${bashMs >= fileMs && bashMs > 0 ? css.activeVal : ''}`}>
-                      {duration(bashMs)} ({bashSubPct}%)
-                    </span>
+                    <span className={css.popRight}>{duration(bashMs)} ({bashSubPct}%)</span>
                   </div>
                   <div className={css.popRow}>
                     <div className={css.popLeft}>
-                      <i className={css.dot} style={{ background: 'var(--c-file)' }} />
-                      <span>文件读写与其它</span>
+                      <span>主要运行操作</span>
                     </div>
-                    <span className={`${css.popRight} ${fileMs > bashMs ? css.activeVal : ''}`}>
-                      {duration(fileMs)} ({fileSubPct}%)
-                    </span>
+                    <span className={css.popRight}>测试 / 构建 / 脚本运行</span>
                   </div>
-                  <div className={css.popRow} style={{ borderTop: '1px dashed rgba(255,255,255,0.15)', marginTop: '4px', paddingTop: '4px' }}>
+                  <div className={css.popRow}>
                     <div className={css.popLeft}>
-                      <span>总计执行次数</span>
+                      <span>工具成功率统计</span>
                     </div>
                     <span className={css.popRight}>
                       {stats.tools} 次 ({stats.toolErrors > 0 ? `${stats.toolErrors} 次报错` : '全部成功'})
                     </span>
+                  </div>
+                </>
+              )}
+              {hoverSlice === 'file' && (
+                <>
+                  <div className={css.popRow}>
+                    <div className={css.popLeft}>
+                      <i className={css.dot} style={{ background: 'var(--c-file)' }} />
+                      <span>文件读写耗时</span>
+                    </div>
+                    <span className={css.popRight}>{duration(fileMs)} ({fileSubPct}%)</span>
+                  </div>
+                  <div className={css.popRow}>
+                    <div className={css.popLeft}>
+                      <span>常用操作类型</span>
+                    </div>
+                    <span className={css.popRight}>read / write / edit / glob / grep</span>
+                  </div>
+                  <div className={css.popRow}>
+                    <div className={css.popLeft}>
+                      <span>执行特征</span>
+                    </div>
+                    <span className={css.popRight}>本地毫秒级极速 IO</span>
                   </div>
                 </>
               )}
@@ -261,7 +346,7 @@ export function TimingPanel({
         ) : null}
       </div>
 
-      {/* 底行：图例呼应 + 暗病警报胶囊 */}
+      {/* 底行：图例呼应 + 状态警报胶囊 */}
       <div className={css.legendRow}>
         <div className={css.legendGroup}>
           <span className={css.legendItem}>
@@ -282,7 +367,7 @@ export function TimingPanel({
           </span>
         </div>
 
-        {/* 状态胶囊（一眼扫清重试或报错） */}
+        {/* 状态胶囊 */}
         <div className={`${css.statusPill} ${statusClass}`}>
           {statusText}
         </div>
