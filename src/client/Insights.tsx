@@ -88,7 +88,7 @@ export function SessionInsights({ value, now, running, waiting, onEvidence }: {
                 : '全会话'}
           </span>
           {scope === 'turn' && currentRoute?.model ? (
-            <span className={css.currentModelTag}>
+            <span className={css.currentModelTag} title={currentRoute.model}>
               <strong className={css.modelTagText}>{currentRoute.model}</strong>
               {currentRoute.effort ? (
                 <span className={css.effortTag}>思考: {effortLabel(currentRoute.effort)}</span>

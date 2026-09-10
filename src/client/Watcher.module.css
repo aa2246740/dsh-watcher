@@ -113,7 +113,7 @@
   display: flex;
   flex: none;
   flex-direction: column;
-  width: min(540px, calc(100vw - 32px));
+  width: min(720px, calc(100vw - 32px));
   min-width: 0;
   min-height: 290px;
   max-height: var(--watcher-panel-max-height);
@@ -1837,7 +1837,7 @@
 @media (max-width: 860px) {
   .menu {
     flex-direction: column-reverse;
-    width: min(500px, calc(100vw - 24px));
+    width: min(720px, calc(100vw - 24px));
     max-height: calc(100vh - 88px);
   }
 

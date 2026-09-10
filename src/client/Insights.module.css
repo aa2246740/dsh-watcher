@@ -43,11 +43,19 @@
   border-radius: 4px;
   background: var(--dsw-alias-interactive-bg-hover);
   font-size: 11px;
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+  flex-shrink: 1;
 }
 
 .modelTagText {
   font-weight: 600;
   color: var(--dsw-alias-label-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .effortTag {
@@ -58,6 +66,8 @@
   padding: 0 5px;
   border-radius: 3px;
   line-height: 14px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .contextTag {
@@ -69,6 +79,7 @@
   border: 1px solid var(--dsw-alias-border-l2, #e2e8f0);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .hudTopRight {
