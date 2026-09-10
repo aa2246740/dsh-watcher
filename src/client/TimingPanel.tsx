@@ -45,21 +45,27 @@ export function TimingPanel({
   const modelPct = combinedMs > 0 ? (modelTotalMs / combinedMs) * 100 : 50
   const toolPct = combinedMs > 0 ? (toolTotalMs / combinedMs) * 100 : 50
 
-  // 3. 内部切片相对各自父级的占比
-  const ttftSubPct = modelTotalMs > 0 ? Math.round((ttftMs / modelTotalMs) * 100) : 0
-  const thinkSubPct = modelTotalMs > 0 ? Math.round((thinkMs / modelTotalMs) * 100) : 0
+  // 3. 内部切片相对各自父级的耗时占比（严格 <= 100%）
+  const ttftSubPct = modelTotalMs > 0 ? Math.min(100, Math.round((ttftMs / modelTotalMs) * 100)) : 0
+  const thinkSubPct = modelTotalMs > 0 ? Math.min(100 - ttftSubPct, Math.round((thinkMs / modelTotalMs) * 100)) : 0
   const outputSubPct = modelTotalMs > 0 ? Math.max(0, 100 - ttftSubPct - thinkSubPct) : 0
 
-  const bashSubPct = toolTotalMs > 0 ? Math.round((bashMs / toolTotalMs) * 100) : (toolTotalMs > 0 ? 100 : 0)
+  const bashSubPct = toolTotalMs > 0 ? Math.min(100, Math.round((bashMs / toolTotalMs) * 100)) : (toolTotalMs > 0 ? 100 : 0)
   const fileSubPct = toolTotalMs > 0 ? Math.max(0, 100 - bashSubPct) : 0
 
-  // 4. 首响应标注：单次还是平均
-  const samples = stats.firstSamples ?? 0
-  const ttftLabel = samples > 1
-    ? `平均首响应 ${duration(samples ? ttftMs / samples : 0)} (共 ${samples} 次)`
-    : `单次首响应 ${duration(ttftMs)}`
+  // 4. Token 生成算力分配计算（思考 vs 正文，分子为单项，分母为总生成，绝对 <= 100%）
+  const totalGenTokens = (stats.output ?? 0) + (stats.reasoning ?? 0)
+  const thinkTokenRatio = totalGenTokens > 0 ? Math.round(((stats.reasoning ?? 0) / totalGenTokens) * 100) : 0
+  const outputTokenRatio = totalGenTokens > 0 ? Math.max(0, 100 - thinkTokenRatio) : 0
 
-  // 5. 判断主要耗时瓶颈
+  // 5. 首响应标注：单次还是平均
+  const samples = stats.firstSamples ?? 0
+  const ttftAvg = samples > 0 ? ttftMs / samples : ttftMs
+  const ttftLabel = samples > 1
+    ? `平均首响应 ${duration(ttftAvg)} (共 ${samples} 次)`
+    : `首响应 ${duration(ttftMs)}`
+
+  // 6. 判断主要耗时瓶颈
   let bottleneck = '运行正常'
   if (combinedMs > 0) {
     if (bashMs > combinedMs * 0.4 && bashMs > 10000) {
@@ -75,7 +81,7 @@ export function TimingPanel({
     }
   }
 
-  // 6. 状态胶囊计算（是否有暗中重试或报错）
+  // 7. 状态胶囊计算（是否有暗中重试或报错）
   const hasError = (stats.toolErrors ?? 0) > 0
   const hasRetry = (stats.retries ?? 0) > 0
   let statusText = '✓ 0 报错 · 0 重试 (稳定)'
@@ -97,7 +103,7 @@ export function TimingPanel({
       const rect = e.currentTarget.getBoundingClientRect()
       const parentRect = chartBoxRef.current.getBoundingClientRect()
       const sliceCenter = rect.left - parentRect.left + (rect.width / 2)
-      const popoverWidth = 240
+      const popoverWidth = 250
       const left = Math.max(8, Math.min(parentRect.width - popoverWidth - 8, sliceCenter - (popoverWidth / 2)))
       setPopoverLeft(left)
       // 计算箭头在浮层内部的相对横坐标，确保无论浮层被边缘怎么限制，箭头都 100% 精确垂直对准切片中心
@@ -185,7 +191,7 @@ export function TimingPanel({
           </div>
         </div>
 
-        {/* 悬停专业分析浮层：位置精准对齐具体切片 */}
+        {/* 悬停专业分析浮层：位置精准对齐具体切片，所有信息均为实测诊断干货，杜绝废话凑数 */}
         {hoverSlice ? (
           <div
             className={css.popover}
@@ -196,11 +202,11 @@ export function TimingPanel({
           >
             <div className={css.popTitle}>
               <span>
-                {hoverSlice === 'think' && '深度推导 (思考过程)'}
+                {hoverSlice === 'think' && '深度推导阶段 (思考过程)'}
                 {hoverSlice === 'ttft' && '首字排队响应 (TTFT)'}
-                {hoverSlice === 'output' && '正文流式输出'}
+                {hoverSlice === 'output' && '正文流式输出阶段'}
                 {hoverSlice === 'bash' && '本地终端命令 (Bash)'}
-                {hoverSlice === 'file' && '文件操作与通用工具'}
+                {hoverSlice === 'file' && '文件读写与其它工具'}
               </span>
               <span>
                 {hoverSlice === 'think' && `${duration(thinkMs)} (${thinkSubPct}%)`}
@@ -216,32 +222,43 @@ export function TimingPanel({
                   <div className={css.popRow}>
                     <div className={css.popLeft}>
                       <i className={css.dot} style={{ background: 'var(--c-think)' }} />
-                      <span>思考阶段耗时</span>
+                      <span>推导思考总耗时</span>
                     </div>
-                    <span className={css.popRight}>{duration(thinkMs)} ({thinkSubPct}%)</span>
+                    <span className={css.popRight}>{duration(thinkMs)} (占模型 {thinkSubPct}%)</span>
                   </div>
                   {stats.reasoning ? (
                     <div className={css.popRow}>
                       <div className={css.popLeft}>
-                        <i className={css.dot} style={{ background: 'var(--c-think)' }} />
-                        <span>思考消耗 Token</span>
+                        <span>思考 Token 用量</span>
                       </div>
                       <span className={css.popRight}>{fmtNum(stats.reasoning)} Token</span>
                     </div>
                   ) : null}
                   <div className={css.popRow}>
                     <div className={css.popLeft}>
-                      <span>占模型输出比例</span>
+                      <span>生成算力分配</span>
                     </div>
                     <span className={css.popRight}>
-                      {stats.output > 0 && stats.reasoning ? `${Math.round((stats.reasoning / stats.output) * 100)}%` : '—'}
+                      {totalGenTokens > 0
+                        ? `思考占 ${thinkTokenRatio}% · 正文占 ${outputTokenRatio}%`
+                        : '—'}
                     </span>
                   </div>
-                  <div className={css.popRow}>
-                    <div className={css.popLeft}>
-                      <span>模型总处理耗时</span>
+                  {thinkMs > 0 && stats.reasoning ? (
+                    <div className={css.popRow}>
+                      <div className={css.popLeft}>
+                        <span>推导生成速率</span>
+                      </div>
+                      <span className={css.popRight}>{Math.round(stats.reasoning / (thinkMs / 1000))} Token/秒</span>
                     </div>
-                    <span className={css.popRight}>{duration(modelTotalMs)}</span>
+                  ) : null}
+                  <div className={css.popRow} style={{ borderTop: '1px dashed rgba(255,255,255,0.15)', marginTop: '4px', paddingTop: '4px' }}>
+                    <div className={css.popLeft}>
+                      <span>思考耗时诊断</span>
+                    </div>
+                    <span className={css.popRight}>
+                      {thinkMs > 25000 ? '推导耗时较长，任务较复杂' : '推导节奏健康，无卡顿停顿'}
+                    </span>
                   </div>
                 </>
               )}
@@ -250,21 +267,29 @@ export function TimingPanel({
                   <div className={css.popRow}>
                     <div className={css.popLeft}>
                       <i className={css.dot} style={{ background: 'var(--c-ttft)' }} />
-                      <span>首响应耗时</span>
+                      <span>首响应排队延迟</span>
                     </div>
-                    <span className={css.popRight}>{ttftLabel}</span>
+                    <span className={css.popRight}>{duration(ttftMs)} (占模型 {ttftSubPct}%)</span>
                   </div>
                   <div className={css.popRow}>
                     <div className={css.popLeft}>
-                      <span>占模型耗时比例</span>
+                      <span>采样统计详情</span>
                     </div>
-                    <span className={css.popRight}>{ttftSubPct}%</span>
+                    <span className={css.popRight}>
+                      {samples > 1 ? `累计 ${samples} 次 (均值 ${(ttftAvg / 1000).toFixed(2)}s)` : '单次握手'}
+                    </span>
                   </div>
-                  <div className={css.popRow}>
+                  <div className={css.popRow} style={{ borderTop: '1px dashed rgba(255,255,255,0.15)', marginTop: '4px', paddingTop: '4px' }}>
                     <div className={css.popLeft}>
-                      <span>累计首字采样次数</span>
+                      <span>网络排队诊断</span>
                     </div>
-                    <span className={css.popRight}>{samples} 次</span>
+                    <span className={css.popRight}>
+                      {ttftAvg < 1000
+                        ? '极度敏捷 (网络与云端极速响应)'
+                        : ttftAvg < 3000
+                          ? '正常 (标准网络往返与握手)'
+                          : '排队偏长 (云端并发高或网络延迟)'}
+                    </span>
                   </div>
                 </>
               )}
@@ -273,24 +298,36 @@ export function TimingPanel({
                   <div className={css.popRow}>
                     <div className={css.popLeft}>
                       <i className={css.dot} style={{ background: 'var(--c-output)' }} />
-                      <span>正文流式输出耗时</span>
+                      <span>正文与代码耗时</span>
                     </div>
-                    <span className={css.popRight}>{duration(outputMs)} ({outputSubPct}%)</span>
+                    <span className={css.popRight}>{duration(outputMs)} (占模型 {outputSubPct}%)</span>
                   </div>
                   <div className={css.popRow}>
                     <div className={css.popLeft}>
-                      <span>输出 Token 数量</span>
+                      <span>实付正文输出量</span>
                     </div>
                     <span className={css.popRight}>{fmtNum(stats.output)} Token</span>
                   </div>
-                  {tokensPerSecond && tokensPerSecond > 0 ? (
-                    <div className={css.popRow}>
-                      <div className={css.popLeft}>
-                        <span>实际推流吞吐速率</span>
-                      </div>
-                      <span className={css.popRight}>{tokensPerSecond >= 10 ? Math.round(tokensPerSecond) : tokensPerSecond.toFixed(1)} t/s</span>
+                  <div className={css.popRow}>
+                    <div className={css.popLeft}>
+                      <span>实际生成速率</span>
                     </div>
-                  ) : null}
+                    <span className={css.popRight}>
+                      {tokensPerSecond && tokensPerSecond > 0
+                        ? `${tokensPerSecond >= 10 ? Math.round(tokensPerSecond) : tokensPerSecond.toFixed(1)} Token/秒 (实时)`
+                        : outputMs > 0
+                          ? `${Math.round(stats.output / (outputMs / 1000))} Token/秒 (均值)`
+                          : '—'}
+                    </span>
+                  </div>
+                  <div className={css.popRow} style={{ borderTop: '1px dashed rgba(255,255,255,0.15)', marginTop: '4px', paddingTop: '4px' }}>
+                    <div className={css.popLeft}>
+                      <span>生成算力分配</span>
+                    </div>
+                    <span className={css.popRight}>
+                      {totalGenTokens > 0 ? `正文占 ${outputTokenRatio}% · 思考占 ${thinkTokenRatio}%` : '—'}
+                    </span>
+                  </div>
                 </>
               )}
               {hoverSlice === 'bash' && (
@@ -298,22 +335,32 @@ export function TimingPanel({
                   <div className={css.popRow}>
                     <div className={css.popLeft}>
                       <i className={css.dot} style={{ background: 'var(--c-bash)' }} />
-                      <span>终端 Bash 耗时</span>
+                      <span>终端 Bash 总耗时</span>
                     </div>
-                    <span className={css.popRight}>{duration(bashMs)} ({bashSubPct}%)</span>
+                    <span className={css.popRight}>{duration(bashMs)} (占工具 {bashSubPct}%)</span>
                   </div>
                   <div className={css.popRow}>
                     <div className={css.popLeft}>
-                      <span>主要运行操作</span>
-                    </div>
-                    <span className={css.popRight}>测试 / 构建 / 脚本运行</span>
-                  </div>
-                  <div className={css.popRow}>
-                    <div className={css.popLeft}>
-                      <span>工具成功率统计</span>
+                      <span>占轮次总时间比</span>
                     </div>
                     <span className={css.popRight}>
-                      {stats.tools} 次 ({stats.toolErrors > 0 ? `${stats.toolErrors} 次报错` : '全部成功'})
+                      {combinedMs > 0 ? `${Math.round((bashMs / combinedMs) * 100)}%` : '0%'}
+                    </span>
+                  </div>
+                  <div className={css.popRow}>
+                    <div className={css.popLeft}>
+                      <span>命令可靠度监控</span>
+                    </div>
+                    <span className={css.popRight}>
+                      {stats.tools} 次 ({stats.toolErrors > 0 ? `${stats.toolErrors} 次报错中断` : '零非零退出码'})
+                    </span>
+                  </div>
+                  <div className={css.popRow} style={{ borderTop: '1px dashed rgba(255,255,255,0.15)', marginTop: '4px', paddingTop: '4px' }}>
+                    <div className={css.popLeft}>
+                      <span>耗时瓶颈归因</span>
+                    </div>
+                    <span className={css.popRight}>
+                      {bashMs > modelTotalMs ? '本地环境为主要瓶颈 (耗时超模型)' : '本地开销极小 (主要耗时在云端)'}
                     </span>
                   </div>
                 </>
@@ -323,21 +370,33 @@ export function TimingPanel({
                   <div className={css.popRow}>
                     <div className={css.popLeft}>
                       <i className={css.dot} style={{ background: 'var(--c-file)' }} />
-                      <span>文件读写耗时</span>
+                      <span>文件读写总耗时</span>
                     </div>
-                    <span className={css.popRight}>{duration(fileMs)} ({fileSubPct}%)</span>
+                    <span className={css.popRight}>{duration(fileMs)} (占工具 {fileSubPct}%)</span>
                   </div>
                   <div className={css.popRow}>
                     <div className={css.popLeft}>
-                      <span>常用操作类型</span>
+                      <span>占轮次总时间比</span>
                     </div>
-                    <span className={css.popRight}>read / write / edit / glob / grep</span>
+                    <span className={css.popRight}>
+                      {combinedMs > 0 ? `${Math.round((fileMs / combinedMs) * 100)}%` : '0%'}
+                    </span>
                   </div>
                   <div className={css.popRow}>
                     <div className={css.popLeft}>
-                      <span>执行特征</span>
+                      <span>单次调用平均耗时</span>
                     </div>
-                    <span className={css.popRight}>本地毫秒级极速 IO</span>
+                    <span className={css.popRight}>
+                      {Math.round(fileMs / Math.max(1, stats.tools))} ms / 次
+                    </span>
+                  </div>
+                  <div className={css.popRow} style={{ borderTop: '1px dashed rgba(255,255,255,0.15)', marginTop: '4px', paddingTop: '4px' }}>
+                    <div className={css.popLeft}>
+                      <span>文件 IO 评价</span>
+                    </div>
+                    <span className={css.popRight}>
+                      {fileMs < 2000 ? '毫秒级极速读写，无性能损耗' : '读写较为密集，轻微耗时累积'}
+                    </span>
                   </div>
                 </>
               )}
