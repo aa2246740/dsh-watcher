@@ -40,3 +40,49 @@ test('cached foreign session identity is rejected',async()=>{const remote={sessi
 test('direct subagents are explicitly excluded',async()=>{const remote={session:{list:async()=>({items:[{sessionId:'sub',origin:'subagent'}]})}};assert.match((await scanSessions(remote)).rows[0].error,/子代理/);});
 test('snapshot delta is coalesced, settlement publishes immediately',()=>{const s=fold(fixture());const n=reduceEvent(s,event('assistant/chunk',3,200,{turn:1,step:1,chunk:{type:'text-delta',text:'x'}}));assert.equal(viewOf(n),viewOf(s));assert.equal(viewOf(reduceEvent(n,complete(4))).totals.reported,1);});
 test('checkpoint restore matches uninterrupted state',()=>{const s=fold(fixture());assert.deepEqual(viewOf(reduceEvent(JSON.parse(JSON.stringify(s)),complete())),viewOf(reduceEvent(s,complete())));});
+// 0.1.5-rc.1 embeds the compacted attempt stream in the settled message event.
+const streamed = (seq, time, records, report = usage) => event('assistant/message', seq, time, {
+  turn: 1, step: 1, usage: report, stream: records,
+  message: { source: { kind: 'model', provider: 'p', model: 'a' }, role: 'assistant', content: [] },
+});
+test('a settled 0.1.5 stream supplies first-response and reasoning-span evidence', () => {
+  const s = fold(fixture([streamed(3, 9_000, [
+    { type: 'reasoning-chunks', time0: 3_000, index: 0, dt: [1_000], texts: ['think ', 'hard'] },
+    { type: 'text-chunks', time0: 6_000, index: 1, dt: [], texts: ['done'] },
+  ])]));
+  assert.equal(s.totals.calls, 1);
+  assert.equal(s.totals.firstSamples, 1);
+  assert.equal(s.totals.firstMs, 2_990);   // step start 10 → first reasoning 3_000
+  assert.equal(s.totals.reasoningMs, 1_000);
+  assert.equal(s.totals.tokens, 35);
+});
+test('a raw usage record inside the durable stream is charged once', () => {
+  const s = fold(fixture([streamed(3, 9_000, [{ type: 'chunk', time: 3_000, chunk: { type: 'usage', usage } }], undefined)]));
+  assert.equal(s.totals.reported, 1);
+  assert.equal(s.totals.tokens, 35);
+});
+test('a failed attempt keeps its own timing before the retry closes it', () => {
+  const s = fold(fixture([
+    event('assistant/attempt', 3, 4_000, { turn: 1, step: 1, stream: [{ type: 'reasoning-chunks', time0: 3_000, index: 0, dt: [], texts: ['try'] }] }),
+    event('llm/retry', 4, 5_000, { turn: 1, step: 1, retry: 1, delayMs: 500 }),
+    streamed(5, 9_000, [{ type: 'reasoning-chunks', time0: 7_000, index: 0, dt: [], texts: ['again'] }]),
+  ]));
+  assert.equal(s.totals.calls, 2);
+  assert.equal(s.totals.retries, 1);
+  // A retried attempt has no authoritative start, so only the first attempt's
+  // response wait is sampled; the reasoning spans it does prove are one point each.
+  assert.equal(s.totals.firstSamples, 1);
+  assert.equal(s.totals.firstMs, 2_990);
+  assert.equal(s.totals.modelMs, 4_990);
+  assert.equal(s.totals.reasoningMs, 0);
+});
+test('a malformed durable stream never fabricates timing', () => {
+  const s = fold(fixture([streamed(3, 9_000, [
+    { type: 'reasoning-chunks', time0: 3_000, index: 0, dt: [1_000, 2_000], texts: ['a', 'b'] },
+    { type: 'text-chunks', time0: 'soon', index: 1, dt: [], texts: ['done'] },
+    { type: 'chunk', time: 6_000, chunk: { type: 'reasoning-delta', index: 0, text: 'late' } },
+  ])]));
+  assert.equal(s.totals.reasoningMs, 0);
+  // The skipped run proves nothing; the raw record that follows still does.
+  assert.equal(s.totals.firstMs, 5_990);
+});

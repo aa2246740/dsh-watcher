@@ -37,7 +37,7 @@ const modelTraceDefinition: ConversationNodeDefinition<ModelStepTrace> = {
   },
   publication: (match) => {
     if (match.event.type === 'step/start') return 'none'
-    if (match.event.type !== 'assistant/chunk') return 'immediate'
+    if (match.event.type !== 'assistant/live-chunk') return 'immediate'
     return match.event.data.chunk.type === 'usage' ? 'none' : 'animation-frame'
   },
   buildLocationData: (context, scope) => {

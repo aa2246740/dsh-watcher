@@ -71,6 +71,13 @@ export type ModelTraceEvent = ModelTraceEventBase & (
     readonly kind: 'message'
     readonly reasoningText: string | null
     readonly reasoningTokens: number | null
+    readonly fragments: readonly ReasoningFragment[]
+    readonly firstOutputTime: number | null
+  }
+  | {
+    readonly kind: 'attempt'
+    readonly fragments: readonly ReasoningFragment[]
+    readonly firstOutputTime: number | null
   }
   | { readonly kind: 'retry'; readonly retry: number; readonly delayMs: number }
   | { readonly kind: 'step-end' }
@@ -115,6 +122,68 @@ function reasoningTextOf(value: unknown): string | null {
   return parts.length === 0 ? null : parts.join('\n\n')
 }
 
+/** Timing evidence carried by one settled attempt's durable stream. */
+interface AttemptStreamEvidence {
+  readonly fragments: readonly ReasoningFragment[]
+  readonly firstOutputTime: number | null
+}
+
+/**
+ * Read the durable attempt stream 0.1.5-rc.1 settles into `assistant/message`
+ * and `assistant/attempt`: delta runs pack `time0` plus per-gap `dt`, while
+ * block/usage/finish chunks stay raw with their own `time`. Fragment `seq`s are
+ * positions inside that stream, not Session seqs — the records do not carry
+ * any, and the UI only counts fragments.
+ * @param stream - the raw `data.stream` value.
+ * @param seq - event seq the fragments hang off.
+ * @returns the evidence, or null when the stream carries none.
+ */
+function attemptStreamOf(stream: unknown, seq: number): AttemptStreamEvidence | null {
+  if (!Array.isArray(stream)) return null
+  const fragments: ReasoningFragment[] = []
+  let firstOutputTime: number | null = null
+  let position = 0
+  for (const value of stream) {
+    if (!isRecord(value)) continue
+    if (value.type === 'reasoning-chunks' || value.type === 'text-chunks' || value.type === 'tool-call-chunks') {
+      const reasoning = value.type === 'reasoning-chunks'
+      const parts = value.type === 'tool-call-chunks' ? value.args : value.texts
+      const gaps = value.dt
+      const time0 = value.time0
+      if (!Number.isSafeInteger(time0)) continue
+      if (!Array.isArray(parts) || parts.length === 0) continue
+      if (!Array.isArray(gaps) || gaps.length !== parts.length - 1) continue
+      let time = time0 as number
+      for (let index = 0; index < parts.length; index++) {
+        if (index > 0) {
+          const gap = gaps[index - 1]
+          if (!Number.isSafeInteger(gap)) { time = Number.NaN; break }
+          time += gap as number
+        }
+        if (!Number.isSafeInteger(time)) break
+        const text = parts[index]
+        if (reasoning && typeof text === 'string' && text !== '') {
+          fragments.push({ seq: seq + position, time, text })
+        }
+        if (!reasoning && firstOutputTime === null) firstOutputTime = time
+        position += 1
+      }
+      continue
+    }
+    if (value.type !== 'chunk' || !isRecord(value.chunk) || !Number.isSafeInteger(value.time)) continue
+    const type = value.chunk.type
+    if (type !== 'reasoning-delta' && type !== 'text-delta' && type !== 'tool-call-delta') continue
+    const time = value.time as number
+    const text = value.chunk.text
+    if (type === 'reasoning-delta' && typeof text === 'string' && text !== '') {
+      fragments.push({ seq: seq + position, time, text })
+    }
+    if (type !== 'reasoning-delta' && firstOutputTime === null) firstOutputTime = time
+    position += 1
+  }
+  return fragments.length === 0 && firstOutputTime === null ? null : { fragments, firstOutputTime }
+}
+
 /** Parse only the seven event shapes needed by the read-only model-stage fold. */
 export function modelTraceEventOf(value: unknown): ModelTraceEvent | null {
   if (!isRecord(value) || typeof value.type !== 'string') return null
@@ -131,13 +200,21 @@ export function modelTraceEventOf(value: unknown): ModelTraceEvent | null {
       ? null
       : { ...location, kind: 'retry', retry, delayMs }
   }
-  if (value.type === 'assistant/message') {
-    return {
-      ...location,
-      kind: 'message',
-      reasoningText: reasoningTextOf(data.message),
-      reasoningTokens: reasoningTokensOf(data.usage),
-    }
+  if (value.type === 'assistant/message' || value.type === 'assistant/attempt') {
+    const evidence = attemptStreamOf(data.stream, location.seq)
+    const fragments = evidence?.fragments ?? []
+    const firstOutputTime = evidence?.firstOutputTime ?? null
+    // A settled attempt with no surface message keeps only its evidence.
+    return value.type === 'assistant/attempt'
+      ? { ...location, kind: 'attempt', fragments, firstOutputTime }
+      : {
+        ...location,
+        kind: 'message',
+        reasoningText: reasoningTextOf(data.message),
+        reasoningTokens: reasoningTokensOf(data.usage),
+        fragments,
+        firstOutputTime,
+      }
   }
   // RC1 historical chunkrow envelopes preserve fragment times and sequence identities.
   if (['chunkrow/reasoning-chunks', 'chunkrow/text-chunks', 'chunkrow/tool-call-chunks'].includes(value.type)) {
@@ -161,7 +238,9 @@ export function modelTraceEventOf(value: unknown): ModelTraceEvent | null {
       ? { ...base, kind: 'reasoning-delta', text: fragments.map(f => f.text).join(''), fragments }
       : { ...base, kind: 'output-delta' }
   }
-  if (value.type !== 'assistant/chunk' || !isRecord(data.chunk) || typeof data.chunk.type !== 'string') {
+  // 0.1.5-rc.1 renamed the client-only live stream event to `assistant/live-chunk`;
+  // the pre-0.1.5 spelling stays accepted so recorded transcripts still fold.
+  if (!['assistant/live-chunk', 'assistant/chunk'].includes(value.type) || !isRecord(data.chunk) || typeof data.chunk.type !== 'string') {
     return null
   }
   const chunk = data.chunk
@@ -238,6 +317,33 @@ function sameStep(trace: ModelStepTrace, event: ModelTraceEventBase): boolean {
   return trace.turn === event.turn && trace.step === event.step
 }
 
+/**
+ * Fold durable settled-stream evidence onto one attempt. The stream is the
+ * authoritative record of what the provider actually emitted, so it replaces
+ * whatever the live rows had accumulated — never the other way around.
+ * @param attempt - attempt state before settlement.
+ * @param event - normalized event carrying the settled evidence.
+ * @returns the attempt with real fragment times, or the input when the log
+ * carries no durable stream (pre-0.1.5 transcripts).
+ */
+function applyStreamEvidence(
+  attempt: ModelAttempt,
+  event: { readonly fragments: readonly ReasoningFragment[]; readonly firstOutputTime: number | null },
+): ModelAttempt {
+  if (event.fragments.length === 0 && event.firstOutputTime === null) return attempt
+  const first = event.fragments[0]
+  const last = event.fragments.at(-1)
+  return {
+    ...attempt,
+    firstTokenTime: attempt.firstTokenTime ?? first?.time ?? event.firstOutputTime,
+    firstReasoningTime: first?.time ?? attempt.firstReasoningTime,
+    lastReasoningTime: last?.time ?? attempt.lastReasoningTime,
+    reasoningText: event.fragments.length === 0 ? attempt.reasoningText : event.fragments.map(f => f.text).join(''),
+    fragments: event.fragments.length === 0 ? attempt.fragments : event.fragments,
+    firstOutputTime: attempt.firstOutputTime ?? event.firstOutputTime,
+  }
+}
+
 /** Fold one normalized event without discarding reasoning from a retried attempt. */
 export function updateModelStepTrace(trace: ModelStepTrace, event: ModelTraceEvent): ModelStepTrace {
   if (!sameStep(trace, event) || event.kind === 'step-start') return trace
@@ -291,17 +397,22 @@ export function updateModelStepTrace(trace: ModelStepTrace, event: ModelTraceEve
       ),
     }
   }
+  if (event.kind === 'attempt') {
+    if (attempt.kind !== 'running') return current
+    return { ...current, attempts: replaceLast(trace.attempts, applyStreamEvidence(attempt, event)) }
+  }
   if (event.kind === 'message') {
     const reasoningTokens = event.reasoningTokens ?? trace.reasoningTokens
     if (attempt.kind !== 'running') return { ...current, reasoningTokens }
+    const settled = applyStreamEvidence(attempt, event)
     return {
       ...current,
       reasoningTokens,
       attempts: replaceLast(trace.attempts, {
-        ...attempt,
+        ...settled,
         kind: 'complete',
         endedAt: event.time,
-        reasoningText: event.reasoningText ?? attempt.reasoningText,
+        reasoningText: event.reasoningText ?? settled.reasoningText,
       }),
     }
   }

@@ -129,3 +129,116 @@ test('an open model stage advances only when the caller supplies a live clock', 
     unattributedMs: 5_000, // no content during the silence
   })
 })
+
+/** 0.1.5-rc.1 settles the compacted attempt stream inside the message event. */
+function settled(seq, time, { reasoning = 'inspect evidence', stream, reasoningTokens } = {}) {
+  return {
+    type: 'assistant/message',
+    seq,
+    time,
+    data: {
+      turn: 1,
+      step: 1,
+      message: {
+        role: 'assistant',
+        content: [
+          ...(reasoning === '' ? [] : [{ type: 'reasoning', text: reasoning }]),
+          { type: 'text', text: 'done' },
+        ],
+      },
+      stream,
+      ...(reasoningTokens === undefined ? {} : { usage: { inputTokens: 10, outputTokens: 20, reasoningTokens } }),
+    },
+  }
+}
+
+test('a settled 0.1.5 attempt keeps its reasoning timeline from the durable stream', () => {
+  const trace = foldModelTraceEvents([
+    { type: 'step/start', seq: 1, time: 1_000, data: { turn: 1, step: 1 } },
+    settled(5, 9_000, {
+      reasoningTokens: 12,
+      stream: [
+        { type: 'reasoning-chunks', time0: 3_000, index: 0, dt: [1_000], texts: ['inspect ', 'evidence'] },
+        { type: 'text-chunks', time0: 6_000, index: 1, dt: [], texts: ['done'] },
+      ],
+    }),
+  ]).get('1:1')
+
+  assert.ok(trace)
+  const attempt = trace.attempts[0]
+  assert.equal(attempt.kind, 'complete')
+  assert.deepEqual(attempt.fragments.map(fragment => [fragment.time, fragment.text]), [
+    [3_000, 'inspect '],
+    [4_000, 'evidence'],
+  ])
+  assert.equal(attempt.firstReasoningTime, 3_000)
+  assert.equal(attempt.lastReasoningTime, 4_000)
+  assert.equal(attempt.firstOutputTime, 6_000)
+  assert.equal(attempt.reasoningText, 'inspect evidence')
+  assert.equal(trace.reasoningTokens, 12)
+  assert.deepEqual(modelStageMetrics(trace, 99_000), {
+    kind: 'measured',
+    live: false,
+    totalMs: 8_000,
+    firstResponseMs: 2_000,
+    visibleReasoningMs: 1_000,
+    outputMs: 3_000,
+    unattributedMs: 2_000,
+  })
+})
+
+test('the durable stream supersedes live rows instead of doubling the reasoning', () => {
+  const trace = foldModelTraceEvents([
+    { type: 'step/start', seq: 1, time: 1_000, data: { turn: 1, step: 1 } },
+    { type: 'assistant/live-chunk', seq: 2, time: 3_000, data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'inspect ' } } },
+    { type: 'assistant/live-chunk', seq: 3, time: 4_000, data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'evidence' } } },
+    settled(5, 9_000, {
+      stream: [{ type: 'reasoning-chunks', time0: 3_000, index: 0, dt: [1_000], texts: ['inspect ', 'evidence'] }],
+    }),
+  ]).get('1:1')
+
+  assert.ok(trace)
+  assert.equal(trace.attempts[0].reasoningText, 'inspect evidence')
+  assert.deepEqual(trace.attempts[0].fragments.map(fragment => fragment.text), ['inspect ', 'evidence'])
+})
+
+test('a retried attempt keeps the reasoning timeline its durable stream proves', () => {
+  const trace = foldModelTraceEvents([
+    { type: 'step/start', seq: 1, time: 1_000, data: { turn: 1, step: 1 } },
+    {
+      type: 'assistant/attempt',
+      seq: 3,
+      time: 5_000,
+      data: {
+        turn: 1,
+        step: 1,
+        stream: [{ type: 'reasoning-chunks', time0: 2_000, index: 0, dt: [], texts: ['first attempt'] }],
+      },
+    },
+    { type: 'llm/retry', seq: 4, time: 6_000, data: { turn: 1, step: 1, retry: 1, delayMs: 500 } },
+    settled(5, 9_000, {
+      reasoning: 'second attempt',
+      stream: [{ type: 'reasoning-chunks', time0: 7_000, index: 0, dt: [], texts: ['second attempt'] }],
+    }),
+  ]).get('1:1')
+
+  assert.ok(trace)
+  assert.equal(trace.attempts.length, 2)
+  assert.equal(trace.attempts[0].kind, 'retried')
+  assert.equal(trace.attempts[0].reasoningText, 'first attempt')
+  assert.deepEqual(trace.attempts[0].fragments.map(fragment => fragment.time), [2_000])
+  assert.equal(trace.attempts[1].reasoningText, 'second attempt')
+  assert.deepEqual(trace.attempts[1].fragments.map(fragment => fragment.time), [7_000])
+})
+
+test('a pre-0.1.5 log without a durable stream keeps its live-row evidence', () => {
+  const trace = foldModelTraceEvents([
+    { type: 'step/start', seq: 1, time: 1_000, data: { turn: 1, step: 1 } },
+    { type: 'assistant/chunk', seq: 2, time: 3_000, data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'legacy' } } },
+    message(5, 9_000, { reasoning: 'legacy' }),
+  ]).get('1:1')
+
+  assert.ok(trace)
+  assert.equal(trace.attempts[0].reasoningText, 'legacy')
+  assert.deepEqual(trace.attempts[0].fragments.map(fragment => [fragment.time, fragment.text]), [[3_000, 'legacy']])
+})

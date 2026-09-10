@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Adapted to DeepSeek Harness `0.1.5-rc.1`
+
+- Read attempt timing from the durable stream `0.1.5-rc.1` embeds in
+  `assistant/message` (and `assistant/attempt`). The version stopped writing
+  `assistant/chunk` rows, so first-response, last-content, and reasoning-span
+  evidence was silently zero on every new log; the packed `time0`/`dt` delta
+  runs inside `stream` carry it instead. Legacy `assistant/chunk` and
+  `chunkrow/*` rows still fold, so older transcripts keep working.
+- Renamed the live stream event to `assistant/live-chunk` (the `assistant/chunk`
+  spelling no longer exists in the Session event map).
+- Added an evidence-only fold for `assistant/attempt`, so an attempt that
+  settled without a surface message still contributes the timing its stream
+  proves before `llm/retry` closes it.
+- Raised the Insights projection `stateVersion` to 2: rows folded by the old
+  semantics keep reporting zero timing, and the projection cache discards a
+  version mismatch instead of migrating it.
+- Replaced the external `dshx` build adapter (`tools/dshx/src/client-build.js`,
+  absent from the Harness) with `tsdown.config.ts`, which restates the two
+  artifact contracts against the Harness's own `packages/client/tsdown.client.ts`
+  preset and reads the platform module list from the Harness at build time.
+  `scripts/link-harness-dependencies.mjs` links against the 0.1.5-rc.1 layout.
+- Raised every `@deepseek-ai/*` peer and dev dependency to `^0.1.5-rc.1`.
+
 - Opening Watcher now restores every older conversation Turn automatically through RC8's public Session paging API. Normal use has no manual "load all" step; paging progress is passive, and a retry appears only when the official loader is busy or cannot advance.
 - Added whole-session Turn/Step projections so the progressive UI can show loaded-versus-total evidence while RC8 pages arrive.
 
