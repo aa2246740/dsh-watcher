@@ -670,7 +670,7 @@ function contentText(value: unknown): string {
 
 function messageItem(node: ConversationNode, coordinates: Coordinates, source: 'user' | 'steering' | 'assistant', text: string): WorkItem {
   const phase: WorkPhase = source === 'user' ? 'request' : source === 'steering' ? 'steering' : 'answer'
-  const title = source === 'user' ? '用户提出任务' : source === 'steering' ? '用户补充要求' : 'Agent 给出答复'
+  const title = source === 'user' ? '用户提出任务' : source === 'steering' ? '用户补充要求' : '完成回复'
   const clean = text.replace(/\s+/g, ' ').trim()
   return {
     id: `${source}:${node.seq}`,
@@ -1008,8 +1008,8 @@ function snapshotItems(snapshot: WatcherSnapshot): WorkItem[] {
       const text = contentText(node.content)
       if (text !== '') items.push(messageItem(node, coordinates, 'steering', text))
     } else if (node.kind === 'assistant') {
-      const hasTool = node.blocks.some(block => block.kind === 'tool-call')
-      const text = node.blocks.flatMap(block => block.kind === 'text' ? [block.text] : []).join('\n')
+      const hasTool = node.blocks.some((block: any) => block.kind === 'tool-call')
+      const text = node.blocks.flatMap((block: any) => block.kind === 'text' ? [block.text] : []).join('\n')
       if (!hasTool && text.trim() !== '') items.push(messageItem(node, coordinates, 'assistant', text))
       items.push(...imageItems(node, coordinates))
       if (node.interrupted === true) items.push(turnStateItem(node.seq + 0.9, node.time, coordinates, 'interrupted', 'Agent 输出在完成前停止'))
@@ -1334,7 +1334,7 @@ export function phaseTitle(phase: WorkPhase): string {
     verify: '验证结果',
     activate: '激活插件',
     desktop: '操作界面',
-    answer: '给出答复',
+    answer: '完成回复',
     model: '模型响应',
     wait: '等待你决定',
     failure: '处理异常',

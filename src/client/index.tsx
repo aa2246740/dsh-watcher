@@ -7,6 +7,9 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { loadCompleteHistory } from '../hub/history.ts'
 import { Watcher, type WatcherInjected } from './Watcher.tsx'
 import { registerModelTraceDefinition } from './model-trace-definition.ts'
+import { InsightsSettings } from './Insights.tsx'
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+import type {} from '@deepseek-ai/dsh-api-remotes/client'
 
 export const name = 'dsh-watcher-client'
 export const inject = ['slots', 'sessions', 'uiConversation']
@@ -17,13 +20,22 @@ export const inject = ['slots', 'sessions', 'uiConversation']
  */
 export function apply(ctx: ClientContext) {
   registerModelTraceDefinition(ctx)
+  ctx.inject(['remote', 'remote.session'], c => {
+    c.slots.inject('settings.section', () => c.slots.register({
+      name: 'settings.section', id: 'watcher-insights', order: 85,
+      label: 'Watcher', inject: () => ({ remote: c.remote }),
+    }, InsightsSettings))
+  })
   ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
     name: 'conversation.session.header.utilities',
     id: 'dsh-watcher',
     order: 50,
     label: 'Watcher',
     inject: (sessionId: SessionId): WatcherInjected => {
-      const session = ctx.sessions.binding(sessionId)?.session
+      // Workspace Host provides ISessions.binding(); keep runtime behavior.
+      const session = (ctx.sessions as any).binding?.(sessionId)?.session as
+        | { loadOlder: () => Promise<void>; getSnapshot: () => { hasMore: boolean; loadingOlder: boolean } }
+        | undefined
       if (session === undefined) throw new Error(`dsh-watcher: session "${sessionId}" is unavailable`)
       return {
         loadAllHistory: signal => loadCompleteHistory({

@@ -47,8 +47,8 @@ test('one model stage separates first response, visible reasoning, and output ge
     totalMs: 8_000,
     firstResponseMs: 4_000,
     visibleReasoningMs: 2_000,
-    outputMs: 2_000,
-    unattributedMs: 0,
+    outputMs: 1_000,
+    unattributedMs: 1_000,
   })
 })
 
@@ -107,8 +107,8 @@ test('provider retries preserve each exposed reasoning attempt instead of overwr
     totalMs: 5_000,
     firstResponseMs: 1_000,
     visibleReasoningMs: 0,
-    outputMs: 1_000,
-    unattributedMs: 3_000,
+    outputMs: 500,
+    unattributedMs: 3_500,
   })
 })
 
@@ -124,8 +124,8 @@ test('an open model stage advances only when the caller supplies a live clock', 
     live: true,
     totalMs: 6_000,
     firstResponseMs: 1_000,
-    visibleReasoningMs: 5_000,
+    visibleReasoningMs: 0,
     outputMs: null,
-    unattributedMs: 0,
+    unattributedMs: 5_000, // no content during the silence
   })
 })

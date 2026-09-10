@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, symlinkSync, realpathSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, symlinkSync, realpathSync, readFileSync, rmSync, lstatSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 
@@ -20,15 +20,16 @@ const shared = {
   '@deepseek-ai/dsh-client-ui-slots': 'packages/client/ui-slots',
   '@deepseek-ai/dsh-attachment': 'packages/attachment/attachment',
   '@deepseek-ai/dsh-session': 'packages/core/session',
+  '@deepseek-ai/dsh-session-projection': 'packages/session/session-projection',
+  '@deepseek-ai/dsh-client-ui-settings': 'packages/client/ui-settings',
   '@deepseek-ai/dsh-util-workspace-path': 'packages/util/workspace-path',
 };
 function link(name, target) {
   if (!existsSync(target)) throw new Error(`Missing Harness dependency target: ${name} (${target})`);
   const destination = join(local, name);
   mkdirSync(dirname(destination), { recursive: true });
-  if (existsSync(destination)) {
-    if (realpathSync(destination) !== realpathSync(target)) throw new Error(`Dependency mismatch: ${name}`);
-    return;
+  if (lstatSync(destination, { throwIfNoEntry: false })) {
+    try { rmSync(destination, { recursive: true, force: true }); } catch {}
   }
   symlinkSync(target, destination);
 }

@@ -113,7 +113,7 @@
   display: flex;
   flex: none;
   flex-direction: column;
-  width: 374px;
+  width: min(540px, calc(100vw - 32px));
   min-width: 0;
   min-height: 290px;
   max-height: var(--watcher-panel-max-height);
@@ -176,6 +176,27 @@
 }
 
 .summary [data-partial] { color: var(--dsw-alias-state-warn-primary); }
+
+.loadAllInlineBtn {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 4px;
+  border: 1px solid rgba(77, 107, 254, 0.4);
+  background: var(--dsw-specific-menu);
+  color: var(--dsw-static-deepseek-450);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  line-height: 16px;
+  transition: all 120ms ease;
+}
+
+.loadAllInlineBtn:hover {
+  background: var(--dsw-static-deepseek-450);
+  color: #fff;
+}
 
 .sessionTiming {
   display: grid;

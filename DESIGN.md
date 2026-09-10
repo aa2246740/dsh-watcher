@@ -364,3 +364,26 @@ Implementation markers: `data-ud-motion="watcher-eye-scan"`, `data-ud-motion="wa
 - 2026-08-21: Live-stream review exposed one identity defect behind two symptoms: the temporary model item used mutable `lastSeq` as its ordering identity, so every `reasoning-delta` replaced the phase/Step id, reset disclosure keys, and incremented unread despite adding no visible node. The regression first reproduced `seq:2 → seq:3` plus `unread 0 → 1`; the repair anchors identity to the first observed model event while retaining `lastSeq` only as an activity/result cursor. Opening a nested reasoning record now also pins its parent model stage open across settlement.
 - 2026-08-21: Final same-page 43127 HMR acceptance observed one live reasoning record grow from 28 to 68 fragments while remaining `aria-expanded=true` and keeping unread at 0. At settlement it held 527 fragments, both model and reasoning disclosures remained open, and unread became exactly 1 for the semantic running-to-complete transition. The isolated browser tab was closed afterward; the original 43127 tab and Host process were left running.
 - 2026-08-21: User review corrected the first `轮次概览` implementation, which collapsed the Turn itself and hid the requested phase summary. The replacement models two independent choices: `逐项 / 归类` organizes records, while `概览 / 详情` controls depth. Overview opens the automatic current Turn and stops at phase headers; detail opens every level. Manual folds remain authoritative while new events arrive.
+- 2026-09-09 correction: Earlier entries overstated verification and history-banner removal. Fixed queue/network 60/40, reasoning 75/25, generation 70/30 and fallback bash 85% splits were fabricated, not measurements. The previous HCI delta-L rule and complete theme-alignment claim were unverified. These claims are withdrawn.
+
+## Timing repair contract · 2026-09-09
+
+Request anchor: The user cannot distinguish the chart colors and rejects another cosmetic palette swap. Keep DSH-Watcher branding, model selection, history access, and evidence navigation. Make duration comparisons readable without guessing colors; never invent telemetry to fill a graphic.
+
+Execution: parent is sole source writer; a read-only review/test helper builds an isolated component verifier. No Harness core changes or replacement Host. Product scope is unchanged. This is a compact utility panel, not a marketing surface.
+
+Taste checkpoint: one chart layout family, aligned horizontal rows. Keep system UI typography, tabular values, and the DeepSeek-blue accent. Reject multicolor pastel segments, lavender hover banners, glow, and resizing bars. The recognizable feature is a single blue comparison column with adjacent labels and right-aligned values. Necessity and material honesty take priority over decorative splitting.
+
+| OKF reference | Decision | Artifact target | Verification |
+| --- | --- | --- | --- |
+| digital/accessibility-usability.md | Labels and numbers carry meaning without color; native buttons expose hover details on focus/click; visible focus, fixed row geometry | TimingPanel.tsx, TimingPanel.module.css | Actual component keyboard, hover, contrast and 320/540px tests |
+
+Content/implementation bindings: branch-web-product.md requires stable dimensions and nearby feedback; visual-verification.md requires rendered screenshots, not only a build; quality-gates.md requires request fit and honest data. All are bound to TimingPanel and its isolated browser verifier. Support: existing DESIGN.md and official client extension path.
+
+- Compare recorded first-response wait, visible reasoning, model requests, and tool durations independently. Their intervals can overlap; do not show a stacked total or pretend the remainder measures decode speed.
+- Settled aggregates do not include all pending work. No queue/network or internal-thinking split is available. Omit unsupported child percentages and misleading characters/second rates.
+- Palette: chart fill #4d6bfe, active fill #304fc4, neutral track #e9edf5. Labels, values, surfaces and borders reuse the Host aliases. Every row retains full opacity. Blue/track measured contrast in the fallback fixture is 3.69:1; this is not a whole-app accessibility certification.
+- Detail copy sits below the rows, never beside the section title. The bar remains 8px high on hover/focus. Narrow layout retains names and exact values.
+- History loading exists only at the top, including progress, errors and retry. DSH-Watcher remains the idle panel name.
+- Verification: isolated pinned Chromium imported the actual component, passed 54 assertions at 320/540px and saved eight screenshots. Live WebUI validation is blocked by BROWSER_ADAPTER_REQUIRED; no live HMR claim. No dev:web build watcher was observed. Reload the existing page after the rebuilt client is available.
+- Evidence: `/Users/wu/Documents/DSH-output/dsh-watcher/verify-timing-render.mjs` and `timing-evidence/report.json`. Build and regression results are reported separately at delivery.
