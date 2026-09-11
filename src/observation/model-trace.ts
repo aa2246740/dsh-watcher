@@ -115,56 +115,8 @@ function reasoningTextOf(value: unknown): string | null {
   return parts.length === 0 ? null : parts.join('\n\n')
 }
 
-/** Parse only the seven event shapes needed by the read-only model-stage fold. */
-export function modelTraceEventOf(value: unknown): ModelTraceEvent | null {
-  if (!isRecord(value) || typeof value.type !== 'string') return null
-  const location = locationOf(value)
-  if (location === null || !isRecord(value.data)) return null
-  const data = value.data
-
-  if (value.type === 'step/start') return { ...location, kind: 'step-start' }
-  if (value.type === 'step/end') return { ...location, kind: 'step-end' }
-  if (value.type === 'llm/retry') {
-    const retry = nonNegativeNumber(data.retry)
-    const delayMs = nonNegativeNumber(data.delayMs)
-    return retry === null || delayMs === null
-      ? null
-      : { ...location, kind: 'retry', retry, delayMs }
-  }
-  if (value.type === 'assistant/message') {
-    return {
-      ...location,
-      kind: 'message',
-      reasoningText: reasoningTextOf(data.message),
-      reasoningTokens: reasoningTokensOf(data.usage),
-    }
-  }
-  // RC1 historical chunkrow envelopes preserve fragment times and sequence identities.
-  if (['chunkrow/reasoning-chunks', 'chunkrow/text-chunks', 'chunkrow/tool-call-chunks'].includes(value.type)) {
-    const tool = value.type === 'chunkrow/tool-call-chunks'
-    const parts = tool ? data.args : data.texts
-    const gaps = data.dt
-    if (!Array.isArray(parts) || !parts.length || !parts.every(p => typeof p === 'string')
-      || !Array.isArray(gaps) || gaps.length !== parts.length - 1 || !gaps.every(Number.isSafeInteger)) return null
-    let time = location.time
-    const fragments: ReasoningFragment[] = []
-    for (let i = 0; i < parts.length; i++) {
-      if (i > 0) time += gaps[i - 1] as number
-      if (!Number.isSafeInteger(time)) return null
-      const text = parts[i] as string
-      if (text !== '' || (tool && typeof data.name === 'string')) fragments.push({ seq: location.seq + i, time, text })
-    }
-    const first = fragments[0]
-    if (!first) return null
-    const base = { ...location, time: first.time, lastSeq: location.seq + parts.length - 1 }
-    return value.type === 'chunkrow/reasoning-chunks'
-      ? { ...base, kind: 'reasoning-delta', text: fragments.map(f => f.text).join(''), fragments }
-      : { ...base, kind: 'output-delta' }
-  }
-  if (value.type !== 'assistant/chunk' || !isRecord(data.chunk) || typeof data.chunk.type !== 'string') {
-    return null
-  }
-  const chunk = data.chunk
+function chunkEventOf(location: ModelTraceEventBase, chunk: unknown): ModelTraceEvent | null {
+  if (!isRecord(chunk) || typeof chunk.type !== 'string') return null
   if (chunk.type === 'reasoning-delta') {
     return typeof chunk.text === 'string' && chunk.text !== ''
       ? { ...location, kind: 'reasoning-delta', text: chunk.text }
@@ -185,6 +137,122 @@ export function modelTraceEventOf(value: unknown): ModelTraceEvent | null {
     return { ...location, kind: 'usage', reasoningTokens: reasoningTokensOf(chunk.usage) }
   }
   return null
+}
+
+function packedRunEventOf(
+  location: ModelTraceEventBase,
+  type: 'reasoning-chunks' | 'text-chunks' | 'tool-call-chunks',
+  parts: unknown,
+  gaps: unknown,
+  name?: unknown,
+): ModelTraceEvent | null {
+  const tool = type === 'tool-call-chunks'
+  if (!Array.isArray(parts) || !parts.length || !parts.every(p => typeof p === 'string')
+    || !Array.isArray(gaps) || gaps.length !== parts.length - 1 || !gaps.every(Number.isSafeInteger)) return null
+  let time = location.time
+  const fragments: ReasoningFragment[] = []
+  for (let i = 0; i < parts.length; i++) {
+    if (i > 0) time += gaps[i - 1] as number
+    if (!Number.isSafeInteger(time)) return null
+    const text = parts[i] as string
+    if (text !== '' || (tool && typeof name === 'string')) fragments.push({ seq: location.seq + i, time, text })
+  }
+  const first = fragments[0]
+  if (!first) return null
+  const base = { ...location, time: first.time, lastSeq: location.seq + parts.length - 1 }
+  return type === 'reasoning-chunks'
+    ? { ...base, kind: 'reasoning-delta', text: fragments.map(f => f.text).join(''), fragments }
+    : { ...base, kind: 'output-delta' }
+}
+
+function streamEventsOf(base: ModelTraceEventBase, stream: unknown): ModelTraceEvent[] {
+  if (!Array.isArray(stream)) return []
+  const events: ModelTraceEvent[] = []
+  let seq = base.seq
+  for (const record of stream) {
+    if (!isRecord(record) || typeof record.type !== 'string') continue
+    if (record.type === 'chunk') {
+      const time = finiteNumber(record.time)
+      if (time === null) continue
+      const event = chunkEventOf({ ...base, seq, time }, record.chunk)
+      if (event !== null) {
+        events.push(event)
+        seq += 1
+      }
+      continue
+    }
+    if (record.type !== 'reasoning-chunks' && record.type !== 'text-chunks' && record.type !== 'tool-call-chunks') {
+      continue
+    }
+    const time0 = finiteNumber(record.time0)
+    if (time0 === null) continue
+    const event = packedRunEventOf(
+      { ...base, seq, time: time0 },
+      record.type,
+      record.type === 'tool-call-chunks' ? record.args : record.texts,
+      record.dt,
+      record.name,
+    )
+    if (event !== null) {
+      events.push(event)
+      seq = (event.lastSeq ?? event.seq) + 1
+    }
+  }
+  return events
+}
+
+function messageEventOf(location: ModelTraceEventBase, data: Record<string, unknown>): ModelTraceEvent {
+  return {
+    ...location,
+    kind: 'message',
+    reasoningText: reasoningTextOf(data.message),
+    reasoningTokens: reasoningTokensOf(data.usage),
+  }
+}
+
+/** Expand one Session/Conversation value into the model-stage events it carries. */
+export function modelTraceEventsOf(value: unknown): ModelTraceEvent[] {
+  if (!isRecord(value) || typeof value.type !== 'string') return []
+  const location = locationOf(value)
+  if (location === null || !isRecord(value.data)) return []
+  const data = value.data
+
+  if (value.type === 'step/start') return [{ ...location, kind: 'step-start' }]
+  if (value.type === 'step/end') return [{ ...location, kind: 'step-end' }]
+  if (value.type === 'llm/retry') {
+    const retry = nonNegativeNumber(data.retry)
+    const delayMs = nonNegativeNumber(data.delayMs)
+    return retry === null || delayMs === null ? [] : [{ ...location, kind: 'retry', retry, delayMs }]
+  }
+  if (value.type === 'assistant/attempt') return streamEventsOf(location, data.stream)
+  if (value.type === 'assistant/message') {
+    return [...streamEventsOf(location, data.stream), messageEventOf(location, data)]
+  }
+  // RC1 historical chunkrow envelopes preserve fragment times and sequence identities.
+  if (value.type === 'chunkrow/reasoning-chunks' || value.type === 'chunkrow/text-chunks' || value.type === 'chunkrow/tool-call-chunks') {
+    const event = packedRunEventOf(
+      location,
+      value.type === 'chunkrow/reasoning-chunks'
+        ? 'reasoning-chunks'
+        : value.type === 'chunkrow/text-chunks'
+          ? 'text-chunks'
+          : 'tool-call-chunks',
+      value.type === 'chunkrow/tool-call-chunks' ? data.args : data.texts,
+      data.dt,
+      data.name,
+    )
+    return event === null ? [] : [event]
+  }
+  if (value.type === 'assistant/live-chunk') {
+    const event = chunkEventOf(location, data.chunk)
+    return event === null ? [] : [event]
+  }
+  return []
+}
+
+/** Parse only the first model-stage event carried by one value. */
+export function modelTraceEventOf(value: unknown): ModelTraceEvent | null {
+  return modelTraceEventsOf(value)[0] ?? null
 }
 
 function runningAttempt(attempt: number, startedAt: number | null): ModelAttempt {
@@ -320,16 +388,16 @@ export function updateModelStepTrace(trace: ModelStepTrace, event: ModelTraceEve
 export function foldModelTraceEvents(values: readonly unknown[]): ReadonlyMap<string, ModelStepTrace> {
   const traces = new Map<string, ModelStepTrace>()
   for (const value of values) {
-    const event = modelTraceEventOf(value)
-    if (event === null) continue
-    const key = `${event.turn}:${event.step}`
-    const current = traces.get(key)
-    if (event.kind === 'step-start') {
-      traces.set(key, startModelStepTrace(event))
-      continue
+    for (const event of modelTraceEventsOf(value)) {
+      const key = `${event.turn}:${event.step}`
+      const current = traces.get(key)
+      if (event.kind === 'step-start') {
+        traces.set(key, startModelStepTrace(event))
+        continue
+      }
+      const trace = current ?? partialModelStepTrace(event)
+      traces.set(key, updateModelStepTrace(trace, event))
     }
-    const trace = current ?? partialModelStepTrace(event)
-    traces.set(key, updateModelStepTrace(trace, event))
   }
   return traces
 }

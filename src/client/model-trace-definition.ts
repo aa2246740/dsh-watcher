@@ -2,6 +2,7 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { ConversationNodeDefinition } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import {
   modelTraceEventOf,
+  modelTraceEventsOf,
   startModelStepTrace,
   updateModelStepTrace,
   type ModelStepTrace,
@@ -17,11 +18,12 @@ declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
 const modelTraceDefinition: ConversationNodeDefinition<ModelStepTrace> = {
   kind: 'dsh-watcher-model-stage',
   match: (event) => {
-    const normalized = modelTraceEventOf(event)
-    if (normalized === null) return null
+    const normalized = modelTraceEventsOf(event)
+    const first = normalized[0]
+    if (first === undefined) return null
     return {
-      id: `${normalized.turn}:${normalized.step}`,
-      role: normalized.kind === 'step-start' ? 'start' : 'update',
+      id: `${first.turn}:${first.step}`,
+      role: first.kind === 'step-start' ? 'start' : 'update',
     }
   },
   start: (_context, match) => {
@@ -32,13 +34,18 @@ const modelTraceDefinition: ConversationNodeDefinition<ModelStepTrace> = {
     return startModelStepTrace(event)
   },
   update: (context, match) => {
-    const event = modelTraceEventOf(match.event)
-    return event === null ? context.state : updateModelStepTrace(context.state, event)
+    let state = context.state
+    for (const event of modelTraceEventsOf(match.event)) {
+      state = updateModelStepTrace(state, event)
+    }
+    return state
   },
   publication: (match) => {
     if (match.event.type === 'step/start') return 'none'
-    if (match.event.type !== 'assistant/chunk') return 'immediate'
-    return match.event.data.chunk.type === 'usage' ? 'none' : 'animation-frame'
+    if (match.event.type === 'assistant/live-chunk') {
+      return match.event.data.chunk.type === 'usage' ? 'none' : 'animation-frame'
+    }
+    return 'immediate'
   },
   buildLocationData: (context, scope) => {
     if (scope !== 'step' || context.state === undefined) return null

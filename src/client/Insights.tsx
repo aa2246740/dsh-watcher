@@ -169,7 +169,7 @@ export function InsightsSettings(props: { remote?: any }) {
     let active = true
     setLoading(true)
     scanSessions(props.remote, { limit: 100 })
-      .then(res => {
+      .then((res: { total: number; rows: any[] }) => {
         if (active) {
           setSessions(res)
           // 智能感知：如果历史跨度确实超过 7 天，自动提档到 30 天；否则保持清爽的 7 天

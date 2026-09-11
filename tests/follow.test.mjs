@@ -51,12 +51,12 @@ test('a running occurrence settling is one new progress update, not a disappeari
 test('a reasoning stream refreshes content without becoming unread semantic progress', () => {
   const firstEvents = [
     { type: 'step/start', seq: 1, time: 100, data: { turn: 1, step: 3 } },
-    { type: 'assistant/chunk', seq: 2, time: 200, data: { turn: 1, step: 3, chunk: { type: 'reasoning-delta', index: 0, text: 'a' } } },
+    { type: 'assistant/live-chunk', seq: 2, time: 200, data: { turn: 1, step: 3, chunk: { type: 'reasoning-delta', index: 0, text: 'a' } } },
   ]
   const first = foldEvents(firstEvents, { running: true })
   const next = foldEvents([
     ...firstEvents,
-    { type: 'assistant/chunk', seq: 3, time: 300, data: { turn: 1, step: 3, chunk: { type: 'reasoning-delta', index: 0, text: 'b' } } },
+    { type: 'assistant/live-chunk', seq: 3, time: 300, data: { turn: 1, step: 3, chunk: { type: 'reasoning-delta', index: 0, text: 'b' } } },
   ], { running: true })
   const follow = createFollow()
 

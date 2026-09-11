@@ -1,4 +1,4 @@
-/** Read-only DSH 0.1.2-rc.1 log fold. No prompt, reasoning or tool body is retained. */
+/** Read-only DSH 0.1.5-rc.2 log fold. No prompt, reasoning or tool body is retained. */
 import { createHash } from 'node:crypto';
 export const KEY = 'watcherInsights';
 const record = v => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -79,7 +79,40 @@ function settle(s, time, usage, source) {
   }
   s.open = null;
 }
-const interesting = new Set(['request/header', 'user/message', 'turn/start', 'step/start', 'assistant/chunk', 'assistant/message', 'llm/retry', 'tool/call', 'tool/result', 'step/end', 'turn/end']);
+function applyChunk(open, chunk, time) {
+  if (!record(chunk) || typeof chunk.type !== 'string') return;
+  if (chunk.type === 'usage') {
+    open.usage = normalizeUsage(chunk.usage);
+    return;
+  }
+  if (!['reasoning-delta', 'text-delta', 'tool-call-delta'].includes(chunk.type)) return;
+  if (!(typeof chunk.text === 'string' && chunk.text.length) && !(typeof chunk.argumentsDelta === 'string' && chunk.argumentsDelta.length) && !chunk.name) return;
+  open.first ??= time; open.lastContentAt = time;
+  if (chunk.type === 'reasoning-delta') { open.reasoningFirst ??= time; open.reasoningLast = time; }
+}
+function applyStream(open, stream) {
+  if (!open || !Array.isArray(stream)) return;
+  for (const rec of stream) {
+    if (!record(rec) || typeof rec.type !== 'string') continue;
+    if (rec.type === 'chunk') {
+      applyChunk(open, rec.chunk, rec.time);
+      continue;
+    }
+    const parts = rec.type === 'tool-call-chunks' ? rec.args : rec.texts;
+    const gaps = rec.dt;
+    if (!Array.isArray(parts) || !parts.length || !parts.every(p => typeof p === 'string')
+      || !Array.isArray(gaps) || gaps.length !== parts.length - 1 || !gaps.every(Number.isSafeInteger)
+      || !Number.isSafeInteger(rec.time0)) continue;
+    let time = rec.time0;
+    for (let i = 0; i < parts.length; i++) {
+      if (i > 0) time += gaps[i - 1];
+      if (rec.type === 'reasoning-chunks') applyChunk(open, { type: 'reasoning-delta', text: parts[i] }, time);
+      else if (rec.type === 'text-chunks') applyChunk(open, { type: 'text-delta', text: parts[i] }, time);
+      else if (rec.type === 'tool-call-chunks') applyChunk(open, { type: 'tool-call-delta', argumentsDelta: parts[i], name: rec.name }, time);
+    }
+  }
+}
+const interesting = new Set(['request/header', 'user/message', 'turn/start', 'step/start', 'assistant/attempt', 'assistant/message', 'llm/retry', 'tool/call', 'tool/result', 'step/end', 'turn/end']);
 export function reduceEvent(state, event) {
   if (!record(event) || !interesting.has(event.type) || !count(event.seq) || !Number.isFinite(event.time) || !record(event.data)) return state;
   if (event.seq <= state.seq) return state;
@@ -88,12 +121,8 @@ export function reduceEvent(state, event) {
   if (event.type === 'user/message' && !state.previousFailure) return state;
   if (!['request/header', 'user/message'].includes(event.type) && !count(d.turn)) return state;
   if (!['request/header', 'user/message', 'turn/start', 'turn/end'].includes(event.type) && !count(d.step)) return state;
-  const c = d.chunk;
-  if (event.type === 'assistant/chunk') {
-    if (!state.open || state.open.turn !== d.turn || state.open.step !== d.step || !record(c)) return state;
-    if (!['reasoning-delta', 'text-delta', 'tool-call-delta', 'usage'].includes(c.type)) return state;
-    if (c.type !== 'usage' && !(typeof c.text === 'string' && c.text.length) && !(typeof c.argumentsDelta === 'string' && c.argumentsDelta.length) && !c.name) return state;
-  }
+  if ((event.type === 'assistant/attempt' || event.type === 'assistant/message') && d.stream !== undefined && !Array.isArray(d.stream)) return state;
+  if (event.type === 'assistant/attempt' && (!state.open || state.open.turn !== d.turn || state.open.step !== d.step)) return state;
   const s = structuredClone(state);
   s.wire = state.wire;
   s.seq = event.seq; s.updatedAt = event.time;
@@ -114,14 +143,13 @@ export function reduceEvent(state, event) {
     if (s.open) settle(s, event.time, null, null);
     begin(s, d, event.time);
     if (s.turn) s.turn.steps++;
-  } else if (event.type === 'assistant/chunk') {
-    if (c.type === 'usage') s.open.usage = normalizeUsage(c.usage);
-    else {
-      s.open.first ??= event.time; s.open.lastContentAt = event.time;
-      if (c.type === 'reasoning-delta') { s.open.reasoningFirst ??= event.time; s.open.reasoningLast = event.time; }
-    }
+  } else if (event.type === 'assistant/attempt') {
+    applyStream(s.open, d.stream);
   } else if (event.type === 'assistant/message') {
-    if (s.open?.turn === d.turn && s.open.step === d.step) settle(s, event.time, d.usage, d.message?.source);
+    if (s.open?.turn === d.turn && s.open.step === d.step) {
+      applyStream(s.open, d.stream);
+      settle(s, event.time, d.usage, d.message?.source);
+    }
   } else if (event.type === 'llm/retry') {
     if (s.open?.turn === d.turn && s.open.step === d.step) {
       settle(s, event.time, null, null);
@@ -170,7 +198,7 @@ export function reduceEvent(state, event) {
     if (s.turn) s.turn.endedAt = event.time;
     s.tools = []; s.previousFailure = null;
   }
-  if (event.type !== 'assistant/chunk' || c.type === 'usage' || Math.floor(event.time / 500) !== Math.floor(state.wire.updatedAt / 500)) s.wire = buildView(s);
+  s.wire = buildView(s);
   return s;
 }
 function buildView(s) {

@@ -21,7 +21,7 @@ test('a first Step presents entered user input before model work and Agent outpu
       },
     },
     {
-      type: 'assistant/chunk',
+      type: 'assistant/live-chunk',
       seq: 4,
       time: 800,
       data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: '先读取代码' } },
@@ -72,7 +72,7 @@ test('steering queued during a live Step does not move ahead of its running mode
   const picture = foldEvents([
     { type: 'step/start', seq: 1, time: 100, data: { turn: 1, step: 1 } },
     {
-      type: 'assistant/chunk',
+      type: 'assistant/live-chunk',
       seq: 2,
       time: 200,
       data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: '正在处理' } },

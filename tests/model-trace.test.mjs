@@ -28,9 +28,9 @@ function message(seq, time, { reasoning = '', reasoningTokens } = {}) {
 test('one model stage separates first response, visible reasoning, and output generation', () => {
   const traces = foldModelTraceEvents([
     { type: 'step/start', seq: 1, time: 0, data: { turn: 1, step: 1 } },
-    { type: 'assistant/chunk', seq: 2, time: 4_000, data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'inspect ' } } },
-    { type: 'assistant/chunk', seq: 3, time: 6_000, data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'evidence' } } },
-    { type: 'assistant/chunk', seq: 4, time: 7_000, data: { turn: 1, step: 1, chunk: { type: 'text-delta', index: 1, text: 'done' } } },
+    { type: 'assistant/live-chunk', seq: 2, time: 4_000, data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'inspect ' } } },
+    { type: 'assistant/live-chunk', seq: 3, time: 6_000, data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'evidence' } } },
+    { type: 'assistant/live-chunk', seq: 4, time: 7_000, data: { turn: 1, step: 1, chunk: { type: 'text-delta', index: 1, text: 'done' } } },
     message(5, 8_000, { reasoning: 'inspect evidence', reasoningTokens: 12 }),
   ])
   const trace = traces.get('1:1')
@@ -74,8 +74,8 @@ test('reasoning content without chunk timestamps stays readable without invented
 
 test('a clipped model trace anchors identity to its first observed event', () => {
   const trace = foldModelTraceEvents([
-    { type: 'assistant/chunk', seq: 8, time: 4_000, data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'first ' } } },
-    { type: 'assistant/chunk', seq: 9, time: 5_000, data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'observed' } } },
+    { type: 'assistant/live-chunk', seq: 8, time: 4_000, data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'first ' } } },
+    { type: 'assistant/live-chunk', seq: 9, time: 5_000, data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'observed' } } },
   ]).get('1:1')
 
   assert.ok(trace)
@@ -87,10 +87,10 @@ test('a clipped model trace anchors identity to its first observed event', () =>
 test('provider retries preserve each exposed reasoning attempt instead of overwriting it', () => {
   const trace = foldModelTraceEvents([
     { type: 'step/start', seq: 1, time: 0, data: { turn: 1, step: 1 } },
-    { type: 'assistant/chunk', seq: 2, time: 1_000, data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'first attempt' } } },
+    { type: 'assistant/attempt', seq: 2, time: 1_000, data: { turn: 1, step: 1, stream: [{ type: 'reasoning-chunks', time0: 1_000, index: 0, dt: [], texts: ['first attempt'] }] } },
     { type: 'llm/retry', seq: 3, time: 2_500, data: { turn: 1, step: 1, retry: 1, delayMs: 1_000, failure: { message: 'temporary', code: 'retry' }, mode: 'normal', maxRetries: 2 } },
-    { type: 'assistant/chunk', seq: 4, time: 4_000, data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'second attempt' } } },
-    { type: 'assistant/chunk', seq: 5, time: 4_500, data: { turn: 1, step: 1, chunk: { type: 'tool-call-delta', index: 1, id: 'call', name: 'bash', argumentsDelta: '{' } } },
+    { type: 'assistant/live-chunk', seq: 4, time: 4_000, data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'second attempt' } } },
+    { type: 'assistant/live-chunk', seq: 5, time: 4_500, data: { turn: 1, step: 1, chunk: { type: 'tool-call-delta', index: 1, id: 'call', name: 'bash', argumentsDelta: '{' } } },
     message(6, 5_000, { reasoning: 'second attempt' }),
   ]).get('1:1')
 
@@ -112,10 +112,52 @@ test('provider retries preserve each exposed reasoning attempt instead of overwr
   })
 })
 
+test('assistant/message.stream preserves timing without live chunks', () => {
+  const traces = foldModelTraceEvents([
+    { type: 'step/start', seq: 1, time: 0, data: { turn: 1, step: 1 } },
+    {
+      type: 'assistant/message',
+      seq: 5,
+      time: 8_000,
+      data: {
+        turn: 1,
+        step: 1,
+        stream: [
+          { type: 'reasoning-chunks', time0: 4_000, index: 0, dt: [2_000], texts: ['inspect ', 'evidence'] },
+          { type: 'text-chunks', time0: 7_000, index: 1, dt: [], texts: ['done'] },
+        ],
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'reasoning', text: 'inspect evidence' },
+            { type: 'text', text: 'done' },
+          ],
+        },
+        usage: { inputTokens: 10, outputTokens: 20, reasoningTokens: 12 },
+      },
+    },
+  ])
+  const trace = traces.get('1:1')
+
+  assert.ok(trace)
+  assert.equal(trace.attempts[0].kind, 'complete')
+  assert.equal(trace.attempts[0].reasoningText, 'inspect evidence')
+  assert.equal(trace.attempts[0].fragments.length, 2)
+  assert.deepEqual(modelStageMetrics(trace, 99_000), {
+    kind: 'measured',
+    live: false,
+    totalMs: 8_000,
+    firstResponseMs: 4_000,
+    visibleReasoningMs: 2_000,
+    outputMs: 1_000,
+    unattributedMs: 1_000,
+  })
+})
+
 test('an open model stage advances only when the caller supplies a live clock', () => {
   const trace = foldModelTraceEvents([
     { type: 'step/start', seq: 1, time: 2_000, data: { turn: 1, step: 1 } },
-    { type: 'assistant/chunk', seq: 2, time: 3_000, data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'still thinking' } } },
+    { type: 'assistant/live-chunk', seq: 2, time: 3_000, data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'still thinking' } } },
   ]).get('1:1')
 
   assert.ok(trace)

@@ -119,7 +119,7 @@ test('Step model evidence attaches to the work picture and survives an advancing
   ]
   const observed = foldEvents([
     { type: 'step/start', seq: 1, time: 100, data: { turn: 1, step: 1 } },
-    { type: 'assistant/chunk', seq: 2, time: 200, data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'inspect evidence' } } },
+    { type: 'assistant/live-chunk', seq: 2, time: 200, data: { turn: 1, step: 1, chunk: { type: 'reasoning-delta', index: 0, text: 'inspect evidence' } } },
     {
       type: 'assistant/message',
       seq: 3,
@@ -144,7 +144,7 @@ test('Step model evidence attaches to the work picture and survives an advancing
 test('a streaming model creates one temporary Step before any action exists', () => {
   const picture = foldEvents([
     { type: 'step/start', seq: 1, time: 100, data: { turn: 2, step: 7 } },
-    { type: 'assistant/chunk', seq: 2, time: 300, data: { turn: 2, step: 7, chunk: { type: 'reasoning-delta', index: 0, text: 'working' } } },
+    { type: 'assistant/live-chunk', seq: 2, time: 300, data: { turn: 2, step: 7, chunk: { type: 'reasoning-delta', index: 0, text: 'working' } } },
   ], { running: true })
   const step = picture.turns[0].groups[0].steps[0]
 
@@ -159,12 +159,12 @@ test('a streaming model creates one temporary Step before any action exists', ()
 test('reasoning fragments update one stable temporary Step instead of replacing its identity', () => {
   const firstEvents = [
     { type: 'step/start', seq: 1, time: 100, data: { turn: 2, step: 7 } },
-    { type: 'assistant/chunk', seq: 2, time: 200, data: { turn: 2, step: 7, chunk: { type: 'reasoning-delta', index: 0, text: 'inspect ' } } },
+    { type: 'assistant/live-chunk', seq: 2, time: 200, data: { turn: 2, step: 7, chunk: { type: 'reasoning-delta', index: 0, text: 'inspect ' } } },
   ]
   const first = foldEvents(firstEvents, { running: true })
   const next = foldEvents([
     ...firstEvents,
-    { type: 'assistant/chunk', seq: 3, time: 300, data: { turn: 2, step: 7, chunk: { type: 'reasoning-delta', index: 0, text: 'evidence' } } },
+    { type: 'assistant/live-chunk', seq: 3, time: 300, data: { turn: 2, step: 7, chunk: { type: 'reasoning-delta', index: 0, text: 'evidence' } } },
   ], { running: true })
   const firstGroup = first.turns[0].groups[0]
   const nextGroup = next.turns[0].groups[0]
