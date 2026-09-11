@@ -505,40 +505,6 @@
   line-height: 18px;
 }
 
-.turnMetrics {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin: 2px 8px 9px 36px;
-  padding: 7px 9px;
-  border-radius: 7px;
-  background: var(--dsw-alias-bg-layer-2);
-}
-
-.turnMetric { min-width: 0; }
-
-.turnMetric dt,
-.turnMetric dd {
-  overflow: hidden;
-  margin: 0;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.turnMetric dt {
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 12px;
-  line-height: 17px;
-}
-
-.turnMetric dd {
-  color: var(--dsw-alias-label-primary);
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  line-height: 19px;
-}
-
 .turnBody[hidden] { display: none; }
 
 .groupRail {

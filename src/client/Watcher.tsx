@@ -217,26 +217,6 @@ function useLiveClock(enabled: boolean): number {
   return now
 }
 
-function TurnMetricStrip({ performance }: { performance: TurnPerformance }) {
-  const metrics = [
-    ['模型', formatDuration(performance.modelMs)],
-    ['工具', formatDuration(performance.toolMs)],
-    ['首 token', formatDuration(performance.ttftMs)],
-  ].filter((metric): metric is [string, string] => metric[1] !== null)
-
-  if (metrics.length === 0) return null
-  return (
-    <dl className={css.turnMetrics} aria-label="对话轮次性能分解">
-      {metrics.map(([label, value]) => (
-        <div key={label} className={css.turnMetric}>
-          <dt>{label}</dt>
-          <dd>{value}</dd>
-        </div>
-      ))}
-    </dl>
-  )
-}
-
 function rawOf(item: WorkItem): string {
   if (item.rawText.trim() !== '') return item.rawText
   try {
@@ -1553,7 +1533,6 @@ function ReadyWatcher({
                               </h2>
                             </header>
                             <div id={`watcher-turn-body-${turn.turn}`} className={css.turnBody} hidden={!turnOpen}>
-                              {performance === undefined ? null : <TurnMetricStrip performance={performance} />}
                               <div className={css.groupRail}>
                                 <span className={css.railLine} aria-hidden="true" />
                                 {turn.groups.map(group => {

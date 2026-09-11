@@ -87,13 +87,13 @@ export function TimingPanel({
   let statusText = '✓ 0 报错 · 0 重试 (稳定)'
   let statusClass = css.statusOk
   if (hasError && hasRetry) {
-    statusText = `! ${stats.toolErrors} 报错 · ${stats.retries} 次重试`
+    statusText = `${stats.toolErrors} 报错 · ${stats.retries} 次重试`
     statusClass = css.statusDanger
   } else if (hasError) {
-    statusText = `! ${stats.toolErrors} 次工具报错`
+    statusText = `${stats.toolErrors} 次工具报错`
     statusClass = css.statusDanger
   } else if (hasRetry) {
-    statusText = `! ${stats.retries} 次网络重试排队`
+    statusText = `${stats.retries} 次网络重试排队`
     statusClass = css.statusWarn
   }
 

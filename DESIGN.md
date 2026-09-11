@@ -189,7 +189,7 @@ Empty copy explains that the first Turn will grow here. Partial-data copy names 
 
 Time is a nested wall-clock path, not a sum of command runtimes. The session ledger first distinguishes complete history from the currently loaded window, then splits the visible span into time inside conversation Turns and gaps between Turns. Each Turn, phase, Step, and individual execution exposes its own interval so a long-running outlier remains traceable without pretending that parallel children add linearly.
 
-Performance belongs to the conversation-turn chapter because its diagnostic value comes from comparing one Turn with another. The collapsed header shows total elapsed time and measured decode speed, so an outlier is visible before drill-down. The expanded chapter adds one quiet, non-card strip for `模型`, `工具`, and `首 token`; it does not repeat execution-level durations.
+Performance belongs to the conversation-turn chapter because its diagnostic value comes from comparing one Turn with another. The collapsed header shows total elapsed time and measured decode speed, so an outlier is visible before drill-down. Turn-level `模型` / `工具` / `首 token` already appear in the header TimingPanel (`耗时分布与瓶颈`); the expanded chapter does not repeat that strip, and drill-down stays at phase, Step, and occurrence intervals.
 
 - `会话总跨度`: first loaded `turn/start →` final `turn/end`; while live, the end is the current wall clock. If earlier history is not loaded, the label changes to `已加载跨度` and the overview says `历史未完整加载`.
 - `轮次内耗时`: union of visible Turn intervals. It includes model, tools, approvals, and in-Turn waits, but overlapping intervals are counted once.
