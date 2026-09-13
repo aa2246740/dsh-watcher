@@ -60,6 +60,7 @@
   "keywords": [
     "deepseek-harness",
     "dsh",
+    "dsh-plugin",
     "watcher",
     "agent",
     "observability",

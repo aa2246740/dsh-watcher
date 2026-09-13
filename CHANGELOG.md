@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Stock install is `dsh plugin --profile web add github:aa2246740/dsh-watcher` (pnpm on PATH, then restart the Host and reload). `dsh.bundle.patch` and committed `lib/` make that git spec boot without a `prepare` script.
+
 - Opening Watcher now restores every older conversation Turn automatically through RC8's public Session paging API. Normal use has no manual "load all" step; paging progress is passive, and a retry appears only when the official loader is busy or cannot advance.
 - Added whole-session Turn/Step projections so the progressive UI can show loaded-versus-total evidence while RC8 pages arrive.
 
