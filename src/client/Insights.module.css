@@ -1667,8 +1667,8 @@
 
 .heatmapScrollArea {
   overflow-x: auto;
-  overflow-y: hidden;
-  padding: 6px 2px 2px 2px;
+  overflow-y: visible;
+  padding: 8px 4px 14px 4px;
   width: 100%;
   box-sizing: border-box;
 }
@@ -1731,54 +1731,87 @@
   border-radius: 2px;
   box-sizing: border-box;
   cursor: pointer;
-  transition: transform 100ms ease, filter 100ms ease;
+  transition: outline 100ms ease, box-shadow 100ms ease, filter 100ms ease;
   position: relative;
 }
 
 .heatmapCellToday {
-  box-shadow: 0 0 0 2px var(--dsw-static-deepseek-450, #5686fe) !important;
-  z-index: 2;
+  outline: 1.5px solid var(--dsw-static-deepseek-450, #5686fe) !important;
+  outline-offset: 1px;
+  z-index: 5;
 }
 
+/* DeepSeek 极客蓝调色板：层级分明、温润克制、荧光微光 */
 .heatmapCell[data-level='0'] {
-  background: var(--dsw-alias-bg-layer-2);
-  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-2, rgba(255, 255, 255, 0.035));
+  border: 1px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.08));
 }
 
 .heatmapCell[data-level='1'] {
-  background: rgba(16, 185, 129, 0.28);
-  border: 1px solid rgba(16, 185, 129, 0.35);
+  background: rgba(86, 134, 254, 0.22);
+  border: 1px solid rgba(86, 134, 254, 0.35);
 }
 
 .heatmapCell[data-level='2'] {
-  background: rgba(16, 185, 129, 0.55);
-  border: 1px solid rgba(16, 185, 129, 0.65);
+  background: rgba(86, 134, 254, 0.45);
+  border: 1px solid rgba(86, 134, 254, 0.60);
 }
 
 .heatmapCell[data-level='3'] {
-  background: rgba(16, 185, 129, 0.80);
-  border: 1px solid rgba(16, 185, 129, 0.90);
+  background: rgba(86, 134, 254, 0.72);
+  border: 1px solid rgba(86, 134, 254, 0.88);
+  box-shadow: 0 0 6px rgba(86, 134, 254, 0.25);
 }
 
 .heatmapCell[data-level='4'] {
-  background: var(--dsw-static-green-500, #10b981);
-  border: 1px solid #10b981;
-  box-shadow: 0 0 4px rgba(16, 185, 129, 0.4);
+  background: var(--dsw-static-deepseek-450, #5686fe);
+  border: 1px solid #9bb8ff;
+  box-shadow: 0 0 10px rgba(86, 134, 254, 0.55);
 }
 
 .heatmapCell[data-future='true'] {
   background: transparent !important;
-  border: 1px dashed var(--dsw-alias-border-l2) !important;
-  opacity: 0.35;
+  border: 1px dashed rgba(255, 255, 255, 0.15) !important;
+  opacity: 0.28;
   cursor: default;
 }
 
+/* 优雅高光准星交互：不进行破坏排版的放大，改为高质感白光聚焦圈与环境光晕 */
 .heatmapCell:hover:not([data-future='true']),
 .heatmapCellActive {
-  transform: scale(1.35);
-  z-index: 10;
+  transform: none;
+  outline: 2px solid #ffffff !important;
+  outline-offset: 1px;
   filter: brightness(1.25);
-  box-shadow: 0 0 8px rgba(16, 185, 129, 0.6) !important;
+  box-shadow: 0 0 12px rgba(86, 134, 254, 0.85) !important;
+  z-index: 10;
+}
+
+.heatmapLiveHud {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  background: rgba(86, 134, 254, 0.12);
+  border: 1px solid rgba(86, 134, 254, 0.28);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.heatmapLiveDate {
+  font-weight: 700;
+  color: var(--dsw-static-deepseek-450, #5686fe);
+}
+
+.heatmapLiveTokens {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.heatmapLiveModel {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 10px;
 }
 
 .heatmapFoot {

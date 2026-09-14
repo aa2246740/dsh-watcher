@@ -264,7 +264,7 @@ export function InsightsSettings(props: { remote?: any }) {
   const [hoveredDayIdx, setHoveredDayIdx] = useState<number | null>(null)
   const [hoveredLineIdx, setHoveredLineIdx] = useState<number | null>(null)
   const [hoveredHeatmapDay, setHoveredHeatmapDay] = useState<any | null>(null)
-  const [hoveredHeatmapPos, setHoveredHeatmapPos] = useState<{ x: number; y: number } | null>(null)
+  const [hoveredHeatmapPos, setHoveredHeatmapPos] = useState<{ x: number; y: number; flipDown: boolean } | null>(null)
   const [sessionSort, setSessionSort] = useState<'tokens' | 'time' | 'errors'>('tokens')
   const [loading, setLoading] = useState(false)
   const [sessions, setSessions] = useState<{ total: number; rows: any[] } | null>(null)
@@ -1403,8 +1403,12 @@ export function InsightsSettings(props: { remote?: any }) {
                           className={css.chartTooltipBox}
                           style={{
                             left: `${leftPos}%`,
-                            top: `${Math.max(10, (hoveredPoint.modelStacks[hoveredPoint.modelStacks.length - 1]?.topY ?? 60) - 78)}px`,
-                            transform: 'translateX(-50%)',
+                            top: (hoveredPoint.modelStacks[hoveredPoint.modelStacks.length - 1]?.topY ?? 60) < 90
+                              ? `${(hoveredPoint.modelStacks[hoveredPoint.modelStacks.length - 1]?.topY ?? 60) + 16}px`
+                              : `${(hoveredPoint.modelStacks[hoveredPoint.modelStacks.length - 1]?.topY ?? 60) - 12}px`,
+                            transform: (hoveredPoint.modelStacks[hoveredPoint.modelStacks.length - 1]?.topY ?? 60) < 90
+                              ? 'translateX(-50%)'
+                              : 'translate(-50%, -100%)',
                           }}
                         >
                           <div className={css.chartTooltipDate}>
@@ -1623,23 +1627,43 @@ export function InsightsSettings(props: { remote?: any }) {
               <span className={css.heatmapTitle}>近 6 个月调用热力图</span>
               <span className={css.heatmapSub}>26 周活动矩阵 · 真实反映长期 AI 编码活跃节奏与频次</span>
             </div>
-            <div className={css.heatmapStatsRow}>
-              <span>活跃天数 <strong>{analytics.heatmapStats.activeDays} 天</strong></span>
-              <span>调用会话 <strong>{analytics.heatmapStats.totalHeatmapSessions} 次</strong></span>
-              <span>累计消耗 <strong>{fmtCompact(analytics.heatmapStats.totalHeatmapTokens)} Token</strong></span>
-              <span>峰值单日 <strong>{fmtCompact(analytics.heatmapStats.maxHeatmapDayTokens)} Token</strong></span>
-            </div>
+            {hoveredHeatmapDay ? (
+              <div className={css.heatmapLiveHud}>
+                <span className={css.heatmapLiveDate}>
+                  {hoveredHeatmapDay.date} {hoveredHeatmapDay.isToday ? '(今天)' : ''} · {hoveredHeatmapDay.weekday}
+                </span>
+                <span className={css.heatmapLiveTokens}>
+                  {hoveredHeatmapDay.tokens > 0 ? `${fmtCompact(hoveredHeatmapDay.tokens)} Token · ${hoveredHeatmapDay.sessions} 个会话` : '无调用活动'}
+                </span>
+                {hoveredHeatmapDay.models[0] && (
+                  <span className={css.heatmapLiveModel}>
+                    主力: {hoveredHeatmapDay.models[0].model} ({hoveredHeatmapDay.models[0].pct}%)
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className={css.heatmapStatsRow}>
+                <span>活跃天数 <strong>{analytics.heatmapStats.activeDays} 天</strong></span>
+                <span>调用会话 <strong>{analytics.heatmapStats.totalHeatmapSessions} 次</strong></span>
+                <span>累计消耗 <strong>{fmtCompact(analytics.heatmapStats.totalHeatmapTokens)} Token</strong></span>
+                <span>峰值单日 <strong>{fmtCompact(analytics.heatmapStats.maxHeatmapDayTokens)} Token</strong></span>
+              </div>
+            )}
           </div>
 
           <div className={css.chartInteractiveWrap}>
-            {/* 热力图悬停浮层 Tooltip Popover */}
+            {/* 热力图悬停浮层 Tooltip Popover (智能上下翻转，防截断/防 clip) */}
             {hoveredHeatmapDay && hoveredHeatmapPos && (
               <div
                 className={css.chartTooltipBox}
                 style={{
-                  left: `${Math.max(80, hoveredHeatmapPos.x)}px`,
-                  top: '-10px',
-                  transform: 'translate(-50%, -100%)',
+                  left: `${Math.min(Math.max(hoveredHeatmapPos.x, 100), 380)}px`,
+                  top: hoveredHeatmapPos.flipDown
+                    ? `${hoveredHeatmapPos.y + 24}px`
+                    : `${hoveredHeatmapPos.y - 12}px`,
+                  transform: hoveredHeatmapPos.flipDown
+                    ? 'translate(-50%, 0)'
+                    : 'translate(-50%, -100%)',
                 }}
               >
                 <div className={css.chartTooltipDate}>
@@ -1711,7 +1735,11 @@ export function InsightsSettings(props: { remote?: any }) {
                             onMouseEnter={() => {
                               if (!d.isFuture) {
                                 setHoveredHeatmapDay(d)
-                                setHoveredHeatmapPos({ x: 32 + w.weekIndex * 16 + 6.5, y: d.dayOfWeek })
+                                setHoveredHeatmapPos({
+                                  x: 32 + w.weekIndex * 16 + 6.5,
+                                  y: 24 + d.dayOfWeek * 16 + 6.5,
+                                  flipDown: d.dayOfWeek <= 3,
+                                })
                               }
                             }}
                           />
@@ -1725,14 +1753,14 @@ export function InsightsSettings(props: { remote?: any }) {
           </div>
 
           <div className={css.heatmapFoot}>
-            <span>只读汇总本地已缓存对话。方块颜色深浅代表当天 Token 消耗强度（自适应四分位数分阶）。</span>
+            <span>只读汇总本地已缓存对话。方块深浅代表当天 Token 消耗强度（自适应四分位数分阶）。</span>
             <div className={css.heatmapLegend}>
               <span>少</span>
-              <div className={css.heatmapLegendCell} style={{ background: 'var(--dsw-alias-bg-layer-2)', border: '1px solid var(--dsw-alias-border-l2)' }} />
-              <div className={css.heatmapLegendCell} style={{ background: 'rgba(16, 185, 129, 0.28)' }} />
-              <div className={css.heatmapLegendCell} style={{ background: 'rgba(16, 185, 129, 0.55)' }} />
-              <div className={css.heatmapLegendCell} style={{ background: 'rgba(16, 185, 129, 0.80)' }} />
-              <div className={css.heatmapLegendCell} style={{ background: 'var(--dsw-static-green-500, #10b981)' }} />
+              <div className={css.heatmapLegendCell} style={{ background: 'var(--dsw-alias-bg-layer-2, rgba(255, 255, 255, 0.04))', border: '1px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.08))' }} />
+              <div className={css.heatmapLegendCell} style={{ background: 'rgba(86, 134, 254, 0.22)', border: '1px solid rgba(86, 134, 254, 0.35)' }} />
+              <div className={css.heatmapLegendCell} style={{ background: 'rgba(86, 134, 254, 0.45)', border: '1px solid rgba(86, 134, 254, 0.60)' }} />
+              <div className={css.heatmapLegendCell} style={{ background: 'rgba(86, 134, 254, 0.72)', border: '1px solid rgba(86, 134, 254, 0.88)' }} />
+              <div className={css.heatmapLegendCell} style={{ background: 'var(--dsw-static-deepseek-450, #5686fe)', border: '1px solid #9bb8ff', boxShadow: '0 0 6px rgba(86, 134, 254, 0.45)' }} />
               <span>多</span>
             </div>
           </div>
