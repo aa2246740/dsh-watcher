@@ -49,9 +49,10 @@ export async function scanSessions(remote, { signal, limit = 30, onProgress = ()
   if (!Array.isArray(rawItems)) throw new TypeError('Session list response has no items array');
   const items = rawItems;
   const unique = [...new Map(items.filter(x => typeof x.sessionId === 'string' && !x.blank).map(x => [x.sessionId, x])).values()];
-  const picked = unique.slice(0, Math.min(100, Math.max(1, limit)));
+  const picked = unique.slice(0, Math.min(500, Math.max(1, limit)));
   const rows = picked.map(row => {
-    const candidate = row.projections?.values?.watcherInsights;
+    const rawCandidate = row.projections?.values?.watcherInsights;
+    const candidate = rawCandidate?.val ?? rawCandidate;
     let value = null, error = null;
     if (row.origin === 'subagent') error = '直接子代理暂未纳入；避免重复计算继承前缀';
     else if (candidate?.version === 1 && candidate.sessionId === row.sessionId && candidate.totals && Array.isArray(candidate.models) && Array.isArray(candidate.findings)) value = candidate;

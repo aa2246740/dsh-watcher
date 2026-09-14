@@ -12,7 +12,9 @@ function resolveHarness() {
   return resolve(selected)
 }
 
-const adapter = join(resolveHarness(), 'tools/dshx/src/client-build.js')
+const harnessRoot = resolveHarness()
+process.env.DSHX_HARNESS = harnessRoot
+const adapter = join(harnessRoot, 'tools/dshx/src/client-build.js')
 if (!existsSync(adapter)) throw new Error(`dshx client build adapter not found: ${adapter}`)
 const { externalClientBundle } = await import(pathToFileURL(adapter).href)
 export default externalClientBundle('dsh-watcher', ['src/dsh-watcher.ts'], {

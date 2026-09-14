@@ -47,6 +47,44 @@ const dayLabel = (key: string) => {
 }
 
 const PALETTE = ['#3b82f6', '#8b5cf6', '#f59e0b', '#10b981', '#ec4899', '#6366f1']
+const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+
+function computeLineChart(
+  daySeries: Array<{ key: string; label: string; total: number; weekday: string; sessions: number; segments: any[]; isToday?: boolean; isYesterday?: boolean }>,
+  width = 560,
+  height = 160,
+) {
+  const padding = { top: 20, right: 20, bottom: 28, left: 45 }
+  const plotW = Math.max(10, width - padding.left - padding.right)
+  const plotH = Math.max(10, height - padding.top - padding.bottom)
+  const maxVal = Math.max(1, ...daySeries.map(d => d.total))
+  const yMax = Math.ceil(maxVal * 1.15)
+
+  const points = daySeries.map((d, i) => {
+    const x = padding.left + (i / Math.max(1, daySeries.length - 1)) * plotW
+    const y = padding.top + plotH - (d.total / yMax) * plotH
+    return { x, y, data: d, index: i }
+  })
+
+  // 平滑贝塞尔曲线路径
+  let lineD = `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[Math.max(0, i - 1)]
+    const p1 = points[i]
+    const p2 = points[i + 1]
+    const p3 = points[Math.min(points.length - 1, i + 2)]
+    const cp1x = p1.x + (p2.x - p0.x) / 6
+    const cp1y = Math.min(padding.top + plotH, Math.max(padding.top, p1.y + (p2.y - p0.y) / 6))
+    const cp2x = p2.x - (p3.x - p1.x) / 6
+    const cp2y = Math.min(padding.top + plotH, Math.max(padding.top, p2.y - (p3.y - p1.y) / 6))
+    lineD += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`
+  }
+
+  const bottomY = padding.top + plotH
+  const areaD = `${lineD} L ${points[points.length - 1].x.toFixed(1)} ${bottomY.toFixed(1)} L ${points[0].x.toFixed(1)} ${bottomY.toFixed(1)} Z`
+
+  return { points, lineD, areaD, yMax, padding, plotW, plotH, bottomY }
+}
 
 function effortLabel(effort: string | null | undefined): string {
   if (!effort) return ''
@@ -156,7 +194,13 @@ export function InsightsSettings(props: { remote?: any }) {
   const [reasoning, setReasoning] = useState(limits.reasoningSeconds)
   const [saved, setSaved] = useState(false)
   const [userPickedRange, setUserPickedRange] = useState<boolean>(false)
-  const [range, setRange] = useState<'7' | '30'>('7')
+  const [range, setRange] = useState<'7' | '30' | '180'>('7')
+  const [customViewMode, setCustomViewMode] = useState<'bar' | 'line' | null>(null)
+  const activeViewMode = customViewMode ?? (range === '30' || range === '180' ? 'line' : 'bar')
+  const [hoveredDayIdx, setHoveredDayIdx] = useState<number | null>(null)
+  const [hoveredLineIdx, setHoveredLineIdx] = useState<number | null>(null)
+  const [hoveredHeatmapDay, setHoveredHeatmapDay] = useState<any | null>(null)
+  const [hoveredHeatmapPos, setHoveredHeatmapPos] = useState<{ x: number; y: number } | null>(null)
   const [sessionSort, setSessionSort] = useState<'tokens' | 'time' | 'errors'>('tokens')
   const [loading, setLoading] = useState(false)
   const [sessions, setSessions] = useState<{ total: number; rows: any[] } | null>(null)
@@ -168,7 +212,7 @@ export function InsightsSettings(props: { remote?: any }) {
     if (!props.remote) return
     let active = true
     setLoading(true)
-    scanSessions(props.remote, { limit: 100 })
+    scanSessions(props.remote, { limit: 300 })
       .then((res: { total: number; rows: any[] }) => {
         if (active) {
           setSessions(res)
@@ -194,7 +238,7 @@ export function InsightsSettings(props: { remote?: any }) {
   const refresh = () => {
     if (!props.remote || loading) return
     setLoading(true)
-    scanSessions(props.remote, { limit: 100 })
+    scanSessions(props.remote, { limit: 300 })
       .then(setSessions)
       .catch(console.error)
       .finally(() => setLoading(false))
@@ -375,16 +419,17 @@ export function InsightsSettings(props: { remote?: any }) {
     // 每日活动序列
     const keys: string[] = []
     for (let i = days - 1; i >= 0; i--) keys.push(dayKey(Date.now() - i * 86400000))
-    const byDay = new Map(keys.map(k => [k, new Map<string, number>()]))
+    const byDay = new Map(keys.map(k => [k, { models: new Map<string, number>(), sessions: 0 }]))
     validRows.forEach((row: any) => {
       const key = row.updatedAt ? dayKey(row.updatedAt) : keys[keys.length - 1]
       const bucket = byDay.get(key)
       if (!bucket) return
+      bucket.sessions += 1
       const models = row.value.models?.length
         ? row.value.models
         : [{ model: '未标注', tokens: row.value.totals.tokens ?? 0 }]
       models.forEach((m: any) => {
-        bucket.set(m.model, (bucket.get(m.model) ?? 0) + (m.tokens ?? 0))
+        bucket.models.set(m.model, (bucket.models.get(m.model) ?? 0) + (m.tokens ?? 0))
       })
     })
 
@@ -392,16 +437,160 @@ export function InsightsSettings(props: { remote?: any }) {
     const yesterdayStr = dayKey(Date.now() - 86400000)
 
     const daySeries = keys.map(key => {
-      const bucket = byDay.get(key) ?? new Map()
-      const segments = [...bucket.entries()]
+      const bucket = byDay.get(key) ?? { models: new Map(), sessions: 0 }
+      const segments = [...bucket.models.entries()]
         .map(([model, tokens]) => ({ model, tokens, color: colorOf(model) }))
         .sort((a, b) => b.tokens - a.tokens)
+      const totalTokens = segments.reduce((s, x) => s + x.tokens, 0)
+      const segsWithPct = segments.map(seg => ({
+        ...seg,
+        pct: totalTokens > 0 ? Math.round((seg.tokens / totalTokens) * 100) : 0,
+      }))
+      const dObj = new Date(key + 'T00:00:00')
+      const weekdayStr = WEEKDAYS[dObj.getDay()]
+      const isToday = key === todayStr
+      const isYesterday = key === yesterdayStr
       const label = range === '7'
-        ? (key === todayStr ? '今天' : key === yesterdayStr ? '昨天' : dayLabel(key))
+        ? (isToday ? '今天' : isYesterday ? '昨天' : weekdayStr)
         : (key.endsWith('01') || key.endsWith('05') || key.endsWith('10') || key.endsWith('15') || key.endsWith('20') || key.endsWith('25') ? dayLabel(key) : '')
-      return { key, label, total: segments.reduce((s, x) => s + x.tokens, 0), segments }
+      return {
+        key,
+        label,
+        weekday: weekdayStr,
+        isToday,
+        isYesterday,
+        total: totalTokens,
+        sessions: bucket.sessions,
+        segments: segsWithPct,
+      }
     })
     const dayMax = Math.max(1, ...daySeries.map(d => d.total))
+
+    // 活跃模型图例提取 (针对当前 range)
+    const activeModelMap = new Map<string, number>()
+    daySeries.forEach(d => {
+      d.segments.forEach(s => {
+        activeModelMap.set(s.model, (activeModelMap.get(s.model) ?? 0) + s.tokens)
+      })
+    })
+    const activeRangeTotal = [...activeModelMap.values()].reduce((a, b) => a + b, 0)
+    const activeRangeModels = [...activeModelMap.entries()]
+      .map(([model, tokens]) => ({
+        model,
+        tokens,
+        color: colorOf(model),
+        pct: activeRangeTotal > 0 ? Math.round((tokens / activeRangeTotal) * 100) : 0,
+      }))
+      .sort((a, b) => b.tokens - a.tokens)
+
+    // 近 6 个月（26 周，约 182 天）全景热力图数据生成 (如图 3)
+    const todayDate = new Date()
+    todayDate.setHours(23, 59, 59, 999)
+    const todayDayOfWeek = (todayDate.getDay() + 6) % 7 // 周一为 0，周日为 6
+    const currentWeekSunday = new Date(todayDate)
+    currentWeekSunday.setDate(todayDate.getDate() + (6 - todayDayOfWeek))
+
+    const numWeeks = 26
+    const heatmapStart = new Date(currentWeekSunday)
+    heatmapStart.setDate(currentWeekSunday.getDate() - (numWeeks * 7 - 1))
+    heatmapStart.setHours(0, 0, 0, 0)
+
+    const allHistoricalRows = sessions.rows.filter((r: any) => r.value && r.updatedAt && r.updatedAt >= heatmapStart.getTime())
+    const heatmapDayMap = new Map<string, { tokens: number; sessions: number; models: Map<string, number> }>()
+    allHistoricalRows.forEach((r: any) => {
+      const k = dayKey(r.updatedAt)
+      let dEntry = heatmapDayMap.get(k)
+      if (!dEntry) {
+        dEntry = { tokens: 0, sessions: 0, models: new Map() }
+        heatmapDayMap.set(k, dEntry)
+      }
+      dEntry.tokens += r.value.totals?.tokens ?? 0
+      dEntry.sessions += 1
+      ;(r.value.models ?? []).forEach((m: any) => {
+        dEntry!.models.set(m.model, (dEntry!.models.get(m.model) ?? 0) + (m.tokens ?? 0))
+      })
+    })
+
+    const nonZeroTokenDays = [...heatmapDayMap.values()].map(d => d.tokens).filter(t => t > 0).sort((a, b) => a - b)
+    const q1 = nonZeroTokenDays[Math.floor(nonZeroTokenDays.length * 0.25)] || 1
+    const q2 = nonZeroTokenDays[Math.floor(nonZeroTokenDays.length * 0.50)] || q1
+    const q3 = nonZeroTokenDays[Math.floor(nonZeroTokenDays.length * 0.75)] || q2
+    const maxHeatmapDayTokens = nonZeroTokenDays.length > 0 ? nonZeroTokenDays[nonZeroTokenDays.length - 1] : 0
+
+    const getHeatmapLevel = (tokens: number): 0 | 1 | 2 | 3 | 4 => {
+      if (!tokens || tokens <= 0) return 0
+      if (tokens <= q1) return 1
+      if (tokens <= q2) return 2
+      if (tokens <= q3) return 3
+      return 4
+    }
+
+    const heatmapWeeks: Array<{
+      weekIndex: number
+      days: Array<{
+        date: string
+        dayOfWeek: number
+        weekday: string
+        month: number
+        isFuture: boolean
+        isToday: boolean
+        tokens: number
+        sessions: number
+        models: Array<{ model: string; tokens: number; color: string; pct: number }>
+        level: 0 | 1 | 2 | 3 | 4
+      }>
+    }> = []
+
+    const heatmapMonthLabels: Array<{ colIndex: number; label: string }> = []
+    let lastRecordedMonth = -1
+
+    for (let w = 0; w < numWeeks; w++) {
+      const daysInWeek = []
+      for (let d = 0; d < 7; d++) {
+        const cur = new Date(heatmapStart)
+        cur.setDate(heatmapStart.getDate() + w * 7 + d)
+        const dateStr = dayKey(cur.getTime())
+        const month = cur.getMonth()
+        const isFuture = cur.getTime() > todayDate.getTime()
+        const isToday = dateStr === todayStr
+
+        if (d === 0 && month !== lastRecordedMonth && (heatmapMonthLabels.length === 0 || w - heatmapMonthLabels[heatmapMonthLabels.length - 1].colIndex >= 2)) {
+          heatmapMonthLabels.push({ colIndex: w, label: `${month + 1}月` })
+          lastRecordedMonth = month
+        }
+
+        const data = heatmapDayMap.get(dateStr)
+        const tokens = data?.tokens ?? 0
+        const sessionsCount = data?.sessions ?? 0
+        const modelsList = data
+          ? [...data.models.entries()]
+              .map(([m, t]) => ({
+                model: m,
+                tokens: t,
+                color: colorOf(m),
+                pct: tokens > 0 ? Math.round((t / tokens) * 100) : 0,
+              }))
+              .sort((a, b) => b.tokens - a.tokens)
+          : []
+
+        daysInWeek.push({
+          date: dateStr,
+          dayOfWeek: d,
+          weekday: WEEKDAYS[cur.getDay()],
+          month,
+          isFuture,
+          isToday,
+          tokens,
+          sessions: sessionsCount,
+          models: modelsList,
+          level: isFuture ? (0 as const) : getHeatmapLevel(tokens),
+        })
+      }
+      heatmapWeeks.push({ weekIndex: w, days: daysInWeek })
+    }
+
+    const totalHeatmapTokens = nonZeroTokenDays.reduce((acc, v) => acc + v, 0)
+    const totalHeatmapSessions = allHistoricalRows.length
 
     return {
       validCount: validRows.length,
@@ -436,6 +625,15 @@ export function InsightsSettings(props: { remote?: any }) {
       bestCacheModel,
       daySeries,
       dayMax,
+      activeRangeModels,
+      heatmapWeeks,
+      heatmapMonthLabels,
+      heatmapStats: {
+        activeDays: nonZeroTokenDays.length,
+        totalHeatmapTokens,
+        totalHeatmapSessions,
+        maxHeatmapDayTokens,
+      },
     }
   }, [sessions, range, sessionSort])
 
@@ -464,7 +662,7 @@ export function InsightsSettings(props: { remote?: any }) {
               type="button"
               className={css.rangeBtn}
               data-active={range === '7' ? '' : undefined}
-              onClick={() => { setUserPickedRange(true); setRange('7'); }}
+              onClick={() => { setUserPickedRange(true); setRange('7'); setCustomViewMode(null); }}
             >
               近 7 天
             </button>
@@ -472,9 +670,17 @@ export function InsightsSettings(props: { remote?: any }) {
               type="button"
               className={css.rangeBtn}
               data-active={range === '30' ? '' : undefined}
-              onClick={() => { setUserPickedRange(true); setRange('30'); }}
+              onClick={() => { setUserPickedRange(true); setRange('30'); setCustomViewMode(null); }}
             >
               近 30 天
+            </button>
+            <button
+              type="button"
+              className={css.rangeBtn}
+              data-active={range === '180' ? '' : undefined}
+              onClick={() => { setUserPickedRange(true); setRange('180'); setCustomViewMode(null); }}
+            >
+              近 6 个月
             </button>
           </div>
           <button type="button" className={css.settingsScanBtn} onClick={refresh} disabled={loading || !props.remote}>
@@ -984,36 +1190,451 @@ export function InsightsSettings(props: { remote?: any }) {
           ) : null}
         </div>
 
-        {/* 每日编码活跃度 (自适应舒展排版) */}
+        {/* 每日编码活跃度与走势 */}
         <div className={css.vizPanel}>
           <div className={css.vizHead}>
-            <span className={css.vizTitle}>每日编码活跃度</span>
-            <span className={css.vizSub}>近 {range} 天分布</span>
-          </div>
-          <div className={`${css.dayStack} ${range === '7' ? css.dayStackWeek : ''}`} aria-label="按日活跃柱图">
-            {(analytics?.daySeries ?? []).map(day => (
-              <div key={day.key} className={css.dayCol} title={`${day.key} · ${fmtCompact(day.total)} Token`}>
-                <div className={css.dayColFill}>
-                  {day.total > 0 ? (
-                    day.segments.map(seg => (
-                      <div key={seg.model} className={css.daySeg} style={{
-                        height: `${(seg.tokens / analytics!.dayMax) * 100}%`,
-                        background: seg.color,
-                      }} />
-                    ))
-                  ) : (
-                    <div className={css.dayEmptyDot} />
-                  )}
-                </div>
-                <span className={css.dayLabel}>{day.label}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <span className={css.vizTitle}>
+                {range === '7' ? '近 7 日活动分布' : range === '30' ? '近 30 日走势' : '近 6 个月趋势'}
+              </span>
+              <span className={css.vizSub}>
+                {activeViewMode === 'bar' ? '柱状堆叠图 · 分色对应模型' : '平滑折线图 · 活动趋势'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div className={css.viewSwitchGroup} role="group" aria-label="图表类型切换">
+                <button
+                  type="button"
+                  className={css.viewSwitchBtn}
+                  data-active={activeViewMode === 'bar' ? '' : undefined}
+                  onClick={() => setCustomViewMode('bar')}
+                >
+                  柱状图
+                </button>
+                <button
+                  type="button"
+                  className={css.viewSwitchBtn}
+                  data-active={activeViewMode === 'line' ? '' : undefined}
+                  onClick={() => setCustomViewMode('line')}
+                >
+                  折线图
+                </button>
               </div>
-            ))}
+            </div>
           </div>
+
+          {/* 图例 (Legend)：展示当前区间内活跃模型及其颜色与消耗量 */}
+          {analytics && analytics.activeRangeModels.length > 0 && (
+            <div className={css.chartLegend} aria-label="图例">
+              {analytics.activeRangeModels.map(m => (
+                <div key={m.model} className={css.chartLegendItem} title={`${m.model}: ${fmtCompact(m.tokens)} Token (${m.pct}%)`}>
+                  <i className={css.chartLegendDot} style={{ background: m.color }} />
+                  <span className={css.chartLegendName}>{m.model}</span>
+                  <span className={css.chartLegendVal}>{fmtCompact(m.tokens)} ({m.pct}%)</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 模式 A：柱状图 (带图例、顶部数值、Hover 悬浮卡片) */}
+          {activeViewMode === 'bar' ? (
+            <div className={css.chartInteractiveWrap} onMouseLeave={() => setHoveredDayIdx(null)}>
+              {/* 悬停浮层 Tooltip Popover */}
+              {hoveredDayIdx !== null && analytics?.daySeries[hoveredDayIdx] && (
+                (() => {
+                  const day = analytics.daySeries[hoveredDayIdx]
+                  const leftPos = Math.min(Math.max((hoveredDayIdx / Math.max(1, analytics.daySeries.length - 1)) * 100, 18), 82)
+                  return (
+                    <div
+                      className={css.chartTooltipBox}
+                      style={{
+                        left: `${leftPos}%`,
+                        top: '10px',
+                        transform: 'translateX(-50%)',
+                      }}
+                    >
+                      <div className={css.chartTooltipDate}>
+                        <span>{day.key}</span>
+                        <span className={css.chartTooltipDateBadge}>
+                          {day.isToday ? '今天 · ' : day.isYesterday ? '昨天 · ' : ''}{day.weekday}
+                        </span>
+                      </div>
+                      <div className={css.chartTooltipTotal}>
+                        {fmtCompact(day.total)} <span style={{ fontSize: '11px', fontWeight: 500 }}>Token</span>
+                        <span className={css.chartTooltipSessions}>· {day.sessions} 个会话</span>
+                      </div>
+                      {day.segments.length > 0 && <div className={css.chartTooltipDivider} />}
+                      <div className={css.chartTooltipModelList}>
+                        {day.segments.map(seg => (
+                          <div key={seg.model} className={css.chartTooltipModelRow}>
+                            <div className={css.chartTooltipModelLeft}>
+                              <i className={css.chartTooltipModelDot} style={{ background: seg.color }} />
+                              <span className={css.chartTooltipModelName} title={seg.model}>{seg.model}</span>
+                            </div>
+                            <span className={css.chartTooltipModelRight}>
+                              {fmtCompact(seg.tokens)} ({seg.pct}%)
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })()
+              )}
+
+              <div className={`${css.dayStack} ${range === '7' ? css.dayStackWeek : ''}`} aria-label="按日活跃柱图">
+                {(analytics?.daySeries ?? []).map((day, idx) => (
+                  <div
+                    key={day.key}
+                    className={css.dayCol}
+                    onMouseEnter={() => setHoveredDayIdx(idx)}
+                  >
+                    {/* 柱顶数值 */}
+                    <div className={css.dayBarTopLabel}>
+                      {day.total > 0 ? fmtCompact(day.total) : ''}
+                    </div>
+                    <div className={`${css.dayColFill} ${hoveredDayIdx === idx ? css.dayColFillActive : ''}`}>
+                      {day.total > 0 ? (
+                        day.segments.map(seg => (
+                          <div key={seg.model} className={css.daySeg} style={{
+                            height: `${(seg.tokens / analytics!.dayMax) * 100}%`,
+                            background: seg.color,
+                          }} />
+                        ))
+                      ) : (
+                        <div className={css.dayEmptyDot} />
+                      )}
+                    </div>
+                    <span className={`${css.dayLabel} ${day.isToday ? css.dayLabelToday : ''}`}>
+                      {day.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            /* 模式 B：平滑折线图 (带网格、面积渐变、吸附光标与悬停卡片，如图 2) */
+            <div className={css.chartInteractiveWrap} onMouseLeave={() => setHoveredLineIdx(null)}>
+              {analytics && analytics.daySeries.length > 0 && (
+                (() => {
+                  const lineData = computeLineChart(analytics.daySeries, 560, 160)
+                  const hoveredPoint = hoveredLineIdx !== null ? lineData.points[hoveredLineIdx] : null
+                  const leftPos = hoveredPoint
+                    ? Math.min(Math.max((hoveredLineIdx! / Math.max(1, lineData.points.length - 1)) * 100, 18), 82)
+                    : 50
+
+                  return (
+                    <div className={css.lineChartWrap}>
+                      {/* 悬停浮层 Tooltip Popover */}
+                      {hoveredPoint && (
+                        <div
+                          className={css.chartTooltipBox}
+                          style={{
+                            left: `${leftPos}%`,
+                            top: `${Math.max(10, hoveredPoint.y - 78)}px`,
+                            transform: 'translateX(-50%)',
+                          }}
+                        >
+                          <div className={css.chartTooltipDate}>
+                            <span>{hoveredPoint.data.key}</span>
+                            <span className={css.chartTooltipDateBadge}>
+                              {hoveredPoint.data.isToday ? '今天 · ' : hoveredPoint.data.isYesterday ? '昨天 · ' : ''}{hoveredPoint.data.weekday}
+                            </span>
+                          </div>
+                          <div className={css.chartTooltipTotal}>
+                            {fmtCompact(hoveredPoint.data.total)} <span style={{ fontSize: '11px', fontWeight: 500 }}>Token</span>
+                            <span className={css.chartTooltipSessions}>· {hoveredPoint.data.sessions} 个会话</span>
+                          </div>
+                          {hoveredPoint.data.segments.length > 0 && <div className={css.chartTooltipDivider} />}
+                          <div className={css.chartTooltipModelList}>
+                            {hoveredPoint.data.segments.map((seg: any) => (
+                              <div key={seg.model} className={css.chartTooltipModelRow}>
+                                <div className={css.chartTooltipModelLeft}>
+                                  <i className={css.chartTooltipModelDot} style={{ background: seg.color }} />
+                                  <span className={css.chartTooltipModelName} title={seg.model}>{seg.model}</span>
+                                </div>
+                                <span className={css.chartTooltipModelRight}>
+                                  {fmtCompact(seg.tokens)} ({seg.pct}%)
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <svg
+                        className={css.lineChartSvg}
+                        viewBox="0 0 560 160"
+                        preserveAspectRatio="none"
+                        onMouseMove={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect()
+                          const scaleX = 560 / rect.width
+                          const svgX = (e.clientX - rect.left) * scaleX
+                          let nearestIdx = 0
+                          let minDiff = Infinity
+                          lineData.points.forEach((p, idx) => {
+                            const diff = Math.abs(p.x - svgX)
+                            if (diff < minDiff) {
+                              minDiff = diff
+                              nearestIdx = idx
+                            }
+                          })
+                          setHoveredLineIdx(nearestIdx)
+                        }}
+                      >
+                        <defs>
+                          <linearGradient id="dshWatcherLineGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#5686fe" stopOpacity="0.32" />
+                            <stop offset="100%" stopColor="#5686fe" stopOpacity="0.0" />
+                          </linearGradient>
+                        </defs>
+
+                        {/* 水平网格线与 Y 轴刻度 */}
+                        <line
+                          x1={lineData.padding.left}
+                          y1={lineData.padding.top}
+                          x2={560 - lineData.padding.right}
+                          y2={lineData.padding.top}
+                          className={css.lineGrid}
+                        />
+                        <text x={lineData.padding.left - 6} y={lineData.padding.top + 3} textAnchor="end" className={css.lineAxisText}>
+                          {fmtCompact(lineData.yMax)}
+                        </text>
+
+                        <line
+                          x1={lineData.padding.left}
+                          y1={lineData.padding.top + lineData.plotH / 2}
+                          x2={560 - lineData.padding.right}
+                          y2={lineData.padding.top + lineData.plotH / 2}
+                          className={css.lineGrid}
+                        />
+                        <text x={lineData.padding.left - 6} y={lineData.padding.top + lineData.plotH / 2 + 3} textAnchor="end" className={css.lineAxisText}>
+                          {fmtCompact(Math.round(lineData.yMax / 2))}
+                        </text>
+
+                        <line
+                          x1={lineData.padding.left}
+                          y1={lineData.bottomY}
+                          x2={560 - lineData.padding.right}
+                          y2={lineData.bottomY}
+                          stroke="var(--dsw-alias-border-l2)"
+                          strokeWidth="1"
+                        />
+                        <text x={lineData.padding.left - 6} y={lineData.bottomY + 3} textAnchor="end" className={css.lineAxisText}>
+                          0
+                        </text>
+
+                        {/* X 轴日期刻度 */}
+                        {lineData.points.map((p, idx) => {
+                          const isKeyDate = lineData.points.length <= 10
+                            ? true
+                            : idx === 0 || idx === lineData.points.length - 1 || idx % Math.max(1, Math.floor(lineData.points.length / 5)) === 0
+                          if (!isKeyDate) return null
+                          const text = p.data.isToday ? '今天' : p.data.label || dayLabel(p.data.key)
+                          return (
+                            <text
+                              key={p.data.key}
+                              x={p.x}
+                              y={lineData.bottomY + 16}
+                              textAnchor="middle"
+                              className={css.lineAxisText}
+                              fill={p.data.isToday ? 'var(--dsw-static-deepseek-450, #5686fe)' : undefined}
+                              fontWeight={p.data.isToday ? '700' : undefined}
+                            >
+                              {text}
+                            </text>
+                          )
+                        })}
+
+                        {/* 面积填充 */}
+                        <path d={lineData.areaD} fill="url(#dshWatcherLineGrad)" />
+
+                        {/* 趋势折线 */}
+                        <path
+                          d={lineData.lineD}
+                          fill="none"
+                          stroke="var(--dsw-static-deepseek-450, #5686fe)"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+
+                        {/* 数据点 */}
+                        {lineData.points.map(p => (
+                          p.data.total > 0 ? (
+                            <circle
+                              key={p.data.key}
+                              cx={p.x}
+                              cy={p.y}
+                              r="2.5"
+                              fill="var(--dsw-static-deepseek-450, #5686fe)"
+                            />
+                          ) : null
+                        ))}
+
+                        {/* 悬停光标与吸附高亮圆点 */}
+                        {hoveredPoint && (
+                          <g>
+                            <line
+                              x1={hoveredPoint.x}
+                              y1={lineData.padding.top}
+                              x2={hoveredPoint.x}
+                              y2={lineData.bottomY}
+                              className={css.lineCursor}
+                            />
+                            <circle
+                              cx={hoveredPoint.x}
+                              cy={hoveredPoint.y}
+                              r="6"
+                              className={css.lineActiveOuter}
+                            />
+                            <circle
+                              cx={hoveredPoint.x}
+                              cy={hoveredPoint.y}
+                              r="3.5"
+                              className={css.lineActiveInner}
+                            />
+                          </g>
+                        )}
+                      </svg>
+                    </div>
+                  )
+                })()
+              )}
+            </div>
+          )}
+
           <div className={css.chartFoot}>
-            每日柱高代表当天最后活动的对话 Token 汇总，分色对应左侧调用模型。
+            {activeViewMode === 'bar'
+              ? '每日柱高代表当天最后活动的对话 Token 汇总，分色对应上方模型图例。'
+              : '折线展示编码活跃趋势，鼠标滑动可透视任意一天的 Token 消耗与调用明细。'}
           </div>
         </div>
       </div>
+
+      {/* 5. 近 6 个月调用热力图 (GitHub 贡献矩阵风格 Calendar Heatmap，如图 3) */}
+      {analytics && (
+        <div className={css.heatmapPanel} onMouseLeave={() => setHoveredHeatmapDay(null)}>
+          <div className={css.heatmapHead}>
+            <div className={css.heatmapTitleGroup}>
+              <span className={css.heatmapTitle}>近 6 个月调用热力图</span>
+              <span className={css.heatmapSub}>26 周活动矩阵 · 真实反映长期 AI 编码活跃节奏与频次</span>
+            </div>
+            <div className={css.heatmapStatsRow}>
+              <span>活跃天数 <strong>{analytics.heatmapStats.activeDays} 天</strong></span>
+              <span>调用会话 <strong>{analytics.heatmapStats.totalHeatmapSessions} 次</strong></span>
+              <span>累计消耗 <strong>{fmtCompact(analytics.heatmapStats.totalHeatmapTokens)} Token</strong></span>
+              <span>峰值单日 <strong>{fmtCompact(analytics.heatmapStats.maxHeatmapDayTokens)} Token</strong></span>
+            </div>
+          </div>
+
+          <div className={css.chartInteractiveWrap}>
+            {/* 热力图悬停浮层 Tooltip Popover */}
+            {hoveredHeatmapDay && hoveredHeatmapPos && (
+              <div
+                className={css.chartTooltipBox}
+                style={{
+                  left: `${Math.min(Math.max(hoveredHeatmapPos.x, 18), 82)}%`,
+                  top: '-10px',
+                  transform: 'translate(-50%, -100%)',
+                }}
+              >
+                <div className={css.chartTooltipDate}>
+                  <span>{hoveredHeatmapDay.date}</span>
+                  <span className={css.chartTooltipDateBadge}>
+                    {hoveredHeatmapDay.isToday ? '今天 · ' : ''}{hoveredHeatmapDay.weekday}
+                  </span>
+                </div>
+                <div className={css.chartTooltipTotal}>
+                  {hoveredHeatmapDay.tokens > 0 ? (
+                    <>
+                      {fmtCompact(hoveredHeatmapDay.tokens)} <span style={{ fontSize: '11px', fontWeight: 500 }}>Token</span>
+                      <span className={css.chartTooltipSessions}>· {hoveredHeatmapDay.sessions} 个会话</span>
+                    </>
+                  ) : (
+                    <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--dsw-alias-label-tertiary)' }}>当日未产生模型调用</span>
+                  )}
+                </div>
+                {hoveredHeatmapDay.models.length > 0 && <div className={css.chartTooltipDivider} />}
+                <div className={css.chartTooltipModelList}>
+                  {hoveredHeatmapDay.models.map((seg: any) => (
+                    <div key={seg.model} className={css.chartTooltipModelRow}>
+                      <div className={css.chartTooltipModelLeft}>
+                        <i className={css.chartTooltipModelDot} style={{ background: seg.color }} />
+                        <span className={css.chartTooltipModelName} title={seg.model}>{seg.model}</span>
+                      </div>
+                      <span className={css.chartTooltipModelRight}>
+                        {fmtCompact(seg.tokens)} ({seg.pct}%)
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className={css.heatmapScrollArea}>
+              <div className={css.heatmapContainer}>
+                {/* 顶部月份标注 */}
+                <div className={css.heatmapMonthsRow}>
+                  {analytics.heatmapMonthLabels.map(m => (
+                    <span
+                      key={`${m.colIndex}-${m.label}`}
+                      className={css.heatmapMonthLabel}
+                      style={{ left: `${(m.colIndex / 26) * 100}%` }}
+                    >
+                      {m.label}
+                    </span>
+                  ))}
+                </div>
+
+                {/* 矩阵主体：左侧星期标签 + 26 列方块 */}
+                <div className={css.heatmapGrid}>
+                  <div className={css.heatmapWeekdaysCol}>
+                    <span>周一</span>
+                    <span>周三</span>
+                    <span>周五</span>
+                    <span>周日</span>
+                  </div>
+
+                  <div className={css.heatmapWeeksRow}>
+                    {analytics.heatmapWeeks.map(w => (
+                      <div key={w.weekIndex} className={css.heatmapWeekCol}>
+                        {w.days.map(d => (
+                          <div
+                            key={d.date}
+                            className={`${css.heatmapCell} ${hoveredHeatmapDay?.date === d.date ? css.heatmapCellActive : ''}`}
+                            data-level={d.level}
+                            data-future={d.isFuture ? 'true' : undefined}
+                            onMouseEnter={() => {
+                              if (!d.isFuture) {
+                                setHoveredHeatmapDay(d)
+                                setHoveredHeatmapPos({ x: (w.weekIndex / 26) * 100, y: d.dayOfWeek })
+                              }
+                            }}
+                          />
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className={css.heatmapFoot}>
+            <span>只读汇总本地已缓存对话。方块颜色深浅代表当天 Token 消耗强度（自适应四分位数分阶）。</span>
+            <div className={css.heatmapLegend}>
+              <span>少</span>
+              <div className={css.heatmapLegendCell} style={{ background: 'var(--dsw-alias-bg-layer-2)', border: '1px solid var(--dsw-alias-border-l2)' }} />
+              <div className={css.heatmapLegendCell} style={{ background: 'rgba(16, 185, 129, 0.28)' }} />
+              <div className={css.heatmapLegendCell} style={{ background: 'rgba(16, 185, 129, 0.55)' }} />
+              <div className={css.heatmapLegendCell} style={{ background: 'rgba(16, 185, 129, 0.80)' }} />
+              <div className={css.heatmapLegendCell} style={{ background: 'var(--dsw-static-green-500, #10b981)' }} />
+              <span>多</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 重点对话账单：严格按选定维度降序排序！ */}
       <div className={css.vizPanel}>
