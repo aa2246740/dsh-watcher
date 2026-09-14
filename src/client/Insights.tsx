@@ -49,41 +49,105 @@ const dayLabel = (key: string) => {
 const PALETTE = ['#3b82f6', '#8b5cf6', '#f59e0b', '#10b981', '#ec4899', '#6366f1']
 const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 
-function computeLineChart(
+function computeStackedLineChart(
   daySeries: Array<{ key: string; label: string; total: number; weekday: string; sessions: number; segments: any[]; isToday?: boolean; isYesterday?: boolean }>,
+  modelsList: Array<{ model: string; color: string; tokens: number; pct: number }>,
   width = 560,
   height = 160,
 ) {
   const padding = { top: 20, right: 20, bottom: 28, left: 45 }
   const plotW = Math.max(10, width - padding.left - padding.right)
   const plotH = Math.max(10, height - padding.top - padding.bottom)
+  const bottomY = padding.top + plotH
+
   const maxVal = Math.max(1, ...daySeries.map(d => d.total))
   const yMax = Math.ceil(maxVal * 1.15)
+  const yCoord = (val: number) => bottomY - (val / yMax) * plotH
 
-  const points = daySeries.map((d, i) => {
-    const x = padding.left + (i / Math.max(1, daySeries.length - 1)) * plotW
-    const y = padding.top + plotH - (d.total / yMax) * plotH
-    return { x, y, data: d, index: i }
+  // 按图例顺序作为堆叠图层：基底为主要模型，逐层向上堆叠
+  const effectiveModels = modelsList.length > 0
+    ? modelsList
+    : [{ model: '全部模型', color: '#5686fe', tokens: maxVal, pct: 100 }]
+
+  const stackLevels = daySeries.map((d, dayIdx) => {
+    const x = padding.left + (dayIdx / Math.max(1, daySeries.length - 1)) * plotW
+    let acc = 0
+    const modelStacks = effectiveModels.map(m => {
+      const seg = d.segments.find((s: any) => s.model === m.model)
+      const tokens = seg ? seg.tokens : 0
+      const bTokens = acc
+      acc += tokens
+      const tTokens = acc
+      return {
+        model: m.model,
+        color: m.color,
+        tokens,
+        bottomY: yCoord(bTokens),
+        topY: yCoord(tTokens),
+      }
+    })
+    return {
+      index: dayIdx,
+      x,
+      total: d.total,
+      data: d,
+      modelStacks,
+    }
   })
 
-  // 平滑贝塞尔曲线路径
-  let lineD = `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`
-  for (let i = 0; i < points.length - 1; i++) {
-    const p0 = points[Math.max(0, i - 1)]
-    const p1 = points[i]
-    const p2 = points[i + 1]
-    const p3 = points[Math.min(points.length - 1, i + 2)]
-    const cp1x = p1.x + (p2.x - p0.x) / 6
-    const cp1y = Math.min(padding.top + plotH, Math.max(padding.top, p1.y + (p2.y - p0.y) / 6))
-    const cp2x = p2.x - (p3.x - p1.x) / 6
-    const cp2y = Math.min(padding.top + plotH, Math.max(padding.top, p2.y - (p3.y - p1.y) / 6))
-    lineD += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`
+  const buildSpline = (pts: Array<{ x: number; y: number }>) => {
+    if (pts.length <= 1) return pts.length === 1 ? `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}` : ''
+    let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[Math.max(0, i - 1)]
+      const p1 = pts[i]
+      const p2 = pts[i + 1]
+      const p3 = pts[Math.min(pts.length - 1, i + 2)]
+      const cp1x = p1.x + (p2.x - p0.x) / 6
+      const cp1y = Math.min(bottomY, Math.max(padding.top, p1.y + (p2.y - p0.y) / 6))
+      const cp2x = p2.x - (p3.x - p1.x) / 6
+      const cp2y = Math.min(bottomY, Math.max(padding.top, p2.y - (p3.y - p1.y) / 6))
+      d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`
+    }
+    return d
   }
 
-  const bottomY = padding.top + plotH
-  const areaD = `${lineD} L ${points[points.length - 1].x.toFixed(1)} ${bottomY.toFixed(1)} L ${points[0].x.toFixed(1)} ${bottomY.toFixed(1)} Z`
+  const buildSegmentSpline = (pts: Array<{ x: number; y: number }>) => {
+    let d = ''
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[Math.max(0, i - 1)]
+      const p1 = pts[i]
+      const p2 = pts[i + 1]
+      const p3 = pts[Math.min(pts.length - 1, i + 2)]
+      const cp1x = p1.x + (p2.x - p0.x) / 6
+      const cp1y = Math.min(bottomY, Math.max(padding.top, p1.y + (p2.y - p0.y) / 6))
+      const cp2x = p2.x - (p3.x - p1.x) / 6
+      const cp2y = Math.min(bottomY, Math.max(padding.top, p2.y - (p3.y - p1.y) / 6))
+      d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`
+    }
+    return d
+  }
 
-  return { points, lineD, areaD, yMax, padding, plotW, plotH, bottomY }
+  // 为每个模型生成独立堆叠面积层与边界折线
+  const layers = effectiveModels.map((m, mIdx) => {
+    const topPts = stackLevels.map(sl => ({ x: sl.x, y: sl.modelStacks[mIdx].topY }))
+    const bottomPts = stackLevels.map(sl => ({ x: sl.x, y: sl.modelStacks[mIdx].bottomY }))
+
+    const lineD = buildSpline(topPts)
+    const revBottom = [...bottomPts].reverse()
+    const bottomSeg = buildSegmentSpline(revBottom)
+    const areaD = `${lineD} L ${revBottom[0].x.toFixed(1)} ${revBottom[0].y.toFixed(1)}${bottomSeg} Z`
+
+    return {
+      model: m.model,
+      color: m.color,
+      lineD,
+      areaD,
+      topPts,
+    }
+  })
+
+  return { layers, stackLevels, yMax, bottomY, padding, plotW, plotH }
 }
 
 function effortLabel(effort: string | null | undefined): string {
@@ -1313,14 +1377,16 @@ export function InsightsSettings(props: { remote?: any }) {
               </div>
             </div>
           ) : (
-            /* 模式 B：平滑折线图 (带网格、面积渐变、吸附光标与悬停卡片，如图 2) */
+            /* 模式 B：平滑堆叠折线图 (按模型分色多层堆叠、网格渐变、吸附光标与悬停卡片，如图 2) */
             <div className={css.chartInteractiveWrap} onMouseLeave={() => setHoveredLineIdx(null)}>
               {analytics && analytics.daySeries.length > 0 && (
                 (() => {
-                  const lineData = computeLineChart(analytics.daySeries, 560, 160)
-                  const hoveredPoint = hoveredLineIdx !== null ? lineData.points[hoveredLineIdx] : null
+                  const lineData = computeStackedLineChart(analytics.daySeries, analytics.activeRangeModels, 560, 160)
+                  const hoveredPoint = hoveredLineIdx !== null && hoveredLineIdx < lineData.stackLevels.length
+                    ? lineData.stackLevels[hoveredLineIdx]
+                    : null
                   const leftPos = hoveredPoint
-                    ? Math.min(Math.max((hoveredLineIdx! / Math.max(1, lineData.points.length - 1)) * 100, 18), 82)
+                    ? Math.min(Math.max((hoveredLineIdx! / Math.max(1, lineData.stackLevels.length - 1)) * 100, 18), 82)
                     : 50
 
                   return (
@@ -1331,7 +1397,7 @@ export function InsightsSettings(props: { remote?: any }) {
                           className={css.chartTooltipBox}
                           style={{
                             left: `${leftPos}%`,
-                            top: `${Math.max(10, hoveredPoint.y - 78)}px`,
+                            top: `${Math.max(10, (hoveredPoint.modelStacks[hoveredPoint.modelStacks.length - 1]?.topY ?? 60) - 78)}px`,
                             transform: 'translateX(-50%)',
                           }}
                         >
@@ -1372,8 +1438,8 @@ export function InsightsSettings(props: { remote?: any }) {
                           const svgX = (e.clientX - rect.left) * scaleX
                           let nearestIdx = 0
                           let minDiff = Infinity
-                          lineData.points.forEach((p, idx) => {
-                            const diff = Math.abs(p.x - svgX)
+                          lineData.stackLevels.forEach((sl, idx) => {
+                            const diff = Math.abs(sl.x - svgX)
                             if (diff < minDiff) {
                               minDiff = diff
                               nearestIdx = idx
@@ -1383,10 +1449,19 @@ export function InsightsSettings(props: { remote?: any }) {
                         }}
                       >
                         <defs>
-                          <linearGradient id="dshWatcherLineGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#5686fe" stopOpacity="0.32" />
-                            <stop offset="100%" stopColor="#5686fe" stopOpacity="0.0" />
-                          </linearGradient>
+                          {lineData.layers.map((layer, mIdx) => (
+                            <linearGradient
+                              key={`grad_${layer.model}`}
+                              id={`dshWatcherLayerGrad_${mIdx}`}
+                              x1="0"
+                              y1="0"
+                              x2="0"
+                              y2="1"
+                            >
+                              <stop offset="0%" stopColor={layer.color} stopOpacity="0.55" />
+                              <stop offset="100%" stopColor={layer.color} stopOpacity="0.18" />
+                            </linearGradient>
+                          ))}
                         </defs>
 
                         {/* 水平网格线与 Y 轴刻度 */}
@@ -1425,54 +1500,66 @@ export function InsightsSettings(props: { remote?: any }) {
                         </text>
 
                         {/* X 轴日期刻度 */}
-                        {lineData.points.map((p, idx) => {
-                          const isKeyDate = lineData.points.length <= 10
+                        {lineData.stackLevels.map((sl, idx) => {
+                          const isKeyDate = lineData.stackLevels.length <= 10
                             ? true
-                            : idx === 0 || idx === lineData.points.length - 1 || idx % Math.max(1, Math.floor(lineData.points.length / 5)) === 0
+                            : idx === 0 || idx === lineData.stackLevels.length - 1 || idx % Math.max(1, Math.floor(lineData.stackLevels.length / 5)) === 0
                           if (!isKeyDate) return null
-                          const text = p.data.isToday ? '今天' : p.data.label || dayLabel(p.data.key)
+                          const text = sl.data.isToday ? '今天' : sl.data.label || dayLabel(sl.data.key)
                           return (
                             <text
-                              key={p.data.key}
-                              x={p.x}
+                              key={sl.data.key}
+                              x={sl.x}
                               y={lineData.bottomY + 16}
                               textAnchor="middle"
                               className={css.lineAxisText}
-                              fill={p.data.isToday ? 'var(--dsw-static-deepseek-450, #5686fe)' : undefined}
-                              fontWeight={p.data.isToday ? '700' : undefined}
+                              fill={sl.data.isToday ? 'var(--dsw-static-deepseek-450, #5686fe)' : undefined}
+                              fontWeight={sl.data.isToday ? '700' : undefined}
                             >
                               {text}
                             </text>
                           )
                         })}
 
-                        {/* 面积填充 */}
-                        <path d={lineData.areaD} fill="url(#dshWatcherLineGrad)" />
-
-                        {/* 趋势折线 */}
-                        <path
-                          d={lineData.lineD}
-                          fill="none"
-                          stroke="var(--dsw-static-deepseek-450, #5686fe)"
-                          strokeWidth="2.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-
-                        {/* 数据点 */}
-                        {lineData.points.map(p => (
-                          p.data.total > 0 ? (
-                            <circle
-                              key={p.data.key}
-                              cx={p.x}
-                              cy={p.y}
-                              r="2.5"
-                              fill="var(--dsw-static-deepseek-450, #5686fe)"
-                            />
-                          ) : null
+                        {/* 各模型堆叠面积层 */}
+                        {lineData.layers.map((layer, mIdx) => (
+                          <path
+                            key={`area_${layer.model}`}
+                            d={layer.areaD}
+                            fill={`url(#dshWatcherLayerGrad_${mIdx})`}
+                          />
                         ))}
 
-                        {/* 悬停光标与吸附高亮圆点 */}
+                        {/* 各模型堆叠边界折线 */}
+                        {lineData.layers.map((layer) => (
+                          <path
+                            key={`line_${layer.model}`}
+                            d={layer.lineD}
+                            fill="none"
+                            stroke={layer.color}
+                            strokeWidth="2.2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        ))}
+
+                        {/* 各模型数据节点圆点 */}
+                        {lineData.stackLevels.map((sl) => {
+                          return sl.modelStacks.map((ms: any) => {
+                            if (ms.tokens <= 0) return null
+                            return (
+                              <circle
+                                key={`dot_${ms.model}_${sl.index}`}
+                                cx={sl.x}
+                                cy={ms.topY}
+                                r="2"
+                                fill={ms.color}
+                              />
+                            )
+                          })
+                        })}
+
+                        {/* 悬停光标与各层吸附高亮圆点 */}
                         {hoveredPoint && (
                           <g>
                             <line
@@ -1482,18 +1569,28 @@ export function InsightsSettings(props: { remote?: any }) {
                               y2={lineData.bottomY}
                               className={css.lineCursor}
                             />
-                            <circle
-                              cx={hoveredPoint.x}
-                              cy={hoveredPoint.y}
-                              r="6"
-                              className={css.lineActiveOuter}
-                            />
-                            <circle
-                              cx={hoveredPoint.x}
-                              cy={hoveredPoint.y}
-                              r="3.5"
-                              className={css.lineActiveInner}
-                            />
+                            {hoveredPoint.modelStacks.map((ms: any) => {
+                              if (ms.tokens <= 0) return null
+                              return (
+                                <g key={`hover_dot_${ms.model}`}>
+                                  <circle
+                                    cx={hoveredPoint.x}
+                                    cy={ms.topY}
+                                    r="6"
+                                    fill={ms.color}
+                                    fillOpacity="0.35"
+                                  />
+                                  <circle
+                                    cx={hoveredPoint.x}
+                                    cy={ms.topY}
+                                    r="3.5"
+                                    fill={ms.color}
+                                    stroke="#ffffff"
+                                    strokeWidth="1.5"
+                                  />
+                                </g>
+                              )
+                            })}
                           </g>
                         )}
                       </svg>
