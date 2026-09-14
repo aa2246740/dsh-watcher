@@ -606,10 +606,11 @@ export function InsightsSettings(props: { remote?: any }) {
     }> = []
 
     const heatmapMonthLabels: Array<{ colIndex: number; label: string }> = []
-    let lastRecordedMonth = -1
 
     for (let w = 0; w < numWeeks; w++) {
       const daysInWeek = []
+      let monthStartingInThisWeek: number | null = null
+
       for (let d = 0; d < 7; d++) {
         const cur = new Date(heatmapStart)
         cur.setDate(heatmapStart.getDate() + w * 7 + d)
@@ -618,9 +619,9 @@ export function InsightsSettings(props: { remote?: any }) {
         const isFuture = cur.getTime() > todayDate.getTime()
         const isToday = dateStr === todayStr
 
-        if (d === 0 && month !== lastRecordedMonth && (heatmapMonthLabels.length === 0 || w - heatmapMonthLabels[heatmapMonthLabels.length - 1].colIndex >= 2)) {
-          heatmapMonthLabels.push({ colIndex: w, label: `${month + 1}月` })
-          lastRecordedMonth = month
+        // 精准识别每月 1 号所在的周列，确保月份标签与日期格子 100% 像素级对齐
+        if (cur.getDate() === 1) {
+          monthStartingInThisWeek = month
         }
 
         const data = heatmapDayMap.get(dateStr)
@@ -650,6 +651,11 @@ export function InsightsSettings(props: { remote?: any }) {
           level: isFuture ? (0 as const) : getHeatmapLevel(tokens),
         })
       }
+
+      if (monthStartingInThisWeek !== null) {
+        heatmapMonthLabels.push({ colIndex: w, label: `${monthStartingInThisWeek + 1}月` })
+      }
+
       heatmapWeeks.push({ weekIndex: w, days: daysInWeek })
     }
 
@@ -1631,7 +1637,7 @@ export function InsightsSettings(props: { remote?: any }) {
               <div
                 className={css.chartTooltipBox}
                 style={{
-                  left: `${Math.min(Math.max(hoveredHeatmapPos.x, 18), 82)}%`,
+                  left: `${Math.max(80, hoveredHeatmapPos.x)}px`,
                   top: '-10px',
                   transform: 'translate(-50%, -100%)',
                 }}
@@ -1671,13 +1677,13 @@ export function InsightsSettings(props: { remote?: any }) {
 
             <div className={css.heatmapScrollArea}>
               <div className={css.heatmapContainer}>
-                {/* 顶部月份标注 */}
+                {/* 顶部月份标注：与下方周列在像素上 1:1 绝对对齐 */}
                 <div className={css.heatmapMonthsRow}>
                   {analytics.heatmapMonthLabels.map(m => (
                     <span
                       key={`${m.colIndex}-${m.label}`}
                       className={css.heatmapMonthLabel}
-                      style={{ left: `${(m.colIndex / 26) * 100}%` }}
+                      style={{ left: `${m.colIndex * 16}px` }}
                     >
                       {m.label}
                     </span>
@@ -1699,13 +1705,13 @@ export function InsightsSettings(props: { remote?: any }) {
                         {w.days.map(d => (
                           <div
                             key={d.date}
-                            className={`${css.heatmapCell} ${hoveredHeatmapDay?.date === d.date ? css.heatmapCellActive : ''}`}
+                            className={`${css.heatmapCell} ${d.isToday ? css.heatmapCellToday : ''} ${hoveredHeatmapDay?.date === d.date ? css.heatmapCellActive : ''}`}
                             data-level={d.level}
                             data-future={d.isFuture ? 'true' : undefined}
                             onMouseEnter={() => {
                               if (!d.isFuture) {
                                 setHoveredHeatmapDay(d)
-                                setHoveredHeatmapPos({ x: (w.weekIndex / 26) * 100, y: d.dayOfWeek })
+                                setHoveredHeatmapPos({ x: 32 + w.weekIndex * 16 + 6.5, y: d.dayOfWeek })
                               }
                             }}
                           />

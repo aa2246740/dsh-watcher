@@ -1676,15 +1676,14 @@
 .heatmapContainer {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   width: max-content;
-  min-width: 440px;
   position: relative;
 }
 
 .heatmapMonthsRow {
-  display: flex;
-  margin-left: 28px;
+  display: block;
+  margin-left: 32px;
   height: 16px;
   position: relative;
 }
@@ -1699,19 +1698,19 @@
 
 .heatmapGrid {
   display: flex;
-  gap: 6px;
+  gap: 8px;
 }
 
 .heatmapWeekdaysCol {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  height: 98px;
-  width: 22px;
+  height: 109px;
+  width: 24px;
   flex-shrink: 0;
   font-size: 9px;
   color: var(--dsw-alias-label-tertiary);
-  padding: 1px 0;
+  padding: 0;
   user-select: none;
 }
 
@@ -1727,13 +1726,18 @@
 }
 
 .heatmapCell {
-  width: 11px;
-  height: 11px;
+  width: 13px;
+  height: 13px;
   border-radius: 2px;
   box-sizing: border-box;
   cursor: pointer;
   transition: transform 100ms ease, filter 100ms ease;
   position: relative;
+}
+
+.heatmapCellToday {
+  box-shadow: 0 0 0 2px var(--dsw-static-deepseek-450, #5686fe) !important;
+  z-index: 2;
 }
 
 .heatmapCell[data-level='0'] {
@@ -1763,7 +1767,9 @@
 }
 
 .heatmapCell[data-future='true'] {
-  opacity: 0.12;
+  background: transparent !important;
+  border: 1px dashed var(--dsw-alias-border-l2) !important;
+  opacity: 0.35;
   cursor: default;
 }
 
