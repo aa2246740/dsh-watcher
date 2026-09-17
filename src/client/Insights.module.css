@@ -1443,6 +1443,17 @@
   backdrop-filter: blur(8px);
 }
 
+/* 浮层挂载到 body（见 Insights.tsx 的 ChartTooltip）：图表面板会裁剪
+ * 自身内容，绝对定位的浮层因此在面板边缘被切断。改为视口坐标的 fixed
+ * 定位后，浮层永远完整可见；复合选择器保证优先级高于 .chartTooltipBox。 */
+.chartTooltipBox.chartTooltipPortal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1200;
+  visibility: hidden;
+}
+
 .chartTooltipDate {
   font-size: 11px;
   font-weight: 700;

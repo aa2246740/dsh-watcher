@@ -1,4 +1,6 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 // Untyped local ESM helpers: single .mjs source kept for node tests.
 // @ts-ignore TS7016: no declarations for the local .mjs module
 import { alertsOf, DEFAULT_LIMITS, limitsOf, scanSessions, mergeModels } from '../insights/presentation.mjs'
@@ -150,6 +152,82 @@ function computeStackedLineChart(
   return { layers, stackLevels, yMax, bottomY, padding, plotW, plotH }
 }
 
+/**
+ * Viewport-space anchor for a chart hover card: a live element plus the
+ * relative point inside it the card should point at. The rectangle is re-read
+ * on every placement, so the card keeps following its bar/cell while a nested
+ * settings pane scrolls.
+ */
+type ChartAnchor = {
+  el: Element
+  ratioX: number
+  ratioY: number
+  /** Preferred side of the anchor point; placement flips it when that side does not fit. */
+  side: 'above' | 'below'
+}
+
+const TOOLTIP_MARGIN = 8
+const TOOLTIP_GAP = 12
+
+/**
+ * Hover card for the charts. The panels clip their content, and a card centred
+ * on a late bar is wider than the space left of the panel edge, so the card is
+ * portalled to the document body and placed in viewport coordinates — the same
+ * approach as the UI primitives' HoverCard. Placement is written straight to
+ * the node: it runs before paint and again on scroll/resize, and it clamps to
+ * the viewport so no side of the card is ever cut off.
+ */
+function ChartTooltip({ anchor, children }: { anchor: ChartAnchor | null; children: ReactNode }) {
+  const cardRef = useRef<HTMLDivElement | null>(null)
+  useLayoutEffect(() => {
+    const card = cardRef.current
+    if (card === null || anchor === null) return
+    const place = () => {
+      const rect = anchor.el.getBoundingClientRect()
+      const width = card.offsetWidth
+      const height = card.offsetHeight
+      const viewportWidth = document.documentElement.clientWidth
+      const viewportHeight = document.documentElement.clientHeight
+      const pointX = rect.left + rect.width * anchor.ratioX
+      const pointY = rect.top + rect.height * anchor.ratioY
+      const left = Math.min(
+        Math.max(pointX - width / 2, TOOLTIP_MARGIN),
+        Math.max(TOOLTIP_MARGIN, viewportWidth - width - TOOLTIP_MARGIN),
+      )
+      const above = pointY - height - TOOLTIP_GAP
+      const below = pointY + TOOLTIP_GAP
+      const fitsAbove = above >= TOOLTIP_MARGIN
+      const fitsBelow = below + height <= viewportHeight - TOOLTIP_MARGIN
+      const preferred = anchor.side === 'above' ? above : below
+      const flipped = anchor.side === 'above' ? below : above
+      const chosen = anchor.side === 'above'
+        ? (fitsAbove ? preferred : flipped)
+        : (fitsBelow ? preferred : flipped)
+      const top = Math.min(
+        Math.max(chosen, TOOLTIP_MARGIN),
+        Math.max(TOOLTIP_MARGIN, viewportHeight - height - TOOLTIP_MARGIN),
+      )
+      card.style.left = `${Math.round(left)}px`
+      card.style.top = `${Math.round(top)}px`
+      card.style.visibility = 'visible'
+    }
+    place()
+    window.addEventListener('scroll', place, true)
+    window.addEventListener('resize', place)
+    return () => {
+      window.removeEventListener('scroll', place, true)
+      window.removeEventListener('resize', place)
+    }
+  }, [anchor])
+  if (anchor === null) return null
+  return createPortal(
+    <div ref={cardRef} className={`${css.chartTooltipBox} ${css.chartTooltipPortal}`}>
+      {children}
+    </div>,
+    document.body,
+  )
+}
+
 function effortLabel(effort: string | null | undefined): string {
   if (!effort) return ''
   const map: Record<string, string> = { high: '高', medium: '中', low: '低' }
@@ -262,9 +340,11 @@ export function InsightsSettings(props: { remote?: any }) {
   const [customViewMode, setCustomViewMode] = useState<'bar' | 'line' | null>(null)
   const activeViewMode = customViewMode ?? (range === '30' || range === '180' ? 'line' : 'bar')
   const [hoveredDayIdx, setHoveredDayIdx] = useState<number | null>(null)
+  const [hoveredDayAnchor, setHoveredDayAnchor] = useState<ChartAnchor | null>(null)
   const [hoveredLineIdx, setHoveredLineIdx] = useState<number | null>(null)
+  const [hoveredLineAnchor, setHoveredLineAnchor] = useState<ChartAnchor | null>(null)
   const [hoveredHeatmapDay, setHoveredHeatmapDay] = useState<any | null>(null)
-  const [hoveredHeatmapPos, setHoveredHeatmapPos] = useState<{ x: number; y: number; flipDown: boolean } | null>(null)
+  const [hoveredHeatmapAnchor, setHoveredHeatmapAnchor] = useState<ChartAnchor | null>(null)
   const [sessionSort, setSessionSort] = useState<'tokens' | 'time' | 'errors'>('tokens')
   const [loading, setLoading] = useState(false)
   const [sessions, setSessions] = useState<{ total: number; rows: any[] } | null>(null)
@@ -1308,21 +1388,16 @@ export function InsightsSettings(props: { remote?: any }) {
 
           {/* 模式 A：柱状图 (带图例、顶部数值、Hover 悬浮卡片) */}
           {activeViewMode === 'bar' ? (
-            <div className={css.chartInteractiveWrap} onMouseLeave={() => setHoveredDayIdx(null)}>
-              {/* 悬停浮层 Tooltip Popover */}
+            <div
+              className={css.chartInteractiveWrap}
+              onMouseLeave={() => { setHoveredDayIdx(null); setHoveredDayAnchor(null) }}
+            >
+              {/* 悬停浮层 Tooltip Popover：挂载到 body，避免被面板 overflow: hidden 裁剪 */}
               {hoveredDayIdx !== null && analytics?.daySeries[hoveredDayIdx] && (
                 (() => {
                   const day = analytics.daySeries[hoveredDayIdx]
-                  const leftPos = Math.min(Math.max((hoveredDayIdx / Math.max(1, analytics.daySeries.length - 1)) * 100, 18), 82)
                   return (
-                    <div
-                      className={css.chartTooltipBox}
-                      style={{
-                        left: `${leftPos}%`,
-                        top: '10px',
-                        transform: 'translateX(-50%)',
-                      }}
-                    >
+                    <ChartTooltip anchor={hoveredDayAnchor}>
                       <div className={css.chartTooltipDate}>
                         <span>{day.key}</span>
                         <span className={css.chartTooltipDateBadge}>
@@ -1347,7 +1422,7 @@ export function InsightsSettings(props: { remote?: any }) {
                           </div>
                         ))}
                       </div>
-                    </div>
+                    </ChartTooltip>
                   )
                 })()
               )}
@@ -1357,7 +1432,10 @@ export function InsightsSettings(props: { remote?: any }) {
                   <div
                     key={day.key}
                     className={css.dayCol}
-                    onMouseEnter={() => setHoveredDayIdx(idx)}
+                    onMouseEnter={(e) => {
+                      setHoveredDayIdx(idx)
+                      setHoveredDayAnchor({ el: e.currentTarget, ratioX: 0.5, ratioY: 0, side: 'below' })
+                    }}
                   >
                     {/* 柱顶数值 */}
                     <div className={css.dayBarTopLabel}>
@@ -1384,33 +1462,22 @@ export function InsightsSettings(props: { remote?: any }) {
             </div>
           ) : (
             /* 模式 B：平滑堆叠折线图 (按模型分色多层堆叠、网格渐变、吸附光标与悬停卡片，如图 2) */
-            <div className={css.chartInteractiveWrap} onMouseLeave={() => setHoveredLineIdx(null)}>
+            <div
+              className={css.chartInteractiveWrap}
+              onMouseLeave={() => { setHoveredLineIdx(null); setHoveredLineAnchor(null) }}
+            >
               {analytics && analytics.daySeries.length > 0 && (
                 (() => {
                   const lineData = computeStackedLineChart(analytics.daySeries, analytics.activeRangeModels, 560, 160)
                   const hoveredPoint = hoveredLineIdx !== null && hoveredLineIdx < lineData.stackLevels.length
                     ? lineData.stackLevels[hoveredLineIdx]
                     : null
-                  const leftPos = hoveredPoint
-                    ? Math.min(Math.max((hoveredLineIdx! / Math.max(1, lineData.stackLevels.length - 1)) * 100, 18), 82)
-                    : 50
 
                   return (
                     <div className={css.lineChartWrap}>
-                      {/* 悬停浮层 Tooltip Popover */}
+                      {/* 悬停浮层 Tooltip Popover：挂载到 body，避免被面板 overflow: hidden 裁剪 */}
                       {hoveredPoint && (
-                        <div
-                          className={css.chartTooltipBox}
-                          style={{
-                            left: `${leftPos}%`,
-                            top: (hoveredPoint.modelStacks[hoveredPoint.modelStacks.length - 1]?.topY ?? 60) < 90
-                              ? `${(hoveredPoint.modelStacks[hoveredPoint.modelStacks.length - 1]?.topY ?? 60) + 16}px`
-                              : `${(hoveredPoint.modelStacks[hoveredPoint.modelStacks.length - 1]?.topY ?? 60) - 12}px`,
-                            transform: (hoveredPoint.modelStacks[hoveredPoint.modelStacks.length - 1]?.topY ?? 60) < 90
-                              ? 'translateX(-50%)'
-                              : 'translate(-50%, -100%)',
-                          }}
-                        >
+                        <ChartTooltip anchor={hoveredLineAnchor}>
                           <div className={css.chartTooltipDate}>
                             <span>{hoveredPoint.data.key}</span>
                             <span className={css.chartTooltipDateBadge}>
@@ -1435,7 +1502,7 @@ export function InsightsSettings(props: { remote?: any }) {
                               </div>
                             ))}
                           </div>
-                        </div>
+                        </ChartTooltip>
                       )}
 
                       <svg
@@ -1456,6 +1523,15 @@ export function InsightsSettings(props: { remote?: any }) {
                             }
                           })
                           setHoveredLineIdx(nearestIdx)
+                          const level = lineData.stackLevels[nearestIdx]
+                          const stacks = level?.modelStacks ?? []
+                          const topY = stacks[stacks.length - 1]?.topY ?? 60
+                          setHoveredLineAnchor({
+                            el: e.currentTarget,
+                            ratioX: (level?.x ?? 0) / 560,
+                            ratioY: topY / 160,
+                            side: 'above',
+                          })
                         }}
                       >
                         <defs>
@@ -1651,21 +1727,13 @@ export function InsightsSettings(props: { remote?: any }) {
             )}
           </div>
 
-          <div className={css.chartInteractiveWrap}>
-            {/* 热力图悬停浮层 Tooltip Popover (智能上下翻转，防截断/防 clip) */}
-            {hoveredHeatmapDay && hoveredHeatmapPos && (
-              <div
-                className={css.chartTooltipBox}
-                style={{
-                  left: `${Math.min(Math.max(hoveredHeatmapPos.x, 100), 380)}px`,
-                  top: hoveredHeatmapPos.flipDown
-                    ? `${hoveredHeatmapPos.y + 24}px`
-                    : `${hoveredHeatmapPos.y - 12}px`,
-                  transform: hoveredHeatmapPos.flipDown
-                    ? 'translate(-50%, 0)'
-                    : 'translate(-50%, -100%)',
-                }}
-              >
+          <div
+            className={css.chartInteractiveWrap}
+            onMouseLeave={() => { setHoveredHeatmapDay(null); setHoveredHeatmapAnchor(null) }}
+          >
+            {/* 热力图悬停浮层 Tooltip Popover：挂载到 body，上下自动翻转，永不裁剪 */}
+            {hoveredHeatmapDay && (
+              <ChartTooltip anchor={hoveredHeatmapAnchor}>
                 <div className={css.chartTooltipDate}>
                   <span>{hoveredHeatmapDay.date}</span>
                   <span className={css.chartTooltipDateBadge}>
@@ -1696,7 +1764,7 @@ export function InsightsSettings(props: { remote?: any }) {
                     </div>
                   ))}
                 </div>
-              </div>
+              </ChartTooltip>
             )}
 
             <div className={css.heatmapScrollArea}>
@@ -1732,13 +1800,14 @@ export function InsightsSettings(props: { remote?: any }) {
                             className={`${css.heatmapCell} ${d.isToday ? css.heatmapCellToday : ''} ${hoveredHeatmapDay?.date === d.date ? css.heatmapCellActive : ''}`}
                             data-level={d.level}
                             data-future={d.isFuture ? 'true' : undefined}
-                            onMouseEnter={() => {
+                            onMouseEnter={(e) => {
                               if (!d.isFuture) {
                                 setHoveredHeatmapDay(d)
-                                setHoveredHeatmapPos({
-                                  x: 32 + w.weekIndex * 16 + 6.5,
-                                  y: 24 + d.dayOfWeek * 16 + 6.5,
-                                  flipDown: d.dayOfWeek <= 3,
+                                setHoveredHeatmapAnchor({
+                                  el: e.currentTarget,
+                                  ratioX: 0.5,
+                                  ratioY: 0.5,
+                                  side: d.dayOfWeek <= 3 ? 'below' : 'above',
                                 })
                               }
                             }}
