@@ -23,6 +23,37 @@ test('long arguments do not become equal through truncation',()=>{const rows=fix
 test('new context invalidates uninterrupted failure claim',()=>{const rows=failures();rows.splice(8,0,event('user/message',7.5,750,{source:{kind:'user'}}));const shifted=rows.map((e,i)=>({...e,seq:i}));assert.equal(fold(shifted).findings.length,0);});
 test('canceled request without usage is unknown, not free',()=>{const s=fold(fixture([event('step/end',3,100,{turn:1,step:1})]));assert.equal(s.totals.calls,1);assert.equal(s.totals.reported,0);});
 test('actual assistant model source owns attribution',()=>{const s=fold(fixture([complete(3,usage,'b')]));assert.equal(s.models[0].model,'b');});
+test('official Host order copies request/header into the open turn route',()=>{
+  const afterStart=fold([event('turn/start',1,1,{turn:1})]);
+  assert.deepEqual(afterStart.turn.route,{provider:'unknown',model:'unknown'});
+  const afterStep=reduceEvent(afterStart,event('step/start',2,10,{turn:1,step:1}));
+  assert.deepEqual(afterStep.turn.route,{provider:'unknown',model:'unknown'});
+  const afterHeader=reduceEvent(afterStep,event('request/header',3,20,{header:{config:{provider:'official',model:'real-model'}}}));
+  assert.deepEqual(afterHeader.turn.route,{provider:'official',model:'real-model'});
+  assert.deepEqual(afterHeader.open.route,{provider:'official',model:'real-model'});
+  assert.deepEqual(viewOf(afterHeader).turn.route,{provider:'official',model:'real-model'});
+  const settled=reduceEvent(afterHeader,complete(4,usage,'real-model'));
+  assert.equal(settled.turn.route.model,'real-model');
+  assert.equal(settled.models[0].model,'real-model');
+  assert.notEqual(settled.turn.route.model,'unknown');
+});
+test('official Host order later-turn header change updates the new turn tag',()=>{
+  const first=fold([
+    event('turn/start',1,1,{turn:1}),
+    event('step/start',2,10,{turn:1,step:1}),
+    event('request/header',3,20,{header:{config:{provider:'p',model:'m1'}}}),
+    complete(4,usage,'m1'),
+    event('turn/end',5,110,{turn:1}),
+  ]);
+  assert.equal(first.turn.route.model,'m1');
+  const second=fold([
+    event('turn/start',6,200,{turn:2}),
+    event('step/start',7,210,{turn:2,step:1}),
+    event('request/header',8,220,{header:{config:{provider:'p',model:'m2'}}}),
+  ], first);
+  assert.equal(second.turn.route.model,'m2');
+  assert.deepEqual(viewOf(second).turn.route,{provider:'p',model:'m2'});
+});
 test('retry without next dispatch has no invented latency sample',()=>{const s=fold(fixture([event('llm/retry',3,100,{turn:1,step:1}),complete(4)]));assert.equal(s.totals.calls,2);assert.equal(s.totals.reported,1);assert.equal(s.totals.timedCalls,1);});
 test('fork prefix supplies configuration but not new spending',()=>{const s=fold(fixture([complete()]),initialState({id:'fork'},4));assert.equal(s.totals.calls,0);assert.equal(s.route.model,'a');});
 test('malformed total is rejected',()=>assert.equal(fold(fixture([complete(3,{...usage,totalTokens:1})])).totals.reported,0));

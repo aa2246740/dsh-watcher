@@ -132,6 +132,7 @@ export function reduceEvent(state, event) {
       const effort = typeof config.reasoningEffort === 'string' ? config.reasoningEffort : null;
       s.route = { provider: config.provider, model: config.model, ...(effort ? { effort } : {}) };
       if (s.open) s.open.route = { ...s.route };
+      if (s.turn) s.turn.route = { ...s.route };
     }
   } else if (event.type === 'user/message') {
     s.previousFailure = null;
