@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 // @ts-ignore TS7016: no declarations for the local .mjs module
 import { alertsOf, DEFAULT_LIMITS, limitsOf, scanSessions, mergeModels } from '../insights/presentation.mjs'
 // @ts-ignore TS7016: no declarations for the local .mjs module
-import { PRICING_OVERRIDE_FILE, PRICING_STORAGE_KEY, estimateFromInsights, estimateUsageRows, formatEstimate, estimateDisclaimer, mergePricing, defaultPricing, parseOverride, readStoredOverride } from '../insights/pricing.mjs'
+import { PRICING_STORAGE_KEY, estimateFromInsights, estimateUsageRows, formatEstimate, formatEstimateNote, estimateDisclaimer, mergePricing, defaultPricing, parseOverride, readStoredOverride } from '../insights/pricing.mjs'
 // @ts-ignore TS7016: no declarations for the local .mjs module
 import { costCopy, detectLocale } from '../insights/i18n.mjs'
 import type { InsightsView } from '../insights/projection.ts'
@@ -280,7 +280,8 @@ export function SessionInsights({ value, now, running, waiting, onEvidence }: {
   const cachePct = totalIn > 0 ? Math.round(((stats.cacheRead ?? 0) / totalIn) * 100) : 0
   const estimate = estimateFromInsights(value, stats, scope, selectedModel, currentRoute, pricing)
   const costText = formatEstimate(estimate, locale)
-  const costTitle = estimateDisclaimer(locale)
+  const costNote = formatEstimateNote(estimate, locale)
+  const costTitle = [estimateDisclaimer(locale), costNote].filter(Boolean).join(' · ')
 
   return (
     <section className={css.hudBox} aria-label="耗时分布与运行健康度">
@@ -850,6 +851,12 @@ export function InsightsSettings(props: { remote?: any }) {
     ? analytics.donutSegments[hoveredIdx]
     : null
   const topModel = analytics?.donutSegments[0]
+  const heroCostText = analytics ? formatEstimate(analytics.estimatedCost, locale) : '-'
+  const heroCostNote = analytics ? formatEstimateNote(analytics.estimatedCost, locale) : ''
+  const heroCostFoot = [copy.estimateNotBill, heroCostNote].filter(Boolean).join(' · ')
+  const heroCostTitle = analytics
+    ? [estimateDisclaimer(locale), heroCostNote].filter(Boolean).join(' · ')
+    : copy.estimateNotBill
 
   return (
     <div className={css.settingsContainer}>
@@ -893,13 +900,18 @@ export function InsightsSettings(props: { remote?: any }) {
 
       <div className={css.heroStatsRow}>
         <div className={css.heroPair}>
-          <div className={css.heroBigNum}>
-            {analytics ? fmtCompact(analytics.totalTokens) : '-'} <span className={css.heroUnit}>Token</span>
+          <div className={css.heroMetric}>
+            <span className={css.heroCaption}>Token</span>
+            <strong className={css.heroValue}>{analytics ? fmtCompact(analytics.totalTokens) : '-'}</strong>
           </div>
-          <div className={css.heroCost} title={estimateDisclaimer(locale)} aria-label={`${copy.estimatedCost}: ${analytics ? formatEstimate(analytics.estimatedCost, locale) : '-'}`}>
-            <span className={css.heroCostLabel}>{copy.estimatedCost}</span>
-            <strong className={css.heroCostValue}>{analytics ? formatEstimate(analytics.estimatedCost, locale) : '-'}</strong>
-            <span className={css.heroCostHint}>{copy.estimateNotBill}</span>
+          <div
+            className={css.heroMetric}
+            title={heroCostTitle}
+            aria-label={`${copy.estimatedCost}: ${heroCostText}`}
+          >
+            <span className={css.heroCaption}>{copy.estimatedCost}</span>
+            <strong className={css.heroValue}>{heroCostText}</strong>
+            <span className={css.heroFootnote}>{heroCostFoot}</span>
           </div>
         </div>
         <div className={css.heroMetaCol}>
@@ -1999,7 +2011,6 @@ export function InsightsSettings(props: { remote?: any }) {
         <summary className={css.settingsSummary}>{copy.priceOverrideTitle}</summary>
         <div className={css.settingsDrawerContent}>
           <p className={css.priceOverrideHelp}>{copy.priceOverrideHelp}</p>
-          <p className={css.priceOverridePath}>{copy.priceOverridePath} {PRICING_OVERRIDE_FILE}</p>
           <textarea
             className={css.priceOverrideInput}
             rows={8}

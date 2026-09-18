@@ -64,3 +64,28 @@ models:
     input: 0.66
     output: 1.98
     cache: 0.022
+  # MiniMax official pay-as-you-go, USD per 1M tokens, retrieved 2026-09-18.
+  # Host records MiniMax-M2.7 (normalize lowercases). Aliases cover Watcher /
+  # OpenRouter-style ids. cacheWrite is billed; cache is cache-hit.
+  minimax-m2.7:
+    aliases:
+      - MiniMax-M2.7
+      - minimax-m2.7
+      - minimax/minimax-m2.7
+      - openrouter/minimax/minimax-m2.7
+    currency: USD
+    input: 0.30
+    output: 1.20
+    cache: 0.06
+    cacheWrite: 0.375
+  minimax-m2.7-highspeed:
+    aliases:
+      - MiniMax-M2.7-highspeed
+      - minimax-m2.7-highspeed
+      - minimax/minimax-m2.7-highspeed
+      - openrouter/minimax/minimax-m2.7-highspeed
+    currency: USD
+    input: 0.60
+    output: 2.40
+    cache: 0.06
+    cacheWrite: 0.375

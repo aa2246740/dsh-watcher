@@ -48,6 +48,32 @@ export const DEFAULT_PRICING_TABLE = Object.freeze({
       output: 1.98,
       cache: 0.022,
     }),
+    'minimax-m2.7': Object.freeze({
+      aliases: Object.freeze([
+        'MiniMax-M2.7',
+        'minimax-m2.7',
+        'minimax/minimax-m2.7',
+        'openrouter/minimax/minimax-m2.7',
+      ]),
+      currency: 'USD',
+      input: 0.3,
+      output: 1.2,
+      cache: 0.06,
+      cacheWrite: 0.375,
+    }),
+    'minimax-m2.7-highspeed': Object.freeze({
+      aliases: Object.freeze([
+        'MiniMax-M2.7-highspeed',
+        'minimax-m2.7-highspeed',
+        'minimax/minimax-m2.7-highspeed',
+        'openrouter/minimax/minimax-m2.7-highspeed',
+      ]),
+      currency: 'USD',
+      input: 0.6,
+      output: 2.4,
+      cache: 0.06,
+      cacheWrite: 0.375,
+    }),
   }),
 });
 
@@ -301,8 +327,13 @@ export function formatEstimate(result, locale = 'zh') {
   if (result.status === 'zero') return formatUsd(0);
   const money = formatUsd(result.usd);
   if (money == null) return copy.unknown;
-  if (result.status === 'partial') return `${money} + ${copy.unknown}`;
   return money;
+}
+
+/** Quiet footnote for partial rows. Never embed this in the bold main number. */
+export function formatEstimateNote(result, locale = 'zh') {
+  const copy = costCopy(locale);
+  return result?.status === 'partial' ? copy.someUnpriced : '';
 }
 
 export function estimateDisclaimer(locale = 'zh') {
