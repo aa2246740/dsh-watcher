@@ -281,7 +281,7 @@ export function SessionInsights({ value, now, running, waiting, onEvidence }: {
   const estimate = estimateFromInsights(value, stats, scope, selectedModel, currentRoute, pricing)
   const costText = formatEstimate(estimate, locale)
   const costNote = formatEstimateNote(estimate, locale)
-  const costTitle = [estimateDisclaimer(locale), costNote].filter(Boolean).join(' · ')
+  const costTitle = costNote ? `${copy.estimatedCost}: ${costText} · ${costNote}` : `${copy.estimatedCost}: ${costText}`
 
   return (
     <section className={css.hudBox} aria-label="耗时分布与运行健康度">
@@ -853,10 +853,7 @@ export function InsightsSettings(props: { remote?: any }) {
   const topModel = analytics?.donutSegments[0]
   const heroCostText = analytics ? formatEstimate(analytics.estimatedCost, locale) : '-'
   const heroCostNote = analytics ? formatEstimateNote(analytics.estimatedCost, locale) : ''
-  const heroCostFoot = [copy.estimateNotBill, heroCostNote].filter(Boolean).join(' · ')
-  const heroCostTitle = analytics
-    ? [estimateDisclaimer(locale), heroCostNote].filter(Boolean).join(' · ')
-    : copy.estimateNotBill
+  const heroCostTitle = [estimateDisclaimer(locale), heroCostNote].filter(Boolean).join(' · ')
 
   return (
     <div className={css.settingsContainer}>
@@ -911,7 +908,7 @@ export function InsightsSettings(props: { remote?: any }) {
           >
             <span className={css.heroCaption}>{copy.estimatedCost}</span>
             <strong className={css.heroValue}>{heroCostText}</strong>
-            <span className={css.heroFootnote}>{heroCostFoot}</span>
+            {heroCostNote ? <span className={css.heroFootnote}>{heroCostNote}</span> : null}
           </div>
         </div>
         <div className={css.heroMetaCol}>
