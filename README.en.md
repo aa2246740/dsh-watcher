@@ -2,13 +2,27 @@
 
 # Watcher
 
+Prefer npm (version-pinable):
+
+```sh
+dsh plugin --profile web add dsh-watcher@0.4.0-insights.1
+```
+
+Or latest:
+
+```sh
+dsh plugin --profile web add dsh-watcher
+```
+
+Fallback: install from GitHub (tracks the default branch tip):
+
 ```sh
 dsh plugin --profile web add github:aa2246740/dsh-watcher
 ```
 
 You need official `dsh` (or `npx @deepseek-ai/dsh`) and **pnpm** on `PATH`. `dsh plugin add` runs pnpm in `$DSH_HOME/profiles/web` and, because this package declares `dsh.bundle.patch`, appends the bundle to that profile. Then **restart that Host and reload the page**. The command writes the profile. It does not hot-load a running process.
 
-`lib/` is committed, so a git install does not need a local build, `prepare`, or `allowBuilds`. DeepSeek Harness **0.1.5-rc.2**. Node `^22.19.0` or `>=24`.
+`lib/` is committed, so npm / git installs do not need a local build, `prepare`, or `allowBuilds`. DeepSeek Harness **0.1.5-rc.2**. Node `^22.19.0` or `>=24`.
 
 A read-only plugin for DeepSeek Harness Web. Open the eye in the session header. A Session becomes a foldable work path: how many steps ran, how many tools fired, how long it took. Open a step for parallel branches, a tool result, or a reasoning row that stays folded until you ask.
 
