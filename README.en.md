@@ -5,7 +5,7 @@
 Prefer npm (version-pinable):
 
 ```sh
-dsh plugin --profile web add dsh-watcher@0.4.0-insights.1
+dsh plugin --profile web add dsh-watcher@0.4.1
 ```
 
 Or latest:
