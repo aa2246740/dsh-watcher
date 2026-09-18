@@ -5,7 +5,7 @@
 推荐用 npm（可钉版本）：
 
 ```sh
-dsh plugin --profile web add dsh-watcher@0.4.0-insights.1
+dsh plugin --profile web add dsh-watcher@0.4.1
 ```
 
 也可以装 latest：
