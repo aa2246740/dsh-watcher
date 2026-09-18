@@ -1,0 +1,66 @@
+# Watcher default model prices.
+#
+# Rates LAG official provider pages. v1 is this static table plus a local
+# override. The plugin does NOT fetch live prices.
+#
+# Schema:
+#   currency: ISO code (USD default)
+#   unit: per_1m_tokens → rates are per 1,000,000 tokens
+#   models:
+#     <id>:
+#       aliases: [<other ids Watcher may record, including OpenRouter-style>]
+#       currency: USD
+#       input: <cache-miss / uncached input>
+#       output: <completion; reasoning billed as output is already in this bucket>
+#       cache: <cache-hit / cacheRead>          # optional
+#       cacheWrite: <cache creation>            # optional; omit when the vendor lists none
+#
+# Missing model row, or a bucket with tokens but no matching rate → 未知 / Unknown.
+# NEVER treat missing as $0. $0 is allowed only when token counts are actually 0.
+#
+# Session stats already expose input / output / cacheRead / cacheWrite. Watcher
+# prices those buckets separately. A single unsplit `tokens` total cannot be
+# allocated fairly, so that case is Unknown (documented limitation).
+#
+# DeepSeek official list (https://api-docs.deepseek.com/quick_start/pricing),
+# retrieved 2026-09-18. Defaults are the published off-peak rates (peak is 2×;
+# weekdays 01:00–04:00 and 06:00–10:00 UTC). Override locally for peak or a
+# custom bill.
+#
+# Contribute corrections via PR to this file. Runtime overlay:
+#   localStorage key  dsh-watcher:pricing-override:v1
+#   optional backup   $DSH_HOME/profiles/web/dsh-watcher-pricing.override.json
+#                     (paste into Watcher settings; v1 does not auto-read files)
+
+currency: USD
+unit: per_1m_tokens
+models:
+  deepseek-flash:
+    aliases:
+      - deepseek-v4-flash
+      - deepseek-v4-flash-vision-exp
+      - deepseek-v4.1-flash
+      - deepseek-v4-1-flash
+      - deepseek-chat
+      - deepseek-reasoner
+      - deepseek/deepseek-flash
+      - deepseek/deepseek-v4-flash
+      - deepseek/deepseek-chat
+      - deepseek/deepseek-reasoner
+      - openrouter/deepseek/deepseek-chat
+      - openrouter/deepseek/deepseek-reasoner
+      - openrouter/deepseek/deepseek-v4-flash
+    currency: USD
+    input: 0.15
+    output: 0.6
+    cache: 0.003
+  deepseek-v4-pro:
+    aliases:
+      - deepseek-pro
+      - deepseek/deepseek-v4-pro
+      - deepseek/deepseek-pro
+      - openrouter/deepseek/deepseek-v4-pro
+    currency: USD
+    input: 0.66
+    output: 1.98
+    cache: 0.022

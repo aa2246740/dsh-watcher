@@ -55,6 +55,8 @@ dsh plugin --profile web remove dsh-watcher
 
 DSH.app's `desktop` profile rejects `github:`. Use `dsh web` and install into the `web` profile.
 
+The settings summary and session HUD show **Estimated cost** (not “total value”) next to total tokens. Input / output / cache buckets are priced from `pricing/models.yaml`. A missing row is **Unknown**, never $0. It is an estimate, not a bill. The default table is static (no live fetch). Override it in Watcher settings (`localStorage` key `dsh-watcher:pricing-override:v1`; optional backup `$DSH_HOME/profiles/web/dsh-watcher-pricing.override.json`, paste it in). PRs to the default table are welcome.
+
 The interaction contract lives in [DESIGN.md](./DESIGN.md). MIT.
 
 ## Build from source

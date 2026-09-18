@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Added **估算费用 / Estimated cost** next to total token usage on the Watcher insights HUD and the settings summary. Input, output, and cache buckets are priced from the matching rate; a missing model or missing bucket shows **未知 / Unknown** and is never treated as $0.
+- Default list prices live in `pricing/models.yaml` (USD per 1M tokens; DeepSeek official off-peak as of 2026-09-18, plus OpenRouter-style aliases). Rates lag official pages. v1 does not fetch live prices.
+- Local overlay: Watcher settings → price table, stored as `localStorage['dsh-watcher:pricing-override:v1']`. Optional backup path `$DSH_HOME/profiles/web/dsh-watcher-pricing.override.json` (paste into settings; the plugin does not read files).
+
 ## 0.4.1 — 2026-09-18
 
 - Fixed chart hover cards being cut off at the panel edge. Bar, stacked-line, and heatmap popovers are now portalled to the document body and clamped into the viewport, so a card opened on a late bar keeps its model names, token values, and percentages readable instead of losing its right-hand side to the panel's `overflow: hidden`.

@@ -4,6 +4,10 @@ import { createPortal } from 'react-dom'
 // Untyped local ESM helpers: single .mjs source kept for node tests.
 // @ts-ignore TS7016: no declarations for the local .mjs module
 import { alertsOf, DEFAULT_LIMITS, limitsOf, scanSessions, mergeModels } from '../insights/presentation.mjs'
+// @ts-ignore TS7016: no declarations for the local .mjs module
+import { PRICING_OVERRIDE_FILE, PRICING_STORAGE_KEY, estimateFromInsights, estimateUsageRows, formatEstimate, estimateDisclaimer, mergePricing, defaultPricing, parseOverride, readStoredOverride } from '../insights/pricing.mjs'
+// @ts-ignore TS7016: no declarations for the local .mjs module
+import { costCopy, detectLocale } from '../insights/i18n.mjs'
 import type { InsightsView } from '../insights/projection.ts'
 import css from './Insights.module.css'
 import { TimingPanel } from './TimingPanel.tsx'
@@ -27,6 +31,22 @@ function useLimits() {
     return () => window.removeEventListener('watcher-insights-settings', update)
   }, [])
   return limits
+}
+
+function useUiLocale() {
+  const [locale, setLocale] = useState(detectLocale)
+  useEffect(() => { setLocale(detectLocale()) }, [])
+  return locale
+}
+
+function usePricingTable() {
+  const [table, setTable] = useState(() => mergePricing(defaultPricing(), readStoredOverride(globalThis.localStorage)))
+  useEffect(() => {
+    const update = () => setTable(mergePricing(defaultPricing(), readStoredOverride(globalThis.localStorage)))
+    window.addEventListener('watcher-pricing-settings', update)
+    return () => window.removeEventListener('watcher-pricing-settings', update)
+  }, [])
+  return table
 }
 
 const fmt = (n: number) => new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 0 }).format(n)
@@ -240,6 +260,9 @@ export function SessionInsights({ value, now, running, waiting, onEvidence }: {
   value: InsightsView | undefined; now: number; running: boolean; waiting: boolean; onEvidence: (e: Evidence) => void
 }) {
   const limits = useLimits()
+  const pricing = usePricingTable()
+  const locale = useUiLocale()
+  const copy = costCopy(locale)
   const [scope, setScope] = useState<'turn' | 'session'>('turn')
   const [modelFilter, setModelFilter] = useState<'all' | number>('all')
   if (!value) return null
@@ -255,6 +278,9 @@ export function SessionInsights({ value, now, running, waiting, onEvidence }: {
   const currentRoute = value.turn?.route ?? (value.models && value.models.length > 0 ? value.models[0] : undefined)
   const totalIn = (stats.input ?? 0) + (stats.cacheRead ?? 0)
   const cachePct = totalIn > 0 ? Math.round(((stats.cacheRead ?? 0) / totalIn) * 100) : 0
+  const estimate = estimateFromInsights(value, stats, scope, selectedModel, currentRoute, pricing)
+  const costText = formatEstimate(estimate, locale)
+  const costTitle = estimateDisclaimer(locale)
 
   return (
     <section className={css.hudBox} aria-label="耗时分布与运行健康度">
@@ -282,6 +308,9 @@ export function SessionInsights({ value, now, running, waiting, onEvidence }: {
         <div className={css.hudTopRight}>
           <span className={css.tokenStat}>
             <strong>{fmt(stats.tokens ?? 0)}</strong> Token ({cachePct}% 命中)
+          </span>
+          <span className={css.costStat} title={costTitle} aria-label={`${copy.estimatedCost}: ${costText}`}>
+            {copy.estimatedCost} <strong>{costText}</strong>
           </span>
           <div className={css.scopeGroup} role="group" aria-label="统计范围切换">
             <button type="button" className={css.scopeBtn} data-active={scope === 'turn' ? '' : undefined}
@@ -332,9 +361,22 @@ export function SessionInsights({ value, now, running, waiting, onEvidence }: {
 
 export function InsightsSettings(props: { remote?: any }) {
   const limits = useLimits()
+  const pricing = usePricingTable()
+  const locale = useUiLocale()
+  const copy = costCopy(locale)
   const [silence, setSilence] = useState(limits.silenceSeconds)
   const [reasoning, setReasoning] = useState(limits.reasoningSeconds)
   const [saved, setSaved] = useState(false)
+  const [overrideText, setOverrideText] = useState(() => {
+    try {
+      const raw = globalThis.localStorage?.getItem(PRICING_STORAGE_KEY)
+      return raw ? JSON.stringify(JSON.parse(raw), null, 2) : ''
+    } catch {
+      return globalThis.localStorage?.getItem(PRICING_STORAGE_KEY) ?? ''
+    }
+  })
+  const [overrideError, setOverrideError] = useState('')
+  const [overrideSaved, setOverrideSaved] = useState(false)
   const [userPickedRange, setUserPickedRange] = useState<boolean>(false)
   const [range, setRange] = useState<'7' | '30' | '180'>('7')
   const [customViewMode, setCustomViewMode] = useState<'bar' | 'line' | null>(null)
@@ -407,7 +449,9 @@ export function InsightsSettings(props: { remote?: any }) {
     let totalBashMs = 0
     let totalTools = 0
     let totalCacheRead = 0
+    let totalCacheWrite = 0
     let totalInput = 0
+    let totalOutput = 0
     let totalErrors = 0
     let totalRetries = 0
 
@@ -418,7 +462,9 @@ export function InsightsSettings(props: { remote?: any }) {
       totalBashMs += v.totals.bashMs ?? 0
       totalTools += v.totals.tools ?? 0
       totalCacheRead += v.totals.cacheRead ?? 0
+      totalCacheWrite += v.totals.cacheWrite ?? 0
       totalInput += v.totals.input ?? 0
+      totalOutput += v.totals.output ?? 0
       totalErrors += v.totals.toolErrors ?? 0
       totalRetries += v.totals.retries ?? 0
     })
@@ -742,10 +788,16 @@ export function InsightsSettings(props: { remote?: any }) {
     const totalHeatmapTokens = nonZeroTokenDays.reduce((acc, v) => acc + v, 0)
     const totalHeatmapSessions = allHistoricalRows.length
 
+    const costRows = uniqueModels.length > 0
+      ? uniqueModels
+      : [{ model: '未标注', tokens: totalTokens, input: totalInput, output: totalOutput, cacheRead: totalCacheRead, cacheWrite: totalCacheWrite }]
+    const estimatedCost = estimateUsageRows(costRows, pricing)
+
     return {
       validCount: validRows.length,
       listed: sessions.total,
       totalTokens,
+      estimatedCost,
       totalTimeHours: ((totalModelMs + totalToolMs) / 3600000).toFixed(1),
       cacheHitPct,
       totalCacheRead,
@@ -785,7 +837,7 @@ export function InsightsSettings(props: { remote?: any }) {
         maxHeatmapDayTokens,
       },
     }
-  }, [sessions, range, sessionSort])
+  }, [sessions, range, sessionSort, pricing])
 
   const cacheNote = !analytics
     ? ''
@@ -840,8 +892,15 @@ export function InsightsSettings(props: { remote?: any }) {
       </div>
 
       <div className={css.heroStatsRow}>
-        <div className={css.heroBigNum}>
-          {analytics ? fmtCompact(analytics.totalTokens) : '-'} <span className={css.heroUnit}>Token</span>
+        <div className={css.heroPair}>
+          <div className={css.heroBigNum}>
+            {analytics ? fmtCompact(analytics.totalTokens) : '-'} <span className={css.heroUnit}>Token</span>
+          </div>
+          <div className={css.heroCost} title={estimateDisclaimer(locale)} aria-label={`${copy.estimatedCost}: ${analytics ? formatEstimate(analytics.estimatedCost, locale) : '-'}`}>
+            <span className={css.heroCostLabel}>{copy.estimatedCost}</span>
+            <strong className={css.heroCostValue}>{analytics ? formatEstimate(analytics.estimatedCost, locale) : '-'}</strong>
+            <span className={css.heroCostHint}>{copy.estimateNotBill}</span>
+          </div>
         </div>
         <div className={css.heroMetaCol}>
           <span>累计耗时 <strong>{analytics ? `${analytics.totalTimeHours} 小时` : '-'}</strong></span>
@@ -1935,6 +1994,67 @@ export function InsightsSettings(props: { remote?: any }) {
           <div className={css.emptyScan}>暂无已缓存的对话统计。</div>
         )}
       </div>
+
+      <details className={css.settingsDrawer}>
+        <summary className={css.settingsSummary}>{copy.priceOverrideTitle}</summary>
+        <div className={css.settingsDrawerContent}>
+          <p className={css.priceOverrideHelp}>{copy.priceOverrideHelp}</p>
+          <p className={css.priceOverridePath}>{copy.priceOverridePath} {PRICING_OVERRIDE_FILE}</p>
+          <textarea
+            className={css.priceOverrideInput}
+            rows={8}
+            spellCheck={false}
+            placeholder={copy.priceOverridePlaceholder}
+            value={overrideText}
+            onChange={e => setOverrideText(e.target.value)}
+            aria-label={copy.priceOverrideTitle}
+          />
+          {overrideError ? <p className={css.priceOverrideError}>{overrideError}</p> : null}
+          <div className={css.priceOverrideActions}>
+            <button
+              type="button"
+              className={css.settingsMiniSaveBtn}
+              onClick={() => {
+                const text = overrideText.trim()
+                if (!text) {
+                  globalThis.localStorage?.removeItem(PRICING_STORAGE_KEY)
+                  window.dispatchEvent(new CustomEvent('watcher-pricing-settings'))
+                  setOverrideError('')
+                  setOverrideSaved(true)
+                  setTimeout(() => setOverrideSaved(false), 2000)
+                  return
+                }
+                try {
+                  const parsed = parseOverride(text)
+                  if (parsed == null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new TypeError('object')
+                  globalThis.localStorage?.setItem(PRICING_STORAGE_KEY, JSON.stringify(parsed))
+                  setOverrideText(JSON.stringify(parsed, null, 2))
+                  window.dispatchEvent(new CustomEvent('watcher-pricing-settings'))
+                  setOverrideError('')
+                  setOverrideSaved(true)
+                  setTimeout(() => setOverrideSaved(false), 2000)
+                } catch {
+                  setOverrideError(copy.priceOverrideInvalid)
+                }
+              }}
+            >
+              {overrideSaved ? copy.priceOverrideSaved : copy.priceOverrideSave}
+            </button>
+            <button
+              type="button"
+              className={css.settingsResetBtn}
+              onClick={() => {
+                setOverrideText('')
+                globalThis.localStorage?.removeItem(PRICING_STORAGE_KEY)
+                window.dispatchEvent(new CustomEvent('watcher-pricing-settings'))
+                setOverrideError('')
+              }}
+            >
+              {copy.priceOverrideReset}
+            </button>
+          </div>
+        </div>
+      </details>
 
       <details className={css.settingsDrawer}>
         <summary className={css.settingsSummary}>⚙ 高级报警阈值设置 (默认开箱即用，无需频繁调整)</summary>

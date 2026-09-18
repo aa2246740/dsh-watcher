@@ -100,6 +100,17 @@
   color: var(--dsw-alias-label-primary);
 }
 
+.costStat {
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.costStat strong {
+  color: var(--dsw-alias-label-primary);
+}
+
 .scopeGroup {
   display: inline-flex;
   padding: 1px;
@@ -350,6 +361,40 @@
   font-size: 13px;
   font-weight: 500;
   color: var(--dsw-alias-label-secondary);
+}
+
+.heroPair {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.heroCost {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.heroCostLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.heroCostValue {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  color: var(--dsw-alias-label-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.heroCostHint {
+  font-size: 10px;
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .heroMetaCol {
@@ -1317,6 +1362,52 @@
   gap: 14px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.priceOverrideHelp,
+.priceOverridePath {
+  width: 100%;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.priceOverrideInput {
+  width: 100%;
+  min-height: 120px;
+  box-sizing: border-box;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  resize: vertical;
+}
+
+.priceOverrideError {
+  width: 100%;
+  margin: 0;
+  font-size: 11px;
+  color: var(--dsw-alias-state-error-primary, #e5484d);
+}
+
+.priceOverrideActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.settingsResetBtn {
+  padding: 3px 10px;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  border: 1px solid var(--dsw-alias-border-l2);
+  font-size: 11px;
+  cursor: pointer;
 }
 
 .settingInlineItem {
