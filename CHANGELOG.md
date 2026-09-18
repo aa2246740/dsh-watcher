@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.4.1 — 2026-09-18
+
+- Fixed chart hover cards being cut off at the panel edge. Bar, stacked-line, and heatmap popovers are now portalled to the document body and clamped into the viewport, so a card opened on a late bar keeps its model names, token values, and percentages readable instead of losing its right-hand side to the panel's `overflow: hidden`.
+- Hover cards are anchored to the measured bar/cell/point rectangle rather than a percentage of the chart width, so they follow their own bar instead of the chart's midpoint.
+- The heatmap popover now closes when the pointer leaves the chart area.
 
 - First-turn `本轮` HUD now copies `request/header` into the open `turn.route`, so the tag shows the real model instead of the initial `unknown` snapshot.
 - Stock install is `dsh plugin --profile web add github:aa2246740/dsh-watcher` (pnpm on PATH, then restart the Host and reload). `dsh.bundle.patch` and committed `lib/` make that git spec boot without a `prepare` script.
