@@ -1150,6 +1150,8 @@ function ReadyWatcher({
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const [inspectorClosing, setInspectorClosing] = useState(false)
   const inspectorExitTimer = useRef<number | null>(null)
+  const [panelPin, setPanelPin] = useState<{ top: number; right: number } | null>(null)
+  const panelPinTimer = useRef<number | null>(null)
   const [observationMode, setObservationMode] = useState<ObservationMode>('itemized')
   const [disclosure, setDisclosure] = useState(createDisclosureState)
   const [historyLoad, setHistoryLoad] = useState<HistoryLoadState>({ kind: 'idle' })
@@ -1251,6 +1253,7 @@ function ReadyWatcher({
 
   const selectItem = (group: WorkGroup, item: WorkItem) => {
     clearInspectorExit()
+    pinPanelFrame()
     setInspectorClosing(false)
     setUi(followRef.current.onSelect(group.id))
     setSelectedItemId(item.id)
@@ -1275,6 +1278,37 @@ function ReadyWatcher({
     inspectorExitTimer.current = null
   }
 
+  const clearPanelPin = () => {
+    if (panelPinTimer.current !== null) {
+      window.clearTimeout(panelPinTimer.current)
+      panelPinTimer.current = null
+    }
+    setPanelPin(null)
+  }
+
+  /**
+   * Opening and closing the docked inspector both change the panel's own width,
+   * and a clamped panel derives its inline `left` from that width. The
+   * ResizeObserver re-derives it a frame after layout, so mid-animation the
+   * frame flicked left and right on every tick. Freezing the measured frame for
+   * the transition lets the left edge follow layout instead of a measurement;
+   * an unclamped panel needs no pin, because its `left` does not depend on the
+   * width.
+   */
+  const pinPanelFrame = () => {
+    const panel = panelRef.current
+    if (panel === null || panelPosition === null) return
+    const { left, top } = panelPosition
+    // Layout values, not getBoundingClientRect: the panel's entry animation is
+    // scaled, and offsetWidth/top ignore transforms.
+    if (typeof left !== 'number' || typeof top !== 'number') return
+    const right = window.innerWidth - (left + panel.offsetWidth)
+    if (Math.abs(right - PANEL_MARGIN) > 1) return
+    setPanelPin({ top, right })
+    if (panelPinTimer.current !== null) window.clearTimeout(panelPinTimer.current)
+    panelPinTimer.current = window.setTimeout(clearPanelPin, INSPECTOR_EXIT_FALLBACK_MS)
+  }
+
   /**
    * Closing the inspector is one continuous motion: the column narrows while
    * the detail content slides right and disappears under the work-path card.
@@ -1290,13 +1324,17 @@ function ReadyWatcher({
 
   const closeInspector = () => {
     if (inspectorClosing) return
+    pinPanelFrame()
     setInspectorClosing(true)
     // The animation end is the primary signal; this keeps the control working
     // when the animation never runs or its event is lost.
     inspectorExitTimer.current = window.setTimeout(finishInspectorExit, INSPECTOR_EXIT_FALLBACK_MS)
   }
 
-  useEffect(() => clearInspectorExit, [])
+  useEffect(() => () => {
+    clearInspectorExit()
+    if (panelPinTimer.current !== null) window.clearTimeout(panelPinTimer.current)
+  }, [])
 
   const pinForDisclosure = () => {
     if (ui.follow) setUi(followRef.current.setFollow(false))
@@ -1380,7 +1418,9 @@ function ReadyWatcher({
           <div
             ref={panelRef}
             className={css.menu}
-            style={panelPosition ?? UNPLACED_PANEL_STYLE}
+            style={panelPin === null
+              ? panelPosition ?? UNPLACED_PANEL_STYLE
+              : { top: panelPin.top, right: panelPin.right, left: 'auto' }}
             role="dialog"
             aria-modal="false"
             aria-label="Watcher 工作图"
