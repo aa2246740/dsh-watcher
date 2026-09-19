@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 // @ts-ignore TS7016: no declarations for the local .mjs module
 import { alertsOf, DEFAULT_LIMITS, limitsOf, scanSessions, mergeModels } from '../insights/presentation.mjs'
 // @ts-ignore TS7016: no declarations for the local .mjs module
-import { PRICING_STORAGE_KEY, estimateFromInsights, estimateUsageRows, formatEstimate, formatEstimateNote, estimateDisclaimer, mergePricing, defaultPricing, parseOverride, readStoredOverride } from '../insights/pricing.mjs'
+import { estimateFromInsights, estimateUsageRows, formatEstimate, formatEstimateNote, estimateDisclaimer, mergePricing, defaultPricing, readStoredOverride, persistPricingEditor, clearPricingEditor, effectivePricingText } from '../insights/pricing.mjs'
 // @ts-ignore TS7016: no declarations for the local .mjs module
 import { costCopy, detectLocale } from '../insights/i18n.mjs'
 import type { InsightsView } from '../insights/projection.ts'
@@ -368,14 +368,7 @@ export function InsightsSettings(props: { remote?: any }) {
   const [silence, setSilence] = useState(limits.silenceSeconds)
   const [reasoning, setReasoning] = useState(limits.reasoningSeconds)
   const [saved, setSaved] = useState(false)
-  const [overrideText, setOverrideText] = useState(() => {
-    try {
-      const raw = globalThis.localStorage?.getItem(PRICING_STORAGE_KEY)
-      return raw ? JSON.stringify(JSON.parse(raw), null, 2) : ''
-    } catch {
-      return globalThis.localStorage?.getItem(PRICING_STORAGE_KEY) ?? ''
-    }
-  })
+  const [overrideText, setOverrideText] = useState(() => effectivePricingText(globalThis.localStorage))
   const [overrideError, setOverrideError] = useState('')
   const [overrideSaved, setOverrideSaved] = useState(false)
   const [userPickedRange, setUserPickedRange] = useState<boolean>(false)
@@ -2023,20 +2016,8 @@ export function InsightsSettings(props: { remote?: any }) {
               type="button"
               className={css.settingsMiniSaveBtn}
               onClick={() => {
-                const text = overrideText.trim()
-                if (!text) {
-                  globalThis.localStorage?.removeItem(PRICING_STORAGE_KEY)
-                  window.dispatchEvent(new CustomEvent('watcher-pricing-settings'))
-                  setOverrideError('')
-                  setOverrideSaved(true)
-                  setTimeout(() => setOverrideSaved(false), 2000)
-                  return
-                }
                 try {
-                  const parsed = parseOverride(text)
-                  if (parsed == null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new TypeError('object')
-                  globalThis.localStorage?.setItem(PRICING_STORAGE_KEY, JSON.stringify(parsed))
-                  setOverrideText(JSON.stringify(parsed, null, 2))
+                  setOverrideText(persistPricingEditor(overrideText, globalThis.localStorage))
                   window.dispatchEvent(new CustomEvent('watcher-pricing-settings'))
                   setOverrideError('')
                   setOverrideSaved(true)
@@ -2052,8 +2033,7 @@ export function InsightsSettings(props: { remote?: any }) {
               type="button"
               className={css.settingsResetBtn}
               onClick={() => {
-                setOverrideText('')
-                globalThis.localStorage?.removeItem(PRICING_STORAGE_KEY)
+                setOverrideText(clearPricingEditor(globalThis.localStorage))
                 window.dispatchEvent(new CustomEvent('watcher-pricing-settings'))
                 setOverrideError('')
               }}

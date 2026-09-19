@@ -1071,3 +1071,91 @@ export function readStoredOverride(storage) {
 export function pricingTableFrom(override) {
   return mergePricing(defaultPricing(), override);
 }
+
+function sameAliasSet(a, b) {
+  const left = [...new Set((a ?? []).map(x => String(x)))].sort();
+  const right = [...new Set((b ?? []).map(x => String(x)))].sort();
+  if (left.length !== right.length) return false;
+  return left.every((value, i) => value === right[i]);
+}
+
+function serializeModelRow(row) {
+  const out = {};
+  if (Array.isArray(row?.aliases) && row.aliases.length) out.aliases = [...row.aliases];
+  if (typeof row?.currency === 'string' && row.currency.trim()) out.currency = row.currency.trim();
+  if (row?.input !== undefined) out.input = row.input;
+  if (row?.output !== undefined) out.output = row.output;
+  if (row?.cache !== undefined) out.cache = row.cache;
+  if (row?.cacheWrite !== undefined) out.cacheWrite = row.cacheWrite;
+  return out;
+}
+
+/** Stable pretty JSON of the effective table (no `_index`). Model keys sorted. */
+export function serializeEffectivePricing(table) {
+  const models = {};
+  for (const id of Object.keys(table?.models ?? {}).sort()) {
+    models[id] = serializeModelRow(table.models[id]);
+  }
+  return JSON.stringify({
+    currency: table?.currency ?? 'USD',
+    unit: table?.unit ?? PRICING_UNIT,
+    models,
+  }, null, 2);
+}
+
+export function effectivePricingText(storage) {
+  return serializeEffectivePricing(mergePricing(defaultPricing(), readStoredOverride(storage)));
+}
+
+/**
+ * Overlay of only models/fields that differ from `base`.
+ * Missing edited models are ignored (defaults stay). Empty → null.
+ */
+export function diffPricing(base, edited) {
+  if (edited == null || typeof edited !== 'object' || Array.isArray(edited)) return null;
+  const baseTable = base?.models && typeof base.models === 'object' ? base : { models: {}, currency: 'USD', unit: PRICING_UNIT };
+  const incoming = edited.models && typeof edited.models === 'object' && !Array.isArray(edited.models)
+    ? edited.models
+    : edited;
+  const overlay = {};
+  if (typeof edited.currency === 'string' && edited.currency.trim() && edited.currency.trim() !== (baseTable.currency ?? 'USD')) {
+    overlay.currency = edited.currency.trim();
+  }
+  if (typeof edited.unit === 'string' && edited.unit.trim() && edited.unit.trim() !== (baseTable.unit ?? PRICING_UNIT)) {
+    overlay.unit = edited.unit.trim();
+  }
+  const models = {};
+  for (const [id, row] of Object.entries(incoming ?? {})) {
+    if (!id || !row || typeof row !== 'object' || Array.isArray(row)) continue;
+    const prev = baseTable.models?.[id];
+    const next = {};
+    if (Array.isArray(row.aliases) && !sameAliasSet(row.aliases, prev?.aliases)) next.aliases = [...row.aliases];
+    if (typeof row.currency === 'string' && row.currency.trim() && row.currency.trim() !== (prev?.currency ?? baseTable.currency ?? 'USD')) {
+      next.currency = row.currency.trim();
+    }
+    for (const field of ['input', 'output', 'cache', 'cacheWrite']) {
+      if (row[field] === undefined) continue;
+      const value = rateOf(row[field]);
+      if (value !== rateOf(prev?.[field])) next[field] = value;
+    }
+    if (Object.keys(next).length) models[id] = next;
+  }
+  if (Object.keys(models).length) overlay.models = models;
+  return Object.keys(overlay).length ? overlay : null;
+}
+
+export function persistPricingEditor(raw, storage) {
+  const parsed = raw == null || String(raw).trim() === '' ? null : parseOverride(raw);
+  if (parsed != null && (typeof parsed !== 'object' || Array.isArray(parsed))) {
+    throw new TypeError('override must be a JSON object');
+  }
+  const overlay = parsed == null ? null : diffPricing(defaultPricing(), parsed);
+  if (!overlay) storage?.removeItem?.(PRICING_STORAGE_KEY);
+  else storage?.setItem?.(PRICING_STORAGE_KEY, JSON.stringify(overlay));
+  return serializeEffectivePricing(mergePricing(defaultPricing(), overlay));
+}
+
+export function clearPricingEditor(storage) {
+  storage?.removeItem?.(PRICING_STORAGE_KEY);
+  return serializeEffectivePricing(defaultPricing());
+}

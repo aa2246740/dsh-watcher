@@ -4,10 +4,12 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import {
-  DEFAULT_PRICING_TABLE, defaultPricing, parsePricingYaml, mergePricing,
+  DEFAULT_PRICING_TABLE, PRICING_STORAGE_KEY, defaultPricing, parsePricingYaml, mergePricing,
   estimateModelUsage, estimateUsageRows, formatEstimate, formatEstimateNote, formatUsd, lookupRates,
-  pricingTableFrom, rateOf,
+  pricingTableFrom, rateOf, serializeEffectivePricing, effectivePricingText, diffPricing,
+  persistPricingEditor, clearPricingEditor, readStoredOverride,
 } from '../src/insights/pricing.mjs';
+import { costCopy } from '../src/insights/i18n.mjs';
 
 const yamlPath = join(dirname(fileURLToPath(import.meta.url)), '../pricing/models.yaml');
 const MILLION = 1_000_000;
@@ -258,6 +260,21 @@ test('mainstream Host names resolve and price split buckets', () => {
   }
 });
 
+function memoryStorage(initial = {}) {
+  const data = new Map(Object.entries(initial));
+  return {
+    getItem(key) {
+      return data.has(key) ? data.get(key) : null;
+    },
+    setItem(key, value) {
+      data.set(key, String(value));
+    },
+    removeItem(key) {
+      data.delete(key);
+    },
+  };
+}
+
 test('priced and partial never put + 未知 in the main number', () => {
   const priced = estimateModelUsage({
     model: 'deepseek-flash', input: MILLION, output: 0, cacheRead: 0, tokens: MILLION,
@@ -271,4 +288,110 @@ test('priced and partial never put + 未知 in the main number', () => {
   assert.equal(formatEstimate(unknown, 'zh'), '未知');
   assert.equal(formatEstimate(unknown, 'en'), 'Unknown');
   assert.equal(formatEstimateNote(unknown, 'zh'), '');
+});
+
+test('price editor copy describes the effective table, not a blank overlay paste', () => {
+  const zh = costCopy('zh');
+  const en = costCopy('en');
+  assert.match(zh.priceOverrideTitle, /估算费用价格表/);
+  assert.match(zh.priceOverrideTitle, /本地、不联网/);
+  assert.match(zh.priceOverrideHelp, /当前生效/);
+  assert.match(zh.priceOverrideHelp, /未知/);
+  assert.equal(zh.priceOverrideSave, '保存');
+  assert.equal(zh.priceOverrideReset, '恢复默认');
+  assert.match(en.priceOverrideTitle, /Estimated-cost price table/);
+  assert.match(en.priceOverrideTitle, /local, no network/);
+  assert.match(en.priceOverrideHelp, /Currently effective/);
+  assert.equal(en.priceOverrideSave, 'Save');
+  assert.equal(en.priceOverrideReset, 'Reset to defaults');
+});
+
+test('editor with no overlay shows pretty-printed defaults, never empty', () => {
+  const storage = memoryStorage();
+  const text = effectivePricingText(storage);
+  assert.ok(text.trim().length > 0);
+  assert.ok(text.includes('\n'));
+  const parsed = JSON.parse(text);
+  assert.equal(parsed.currency, 'USD');
+  assert.equal(parsed.unit, 'per_1m_tokens');
+  const ids = Object.keys(parsed.models);
+  assert.ok(ids.length >= 40);
+  assert.ok(ids.includes('gpt-5'));
+  assert.ok(ids.includes('deepseek-flash'));
+  assert.deepEqual(ids, [...ids].sort());
+  assert.equal(text, serializeEffectivePricing(defaultPricing()));
+  assert.equal(storage.getItem(PRICING_STORAGE_KEY), null);
+  assert.equal(diffPricing(defaultPricing(), parsed), null);
+});
+
+test('saving an unchanged default table does not store a duplicate overlay', () => {
+  const storage = memoryStorage();
+  const next = persistPricingEditor(effectivePricingText(storage), storage);
+  assert.equal(storage.getItem(PRICING_STORAGE_KEY), null);
+  assert.equal(next, serializeEffectivePricing(defaultPricing()));
+});
+
+test('editing one model rate stores only that model overlay', () => {
+  const storage = memoryStorage();
+  const edited = JSON.parse(effectivePricingText(storage));
+  edited.models['gpt-5'].input = 9;
+  const next = persistPricingEditor(JSON.stringify(edited, null, 2), storage);
+  const stored = JSON.parse(storage.getItem(PRICING_STORAGE_KEY));
+  assert.deepEqual(Object.keys(stored), ['models']);
+  assert.deepEqual(Object.keys(stored.models), ['gpt-5']);
+  assert.deepEqual(stored.models['gpt-5'], { input: 9 });
+  const shown = JSON.parse(next);
+  assert.equal(shown.models['gpt-5'].input, 9);
+  assert.equal(shown.models['deepseek-flash'].input, 0.15);
+  assert.ok(Object.keys(shown.models).length >= 40);
+});
+
+test('clear overlay empties storage and refills the editor with defaults', () => {
+  const storage = memoryStorage();
+  persistPricingEditor(JSON.stringify({ models: { 'gpt-5': { input: 9 } } }), storage);
+  assert.ok(storage.getItem(PRICING_STORAGE_KEY));
+  const text = clearPricingEditor(storage);
+  assert.equal(storage.getItem(PRICING_STORAGE_KEY), null);
+  assert.equal(text, serializeEffectivePricing(defaultPricing()));
+  assert.equal(JSON.parse(text).models['gpt-5'].input, defaultPricing().models['gpt-5'].input);
+});
+
+test('reverting an edit back to defaults removes the storage key', () => {
+  const storage = memoryStorage();
+  const edited = JSON.parse(effectivePricingText(storage));
+  const stockInput = edited.models['gpt-5'].input;
+  edited.models['gpt-5'].input = 9;
+  persistPricingEditor(JSON.stringify(edited), storage);
+  assert.ok(storage.getItem(PRICING_STORAGE_KEY));
+  edited.models['gpt-5'].input = stockInput;
+  persistPricingEditor(JSON.stringify(edited), storage);
+  assert.equal(storage.getItem(PRICING_STORAGE_KEY), null);
+});
+
+test('persisted overlay still wins over defaults for estimates', () => {
+  const storage = memoryStorage();
+  persistPricingEditor(JSON.stringify({
+    models: { 'deepseek-flash': { input: 9.99, output: 1.2, cache: 0.5 } },
+  }), storage);
+  const table = mergePricing(defaultPricing(), readStoredOverride(storage));
+  const result = estimateModelUsage({
+    model: 'deepseek-chat',
+    input: MILLION,
+    output: MILLION,
+    cacheRead: MILLION,
+    tokens: 3 * MILLION,
+  }, table);
+  assert.equal(result.status, 'priced');
+  assert.equal(result.usd, 9.99 + 1.2 + 0.5);
+  const stock = estimateModelUsage({
+    model: 'deepseek-flash',
+    input: MILLION,
+    output: MILLION,
+    cacheRead: MILLION,
+    tokens: 3 * MILLION,
+  }, defaults());
+  assert.equal(stock.usd, 0.15 + 0.6 + 0.003);
+  assert.notEqual(result.usd, stock.usd);
+  const shown = JSON.parse(effectivePricingText(storage));
+  assert.equal(shown.models['deepseek-flash'].input, 9.99);
 });
