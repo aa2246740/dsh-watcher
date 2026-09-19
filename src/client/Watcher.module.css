@@ -3,7 +3,10 @@
   --watcher-panel-max-height: min(680px, calc(100vh - 112px));
   --watcher-motion-fast: 140ms;
   --watcher-motion-panel: 180ms;
+  --watcher-motion-inspector: 200ms;
+  --watcher-motion-content-out: 120ms;
   --watcher-ease-out: cubic-bezier(.2, .8, .2, 1);
+  --watcher-ease-glide: cubic-bezier(.22, .61, .36, 1);
 }
 
 .trigger {
@@ -84,7 +87,10 @@
   --watcher-panel-max-height: min(680px, calc(100vh - 24px));
   --watcher-motion-fast: 140ms;
   --watcher-motion-panel: 180ms;
+  --watcher-motion-inspector: 200ms;
+  --watcher-motion-content-out: 120ms;
   --watcher-ease-out: cubic-bezier(.2, .8, .2, 1);
+  --watcher-ease-glide: cubic-bezier(.22, .61, .36, 1);
   box-sizing: border-box;
   display: flex;
   align-items: stretch;
@@ -1340,14 +1346,63 @@
   background: var(--dsw-alias-bg-layer-1);
 }
 
+/* Opening and closing the docked inspector animates this column instead of
+ * toggling it, and the detail content moves in its own beat: it leaves first,
+ * the column narrows after it is gone. That order is deliberate — the closing
+ * edge glides right over the work-path card, so a line of detail text left
+ * behind would be cut in half. Children keep their laid-out width, so nothing
+ * reflows while the column moves, and closing ends at width 0, which makes the
+ * unmount that follows invisible. */
+@media (min-width: 861px) {
+  .inspector {
+    overflow: hidden;
+    animation: watcher-inspector-enter var(--watcher-motion-inspector) var(--watcher-ease-glide);
+  }
+
+  .inspector > * {
+    box-sizing: border-box;
+    width: 438px;
+    animation: watcher-inspector-content-in var(--watcher-motion-content-out) var(--watcher-ease-glide) var(--watcher-motion-inspector) both;
+  }
+
+  .inspector[data-closing] {
+    pointer-events: none;
+    animation: watcher-inspector-exit var(--watcher-motion-inspector) var(--watcher-ease-glide) var(--watcher-motion-content-out) forwards;
+  }
+
+  .inspector[data-closing] > * {
+    animation: watcher-inspector-content-out var(--watcher-motion-content-out) ease-in forwards;
+  }
+}
+
+@keyframes watcher-inspector-enter {
+  from { width: 0; }
+}
+
+/* Detail content drifts toward the work path as it leaves, so the motion reads
+ * as sliding away rather than being covered. */
+@keyframes watcher-inspector-content-in {
+  from { opacity: 0; transform: translateX(16px); }
+}
+
+@keyframes watcher-inspector-content-out {
+  to { opacity: 0; transform: translateX(16px); }
+}
+
+@keyframes watcher-inspector-exit {
+  to { width: 0; }
+}
+
 .inspectorHeader {
   flex: none;
   padding: 16px 16px 14px;
   border-bottom: 1px solid var(--dsw-alias-border-l2);
 }
 
+/* Docked layout keeps this control visible: it is the only way back to the
+ * work path, so hiding it left the inspector permanently open. */
 .inspectorBack {
-  display: none;
+  display: inline-flex;
   align-items: center;
   gap: 5px;
   min-height: 28px;
@@ -1363,11 +1418,11 @@
 }
 
 .inspectorBack:hover { background: var(--dsw-alias-interactive-bg-hover); }
-.inspectorBack svg { transform: rotate(180deg); }
 
 .statusLine,
 .detailStatus {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 7px;
   color: var(--dsw-alias-label-secondary);
@@ -1389,6 +1444,7 @@
 
 .location {
   margin-left: auto;
+  min-width: 0;
   color: var(--dsw-alias-label-tertiary);
   font-variant-numeric: tabular-nums;
 }
@@ -1770,6 +1826,13 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* Instant, but still an animation: the inspector unmounts on
+   * `animationend`, so disabling it outright would stall the collapse. */
+  .inspector,
+  .inspector > * { animation: none; }
+  .inspector[data-closing],
+  .inspector[data-closing] > * { animation-duration: .01ms; animation-delay: 0s; }
+
   .menu,
   .trigger[data-live] .eyePupil,
   .trigger[data-live] .eyeBlink {
@@ -1841,7 +1904,9 @@
     max-height: none;
   }
 
-  .inspectorBack { display: inline-flex; }
+  /* Drill-down layout: the inspector replaces the work path, so the same
+   * control reads as a back chevron instead of the docked collapse chevron. */
+  .inspectorBack svg { transform: rotate(180deg); }
   .inspectorHeader { padding-top: 14px; }
   .executionList { max-height: 150px; }
 }

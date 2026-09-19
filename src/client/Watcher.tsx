@@ -96,6 +96,14 @@ type HistoryLoadState =
 
 const PANEL_GAP = 8
 const PANEL_MARGIN = 12
+/**
+ * Mirrors the docked inspector choreography in `Watcher.module.css`: the detail
+ * content leaves first, the column closes after it. The fallback keeps the
+ * control working when the animation event is lost.
+ */
+const INSPECTOR_CONTENT_EXIT_MS = 120
+const INSPECTOR_EXIT_MS = 200
+const INSPECTOR_EXIT_FALLBACK_MS = INSPECTOR_CONTENT_EXIT_MS + INSPECTOR_EXIT_MS + 250
 const UNPLACED_PANEL_STYLE: CSSProperties = { visibility: 'hidden', left: 0, top: 0 }
 const MARKDOWN_LABELS: MarkdownLabels = Object.freeze({
   code: Object.freeze({ copyLabel: '复制', copiedLabel: '已复制' }),
@@ -330,15 +338,19 @@ function ExecutionInspector({
   selectedItemId,
   live,
   now,
+  closing,
   onSelectItem,
   onBack,
+  onExited,
 }: {
   group: WorkGroup
   selectedItemId: string | null
   live: boolean
   now: number
+  closing: boolean
   onSelectItem: (id: string) => void
   onBack: () => void
+  onExited: () => void
 }) {
   const [tab, setTab] = useState<DetailTab>('result')
   const fallback = preferredItem(group)
@@ -354,9 +366,28 @@ function ExecutionInspector({
   const pattern = itemPattern(selected)
 
   return (
-    <aside className={css.inspector} aria-label={`${group.title} 的执行详情`} data-ud-check="watcher-inspector" data-ud-role="panel">
+    <aside
+      className={css.inspector}
+      aria-label={`${group.title} 的执行详情`}
+      data-ud-check="watcher-inspector"
+      data-ud-role="panel"
+      data-closing={closing ? '' : undefined}
+      onAnimationEnd={closing
+        ? event => {
+          // Nested result animations bubble their own events; only the collapse
+          // on this element finishes the exit.
+          if (event.target === event.currentTarget) onExited()
+        }
+        : undefined}
+    >
       <header className={css.inspectorHeader}>
-        <button type="button" className={css.inspectorBack} onClick={onBack} aria-label="返回工作路径">
+        <button
+          type="button"
+          className={css.inspectorBack}
+          onClick={onBack}
+          aria-label="返回工作路径"
+          title="返回工作路径"
+        >
           <IconChevronRightOutline14 size={13} aria-hidden="true" />
           工作路径
         </button>
@@ -1117,6 +1148,8 @@ function ReadyWatcher({
   const [open, setOpen] = useState(false)
   const [ui, setUi] = useState(() => ({ follow: true, unread: 0, selectedId: null as string | null }))
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
+  const [inspectorClosing, setInspectorClosing] = useState(false)
+  const inspectorExitTimer = useRef<number | null>(null)
   const [observationMode, setObservationMode] = useState<ObservationMode>('itemized')
   const [disclosure, setDisclosure] = useState(createDisclosureState)
   const [historyLoad, setHistoryLoad] = useState<HistoryLoadState>({ kind: 'idle' })
@@ -1217,6 +1250,8 @@ function ReadyWatcher({
   const nowLabel = picture.now.label || (picture.nodes.length > 0 ? '执行路径已就绪' : '等待指令')
 
   const selectItem = (group: WorkGroup, item: WorkItem) => {
+    clearInspectorExit()
+    setInspectorClosing(false)
     setUi(followRef.current.onSelect(group.id))
     setSelectedItemId(item.id)
   }
@@ -1233,6 +1268,35 @@ function ReadyWatcher({
     programmaticScrollRef.current = true
     setUi(followRef.current.backToLatest())
   }
+
+  const clearInspectorExit = () => {
+    if (inspectorExitTimer.current === null) return
+    window.clearTimeout(inspectorExitTimer.current)
+    inspectorExitTimer.current = null
+  }
+
+  /**
+   * Closing the inspector is one continuous motion: the column narrows while
+   * the detail content slides right and disappears under the work-path card.
+   * The collapse animation already ends at the closed width, so the unmount
+   * that finishes it cannot flash or jump.
+   */
+  const finishInspectorExit = () => {
+    clearInspectorExit()
+    backToLatest()
+    setSelectedItemId(null)
+    setInspectorClosing(false)
+  }
+
+  const closeInspector = () => {
+    if (inspectorClosing) return
+    setInspectorClosing(true)
+    // The animation end is the primary signal; this keeps the control working
+    // when the animation never runs or its event is lost.
+    inspectorExitTimer.current = window.setTimeout(finishInspectorExit, INSPECTOR_EXIT_FALLBACK_MS)
+  }
+
+  useEffect(() => clearInspectorExit, [])
 
   const pinForDisclosure = () => {
     if (ui.follow) setUi(followRef.current.setFollow(false))
@@ -1331,11 +1395,10 @@ function ReadyWatcher({
                   selectedItemId={selectedItemId}
                   live={picture.running && selected.id === lastGroupId}
                   now={now}
+                  closing={inspectorClosing}
                   onSelectItem={setSelectedItemId}
-                  onBack={() => {
-                    backToLatest()
-                    setSelectedItemId(null)
-                  }}
+                  onBack={closeInspector}
+                  onExited={finishInspectorExit}
                 />
               )}
 
@@ -1449,7 +1512,11 @@ function ReadyWatcher({
 
               {!ui.follow && ui.unread > 0
                 ? (
-                  <button type="button" className={css.unread} onClick={backToLatest}>
+                  <button
+                    type="button"
+                    className={css.unread}
+                    onClick={selected === undefined ? backToLatest : closeInspector}
+                  >
                     <IconRefreshOutline14 size={12} />
                     {ui.unread} 条新进展 · 查看最新
                   </button>

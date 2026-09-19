@@ -146,3 +146,57 @@ test('each Step can disclose a truthful nested model stage and provider-visible 
   assert.match(clientIndex, /registerModelTraceDefinition\(ctx\)/)
   assert.doesNotMatch(source, /隐藏思维/)
 })
+
+test('collapsing the docked inspector animates its column instead of popping away', async () => {
+  const [source, styles] = await Promise.all([
+    readFile(clientSource, 'utf8'),
+    readFile(clientStyles, 'utf8'),
+  ])
+
+  assert.match(source, /data-closing=\{closing \? '' : undefined\}/)
+  assert.match(source, /onAnimationEnd=\{closing/)
+  assert.match(source, /const closeInspector = \(\) =>/)
+  assert.match(source, /setInspectorClosing\(true\)/)
+  assert.match(source, /onClick=\{selected === undefined \? backToLatest : closeInspector\}/)
+  assert.match(styles, /@keyframes watcher-inspector-enter \{\s*from \{ width: 0; \}\s*\}/)
+  assert.match(styles, /@keyframes watcher-inspector-exit \{\s*to \{ width: 0; \}\s*\}/)
+  assert.match(styles, /animation: watcher-inspector-exit var\(--watcher-motion-inspector\) var\(--watcher-ease-glide\) var\(--watcher-motion-content-out\)/)
+  assert.match(styles, /animation: watcher-inspector-content-out var\(--watcher-motion-content-out\) ease-in forwards/)
+  assert.match(styles, /@keyframes watcher-inspector-content-out \{\s*to \{ opacity: 0; transform: translateX\(16px\); \}\s*\}/)
+  const reduced = styles.slice(styles.indexOf('@media (prefers-reduced-motion: reduce)'))
+  assert.match(reduced, /\.inspector\[data-closing\],\s*\n\s*\.inspector\[data-closing\] > \* \{ animation-duration: \.01ms; animation-delay: 0s; \}/)
+})
+
+test('the inspector header keeps its status line inside the docked column', async () => {
+  const styles = await readFile(clientStyles, 'utf8')
+
+  // Docked children carry the column's box width; without border-box their
+  // padding widened them past the column and the status tail slipped under the
+  // work-path card.
+  assert.match(styles, /\.inspector > \* \{\s*box-sizing: border-box;\s*width: 438px;/)
+  assert.match(styles, /\.statusLine,\s*\n\.detailStatus \{\s*display: flex;\s*\n\s*flex-wrap: wrap;/)
+  assert.match(styles, /\.location \{\s*margin-left: auto;\s*\n\s*min-width: 0;/)
+})
+
+test('the docked inspector keeps a visible way back to the work path', async () => {
+
+  const [source, styles] = await Promise.all([
+    readFile(clientSource, 'utf8'),
+    readFile(clientStyles, 'utf8'),
+  ])
+
+  assert.match(source, /className=\{css\.inspectorBack\}/)
+  assert.match(source, /onClick=\{onBack\}/)
+  assert.match(source, /aria-label="返回工作路径"/)
+
+  const start = styles.indexOf('.inspectorBack {')
+  const end = styles.indexOf('.inspectorBack:hover')
+  assert.ok(start !== -1 && end > start, 'the docked back control has its own rule')
+  const dockedRule = styles.slice(start, end)
+  assert.match(dockedRule, /display: inline-flex/)
+  assert.doesNotMatch(dockedRule, /display: none/)
+
+  // Only the drill-down layout flips the chevron into a back arrow; the docked
+  // layout keeps it pointing at the work path beside the inspector.
+  assert.doesNotMatch(styles.slice(0, styles.indexOf('@media (max-width: 860px)')), /\.inspectorBack svg/)
+})
