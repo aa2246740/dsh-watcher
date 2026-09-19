@@ -17,23 +17,22 @@ test('pricing/models.yaml parses to the bundled default table', () => {
   const parsed = parsePricingYaml(readFileSync(yamlPath, 'utf8'));
   assert.equal(parsed.currency, DEFAULT_PRICING_TABLE.currency);
   assert.equal(parsed.unit, DEFAULT_PRICING_TABLE.unit);
-  assert.deepEqual(parsed.models['deepseek-flash'].aliases, [...DEFAULT_PRICING_TABLE.models['deepseek-flash'].aliases]);
+  const ids = Object.keys(DEFAULT_PRICING_TABLE.models);
+  assert.deepEqual(Object.keys(parsed.models).sort(), [...ids].sort());
+  for (const id of ids) {
+    const yamlRow = parsed.models[id];
+    const bundled = DEFAULT_PRICING_TABLE.models[id];
+    assert.deepEqual(yamlRow.aliases, [...bundled.aliases], id);
+    assert.equal(yamlRow.input, bundled.input, id);
+    assert.equal(yamlRow.output, bundled.output, id);
+    assert.equal(yamlRow.cache, bundled.cache, id);
+    assert.equal(yamlRow.cacheWrite, bundled.cacheWrite, id);
+  }
   assert.equal(parsed.models['deepseek-flash'].input, 0.15);
-  assert.equal(parsed.models['deepseek-flash'].output, 0.6);
-  assert.equal(parsed.models['deepseek-flash'].cache, 0.003);
   assert.equal(parsed.models['deepseek-v4-pro'].input, 0.66);
-  assert.equal(parsed.models['deepseek-v4-pro'].output, 1.98);
-  assert.equal(parsed.models['deepseek-v4-pro'].cache, 0.022);
-  assert.deepEqual(parsed.models['minimax-m2.7'].aliases, [...DEFAULT_PRICING_TABLE.models['minimax-m2.7'].aliases]);
-  assert.equal(parsed.models['minimax-m2.7'].input, DEFAULT_PRICING_TABLE.models['minimax-m2.7'].input);
-  assert.equal(parsed.models['minimax-m2.7'].output, DEFAULT_PRICING_TABLE.models['minimax-m2.7'].output);
-  assert.equal(parsed.models['minimax-m2.7'].cache, DEFAULT_PRICING_TABLE.models['minimax-m2.7'].cache);
-  assert.equal(parsed.models['minimax-m2.7'].cacheWrite, DEFAULT_PRICING_TABLE.models['minimax-m2.7'].cacheWrite);
-  assert.deepEqual(parsed.models['minimax-m2.7-highspeed'].aliases, [...DEFAULT_PRICING_TABLE.models['minimax-m2.7-highspeed'].aliases]);
-  assert.equal(parsed.models['minimax-m2.7-highspeed'].input, DEFAULT_PRICING_TABLE.models['minimax-m2.7-highspeed'].input);
-  assert.equal(parsed.models['minimax-m2.7-highspeed'].output, DEFAULT_PRICING_TABLE.models['minimax-m2.7-highspeed'].output);
-  assert.equal(parsed.models['minimax-m2.7-highspeed'].cache, 0.06);
-  assert.equal(parsed.models['minimax-m2.7-highspeed'].cacheWrite, 0.375);
+  assert.equal(parsed.models['minimax-m2.7'].cacheWrite, 0.375);
+  assert.equal(parsed.models['minimax-m2.7-highspeed'].input, 0.6);
+  assert.ok(ids.length >= 40);
 });
 
 test('priced model math uses matching input / output / cache rates per 1M tokens', () => {
@@ -219,6 +218,44 @@ test('DeepSeek-V4-Flash plus MiniMax-M2.7 with split buckets is a single dollar 
   assert.ok(!text.includes('+'));
   assert.ok(!text.includes('未知'));
   assert.equal(formatEstimateNote(result, 'zh'), '');
+});
+
+test('official preferred DeepSeek and MiniMax rates win over OpenRouter list prices', () => {
+  const table = defaults();
+  assert.equal(lookupRates('deepseek-chat', table).id, 'deepseek-flash');
+  assert.equal(lookupRates('deepseek-chat', table).input, 0.15);
+  assert.equal(lookupRates('deepseek/deepseek-v4-pro', table).input, 0.66);
+  assert.equal(lookupRates('MiniMax-M2.7', table).cacheWrite, 0.375);
+  assert.equal(lookupRates('anthropic/claude-sonnet-5', table).input, 2);
+  assert.equal(lookupRates('anthropic/claude-sonnet-5', table).cacheWrite, 2.5);
+});
+
+test('mainstream Host names resolve and price split buckets', () => {
+  const table = defaults();
+  const cases = [
+    ['GPT-5', 'gpt-5', 1.25],
+    ['openai/gpt-5', 'gpt-5', 1.25],
+    ['claude-sonnet-5', 'claude-sonnet-5', 2],
+    ['Claude Sonnet 5', 'claude-sonnet-5', 2],
+    ['gemini-2.5-flash', 'gemini-2.5-flash', 0.3],
+    ['google/gemini-2.5-flash', 'gemini-2.5-flash', 0.3],
+    ['grok-4.6', 'grok-4.6', 2],
+    ['x-ai/grok-4.6', 'grok-4.6', 2],
+    ['glm-5', 'glm-5', 0.6],
+    ['z-ai/glm-5', 'glm-5', 0.6],
+    ['qwen3.8-flash', 'qwen3.8-flash', 0.15],
+    ['qwen/qwen3.8-flash', 'qwen3.8-flash', 0.15],
+  ];
+  for (const [name, id, inputRate] of cases) {
+    const rates = lookupRates(name, table);
+    assert.equal(rates?.id, id, name);
+    const result = estimateModelUsage({
+      model: name, input: MILLION, output: 0, cacheRead: 0, tokens: MILLION,
+    }, table);
+    assert.equal(result.status, 'priced', name);
+    assert.ok(result.usd > 0, name);
+    assert.equal(result.usd, inputRate, name);
+  }
 });
 
 test('priced and partial never put + 未知 in the main number', () => {

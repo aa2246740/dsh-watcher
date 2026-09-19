@@ -55,7 +55,7 @@ dsh plugin --profile web remove dsh-watcher
 
 DSH.app 的 `desktop` profile 不接受 `github:`。用 `dsh web` 装进 web profile。
 
-设置页和会话 HUD 的 Token 总数旁有 **估算费用**（不是「总价值」）。按模型的输入 / 输出 / 缓存桶对照 `pricing/models.yaml` 计价；缺行显示 **未知**，不会当成 $0。部分已知时主数字只显示已标价金额，未标价写在脚注。这是估算，不是账单。默认表含 DeepSeek 与 MiniMax-M2.7，不联网，可在 Watcher 设置里用 JSON 覆盖（`localStorage` 键 `dsh-watcher:pricing-override:v1`）。欢迎对默认表提 PR。
+设置页和会话 HUD 的 Token 总数旁有 **估算费用**（不是「总价值」）。按模型的输入 / 输出 / 缓存桶对照 `pricing/models.yaml` 计价；缺行显示 **未知**，不会当成 $0。部分已知时主数字只显示已标价金额，未标价写在脚注。这是估算，不是账单。默认表含 DeepSeek、MiniMax、OpenAI、Anthropic、Gemini、Grok、GLM、Qwen 主流行，不联网，可在 Watcher 设置里用 JSON 覆盖（`localStorage` 键 `dsh-watcher:pricing-override:v1`）。欢迎对默认表提 PR。
 
 交互约定在 [DESIGN.md](./DESIGN.md)。MIT。
 
