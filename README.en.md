@@ -5,7 +5,7 @@
 Prefer npm (version-pinable):
 
 ```sh
-dsh plugin --profile web add dsh-watcher@0.4.1
+dsh plugin --profile web add dsh-watcher@0.4.4
 ```
 
 Or latest:
@@ -58,6 +58,17 @@ DSH.app's `desktop` profile rejects `github:`. Use `dsh web` and install into th
 The settings summary and session HUD show **Estimated cost** (not “total value”) next to total tokens. Input / output / cache buckets are priced from `pricing/models.yaml`. A missing row is **Unknown**, never $0. A partial estimate keeps the known dollar in the main number and footnotes **Some models unpriced**. It is an estimate, not a bill. The default table covers mainstream DeepSeek, MiniMax, OpenAI, Anthropic, Gemini, Grok, GLM, and Qwen rows and is static (no live fetch). Override it in Watcher settings (`localStorage` key `dsh-watcher:pricing-override:v1`). PRs to the default table are welcome.
 
 The interaction contract lives in [DESIGN.md](./DESIGN.md). MIT.
+
+## What's new in 0.4.4
+
+A round of fixes for the detail column (the left pane you get by opening any record):
+
+- **It can be closed again.** In the docked layout `返回工作路径` was hidden by CSS, leaving the opened column with no way back.
+- **Closing is a motion, not a removal.** The detail content fades toward the work path first, then the column narrows, so the closing edge never slices a readable line. Opening runs the same beats in reverse.
+- **The panel no longer flicks sideways.** The column's width changes every frame while the panel's own `left` was re-derived a frame late by a resize observer; the measured frame is now pinned for the transition, so only the left edge follows layout.
+- **The header status line stays inside the column.** `对话轮次 … · … 个步骤 · …` used to slip under the work-path card because the docked children laid out wider than their column; they now use `border-box`, and an over-long line wraps.
+
+Older releases: [CHANGELOG.md](./CHANGELOG.md).
 
 ## Build from source
 

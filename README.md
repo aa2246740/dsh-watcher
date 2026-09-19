@@ -5,7 +5,7 @@
 推荐用 npm（可钉版本）：
 
 ```sh
-dsh plugin --profile web add dsh-watcher@0.4.1
+dsh plugin --profile web add dsh-watcher@0.4.4
 ```
 
 也可以装 latest：
@@ -58,6 +58,17 @@ DSH.app 的 `desktop` profile 不接受 `github:`。用 `dsh web` 装进 web pro
 设置页和会话 HUD 的 Token 总数旁有 **估算费用**（不是「总价值」）。按模型的输入 / 输出 / 缓存桶对照 `pricing/models.yaml` 计价；缺行显示 **未知**，不会当成 $0。部分已知时主数字只显示已标价金额，未标价写在脚注。这是估算，不是账单。默认表含 DeepSeek、MiniMax、OpenAI、Anthropic、Gemini、Grok、GLM、Qwen 主流行，不联网。设置里打开的是当前生效价格表；保存只把改动过的行写入 `localStorage` 键 `dsh-watcher:pricing-override:v1`。欢迎对默认表提 PR。
 
 交互约定在 [DESIGN.md](./DESIGN.md)。MIT。
+
+## 本次更新（0.4.4）
+
+详情面板（点任意一条记录后出现的左栏）这轮修了一串体验问题：
+
+- **能收起来了。** 停靠布局下 `返回工作路径` 之前被 CSS 藏了起来，面板展开后无处可退。
+- **收起是一段动效，不是"抽走"。** 详情内容先向右淡出，再收窄整列 —— 关闭边缘扫过时不会切到半行字；展开是反向同一套。
+- **整块面板不再左右闪。** 列宽每帧在变，而面板坐标由观察器重算、晚一帧，右边缘就来回跳；现在动效期间钉住面板外框，只有左边缘随布局移动。
+- **头部状态行不再被盖。** `对话轮次 … · … 个步骤 · …` 之前会钻到右侧卡片底下；子块改为 border-box，过长会自动换行。
+
+历史版本见 [CHANGELOG.md](./CHANGELOG.md)。
 
 ## 从源码构建
 

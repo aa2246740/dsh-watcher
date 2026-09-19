@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.4.4 — 2026-09-19
+
+- Fixed the docked detail column having no way back. `返回工作路径` was hidden by CSS at desktop width, so an opened inspector could not be collapsed at all.
+- Closing and opening the inspector is one motion instead of an instant mount/unmount: the detail content leaves toward the work path first, then the column narrows, so the closing edge never slices a readable line. Opening runs the same beats in reverse.
+- Fixed the whole Watcher panel flicking left and right during that motion. A clamped panel derives its inline `left` from its own width, and the resize observer re-derived it a frame after layout; the measured frame is now pinned for the transition so only the left edge moves.
+- Fixed the inspector header's status line (`对话轮次 … · … 个步骤 · …`) slipping under the work-path card: docked children now use `border-box`, and an over-long status or metadata line wraps instead of being covered.
+- Contract tests now pin the docked close control, the content-first collapse beat, the header line staying inside the column, and the pinned panel frame.
+
+
 ## 0.4.3 — 2026-09-19
 
 - npm release of the estimated-cost feature set (same as git `0.4.2`). Use this tag on the registry; `0.4.2` was staged but never became installable.
