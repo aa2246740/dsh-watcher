@@ -44,7 +44,8 @@
     "lib/types/**/*.d.ts",
     "cordis.yml",
     "README.md",
-    "cordis.patch.yml"
+    "cordis.patch.yml",
+    "pricing/**"
   ],
   "engines": {
     "node": "^22.19.0 || >=24.0.0"

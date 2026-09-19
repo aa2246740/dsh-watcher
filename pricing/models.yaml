@@ -1,0 +1,707 @@
+# Watcher default model prices.
+#
+# Source date 2026-09-19. Rates LAG official provider pages and OpenRouter.
+# OpenRouter rows MAY DIFFER from vendor list prices. This is an estimate,
+# not a bill. The plugin does NOT fetch live prices. PRs welcome.
+#
+# Schema:
+#   currency: ISO code (USD default)
+#   unit: per_1m_tokens → rates are per 1,000,000 tokens
+#   models:
+#     <id>:
+#       aliases: [<other ids Watcher may record, including OpenRouter-style>]
+#       currency: USD
+#       input: <cache-miss / uncached input>
+#       output: <completion; reasoning billed as output is already in this bucket>
+#       cache: <cache-hit / cacheRead>          # optional
+#       cacheWrite: <cache creation>            # optional; omit when the vendor lists none
+#
+# Missing model row, or a bucket with tokens but no matching rate → 未知 / Unknown.
+# NEVER treat missing as $0. $0 is allowed only when token counts are actually 0.
+#
+# Official preferred (MUST win over OpenRouter for these rows):
+#   DeepSeek off-peak 2026-09-18 (peak is 2×; weekdays 01:00–04:00 and 06:00–10:00 UTC)
+#   MiniMax-M2.7 / highspeed official pay-as-you-go 2026-09-18
+#   Anthropic flagship (Sonnet 5 / Opus 5 / Haiku 4.5 / Sonnet 4.5) 2026-09-19
+# Other mainstream rows: OpenRouter GET /models USD per 1M, retrieved 2026-09-19.
+# Skip :batch and :free ids.
+#
+# Runtime overlay:
+#   localStorage key  dsh-watcher:pricing-override:v1
+#   optional backup   $DSH_HOME/profiles/web/dsh-watcher-pricing.override.json
+#                     (paste into Watcher settings; v1 does not auto-read files)
+
+currency: USD
+unit: per_1m_tokens
+models:
+  # DeepSeek official off-peak (2026-09-18). OpenRouter aliases included; official rates win.
+  deepseek-flash:
+    aliases:
+      - deepseek-v4-flash
+      - deepseek-v4-flash-vision-exp
+      - deepseek-v4.1-flash
+      - deepseek-v4-1-flash
+      - deepseek-chat
+      - deepseek-reasoner
+      - openrouter/deepseek/deepseek-chat
+      - openrouter/deepseek/deepseek-reasoner
+      - openrouter/deepseek/deepseek-v4-flash
+      - openrouter/deepseek/deepseek-v4.1-flash
+      - deepseek-flash
+      - DeepSeek V4 Flash
+      - DeepSeek-V4-Flash
+      - DeepSeek V4.1 Flash
+      - DeepSeek-V4.1-Flash
+      - deepseek/deepseek-flash
+      - openrouter/deepseek/deepseek-flash
+      - deepseek/deepseek-v4-flash
+      - deepseek/deepseek-v4.1-flash
+      - deepseek/deepseek-chat
+      - deepseek/deepseek-reasoner
+    currency: USD
+    input: 0.15
+    output: 0.6
+    cache: 0.003
+  deepseek-v4-pro:
+    aliases:
+      - deepseek-pro
+      - openrouter/deepseek/deepseek-v4-pro
+      - deepseek-v4-pro
+      - DeepSeek V4 Pro
+      - DeepSeek-V4-Pro
+      - deepseek/deepseek-v4-pro
+      - deepseek/deepseek-pro
+      - openrouter/deepseek/deepseek-pro
+    currency: USD
+    input: 0.66
+    output: 1.98
+    cache: 0.022
+  # MiniMax official pay-as-you-go (2026-09-18). Host records MiniMax-M2.7.
+  minimax-m2.7:
+    aliases:
+      - MiniMax-M2.7
+      - minimax-m2.7
+      - openrouter/minimax/minimax-m2.7
+      - MiniMax M2.7
+      - minimax/minimax-m2.7
+    currency: USD
+    input: 0.3
+    output: 1.2
+    cache: 0.06
+    cacheWrite: 0.375
+  minimax-m2.7-highspeed:
+    aliases:
+      - MiniMax-M2.7-highspeed
+      - minimax-m2.7-highspeed
+      - openrouter/minimax/minimax-m2.7-highspeed
+      - MiniMax M2.7 highspeed
+      - minimax/minimax-m2.7-highspeed
+    currency: USD
+    input: 0.6
+    output: 2.4
+    cache: 0.06
+    cacheWrite: 0.375
+  # Anthropic official preferred (2026-09-19). Flagship rates win over OpenRouter.
+  claude-sonnet-5:
+    aliases:
+      - claude-sonnet-5
+      - anthropic/claude-sonnet-5
+      - Claude Sonnet 5
+      - Claude-Sonnet-5
+      - "Anthropic: Claude Sonnet 5"
+      - openrouter/anthropic/claude-sonnet-5
+    currency: USD
+    input: 2.0
+    output: 10.0
+    cache: 0.2
+    cacheWrite: 2.5
+  claude-opus-5:
+    aliases:
+      - claude-opus-5
+      - anthropic/claude-opus-5
+      - Claude-Opus-5
+      - "Anthropic: Claude Opus 5"
+      - Claude Opus 5
+      - openrouter/anthropic/claude-opus-5
+    currency: USD
+    input: 5.0
+    output: 25.0
+    cache: 0.5
+    cacheWrite: 6.25
+  claude-haiku-4.5:
+    aliases:
+      - claude-haiku-4-5
+      - claude-haiku-4.5
+      - anthropic/claude-haiku-4.5
+      - Claude-Haiku-4.5
+      - "Anthropic: Claude Haiku 4.5"
+      - Claude Haiku 4.5
+      - openrouter/anthropic/claude-haiku-4.5
+    currency: USD
+    input: 1.0
+    output: 5.0
+    cache: 0.1
+    cacheWrite: 1.25
+  claude-sonnet-4.5:
+    aliases:
+      - claude-sonnet-4-5
+      - anthropic/claude-sonnet-4.5
+      - anthropic/claude-sonnet-4.6
+      - claude-sonnet-4.6
+      - claude-sonnet-4-6
+      - claude-sonnet-4.5
+      - "Anthropic: Claude Sonnet 4.5"
+      - Claude Sonnet 4.5
+      - Claude-Sonnet-4.5
+      - Claude Sonnet 4.6
+      - Claude-Sonnet-4.6
+      - openrouter/anthropic/claude-sonnet-4.5
+      - openrouter/anthropic/claude-sonnet-4.6
+    currency: USD
+    input: 3.0
+    output: 15.0
+    cache: 0.3
+    cacheWrite: 3.75
+  # OpenAI — OpenRouter USD/1M 2026-09-19. May differ from vendor list prices.
+  gpt-5:
+    aliases:
+      - GPT-5
+      - gpt-5
+      - "OpenAI: GPT-5"
+      - openai/gpt-5
+      - openrouter/openai/gpt-5
+    currency: USD
+    input: 1.25
+    output: 10.0
+    cache: 0.125
+  gpt-5-mini:
+    aliases:
+      - GPT-5 Mini
+      - GPT-5-mini
+      - gpt-5-mini
+      - "OpenAI: GPT-5 Mini"
+      - GPT-5-Mini
+      - openai/gpt-5-mini
+      - openrouter/openai/gpt-5-mini
+    currency: USD
+    input: 0.25
+    output: 2.0
+    cache: 0.025
+  gpt-5-nano:
+    aliases:
+      - GPT-5 Nano
+      - GPT-5-nano
+      - gpt-5-nano
+      - "OpenAI: GPT-5 Nano"
+      - GPT-5-Nano
+      - openai/gpt-5-nano
+      - openrouter/openai/gpt-5-nano
+    currency: USD
+    input: 0.05
+    output: 0.4
+    cache: 0.005
+  gpt-5.1:
+    aliases:
+      - GPT-5.1
+      - gpt-5.1
+      - "OpenAI: GPT-5.1"
+      - openai/gpt-5.1
+      - openrouter/openai/gpt-5.1
+    currency: USD
+    input: 1.25
+    output: 10.0
+    cache: 0.125
+  gpt-4.1:
+    aliases:
+      - GPT-4.1
+      - gpt-4.1
+      - "OpenAI: GPT-4.1"
+      - openai/gpt-4.1
+      - openrouter/openai/gpt-4.1
+    currency: USD
+    input: 2.0
+    output: 8.0
+    cache: 0.5
+  gpt-4.1-mini:
+    aliases:
+      - gpt-4.1-mini
+      - "OpenAI: GPT-4.1 Mini"
+      - GPT-4.1 Mini
+      - GPT-4.1-Mini
+      - openai/gpt-4.1-mini
+      - openrouter/openai/gpt-4.1-mini
+    currency: USD
+    input: 0.4
+    output: 1.6
+    cache: 0.1
+  gpt-4.1-nano:
+    aliases:
+      - gpt-4.1-nano
+      - "OpenAI: GPT-4.1 Nano"
+      - GPT-4.1 Nano
+      - GPT-4.1-Nano
+      - openai/gpt-4.1-nano
+      - openrouter/openai/gpt-4.1-nano
+    currency: USD
+    input: 0.1
+    output: 0.4
+    cache: 0.025
+  gpt-4o:
+    aliases:
+      - GPT-4o
+      - gpt-4o
+      - "OpenAI: GPT-4o"
+      - openai/gpt-4o
+      - openrouter/openai/gpt-4o
+    currency: USD
+    input: 2.5
+    output: 10.0
+    cache: 1.25
+  gpt-4o-mini:
+    aliases:
+      - GPT-4o-mini
+      - GPT-4o mini
+      - gpt-4o-mini
+      - "OpenAI: GPT-4o-mini"
+      - openai/gpt-4o-mini
+      - openrouter/openai/gpt-4o-mini
+    currency: USD
+    input: 0.15
+    output: 0.6
+    cache: 0.075
+  o3:
+    aliases:
+      - o3
+      - "OpenAI: o3"
+      - openai/o3
+      - openrouter/openai/o3
+    currency: USD
+    input: 2.0
+    output: 8.0
+    cache: 0.5
+  o4-mini:
+    aliases:
+      - o4-mini
+      - "OpenAI: o4 Mini"
+      - o4 Mini
+      - o4-Mini
+      - openai/o4-mini
+      - openrouter/openai/o4-mini
+    currency: USD
+    input: 1.1
+    output: 4.4
+    cache: 0.275
+  o3-mini:
+    aliases:
+      - o3-mini
+      - "OpenAI: o3 Mini"
+      - o3 Mini
+      - o3-Mini
+      - openai/o3-mini
+      - openrouter/openai/o3-mini
+    currency: USD
+    input: 1.1
+    output: 4.4
+    cache: 0.55
+  # Additional Anthropic OpenRouter rows (not official_preferred).
+  claude-opus-4.6:
+    aliases:
+      - claude-opus-4.6
+      - "Anthropic: Claude Opus 4.6"
+      - Claude Opus 4.6
+      - Claude-Opus-4.6
+      - anthropic/claude-opus-4.6
+      - openrouter/anthropic/claude-opus-4.6
+    currency: USD
+    input: 5.0
+    output: 25.0
+    cache: 0.5
+    cacheWrite: 6.25
+  claude-opus-4.5:
+    aliases:
+      - claude-opus-4.5
+      - "Anthropic: Claude Opus 4.5"
+      - Claude Opus 4.5
+      - Claude-Opus-4.5
+      - anthropic/claude-opus-4.5
+      - openrouter/anthropic/claude-opus-4.5
+    currency: USD
+    input: 5.0
+    output: 25.0
+    cache: 0.5
+    cacheWrite: 6.25
+  claude-sonnet-4:
+    aliases:
+      - claude-sonnet-4
+      - "Anthropic: Claude Sonnet 4"
+      - Claude Sonnet 4
+      - Claude-Sonnet-4
+      - anthropic/claude-sonnet-4
+      - openrouter/anthropic/claude-sonnet-4
+    currency: USD
+    input: 3.0
+    output: 15.0
+    cache: 0.3
+    cacheWrite: 3.75
+  # Google Gemini — OpenRouter USD/1M 2026-09-19.
+  gemini-2.5-pro:
+    aliases:
+      - Gemini 2.5 Pro
+      - gemini-2.5-pro
+      - "Google: Gemini 2.5 Pro"
+      - Gemini-2.5-Pro
+      - google/gemini-2.5-pro
+      - openrouter/google/gemini-2.5-pro
+    currency: USD
+    input: 1.25
+    output: 10.0
+    cache: 0.125
+    cacheWrite: 0.375
+  gemini-2.5-flash:
+    aliases:
+      - gemini-2.5-flash
+      - Gemini 2.5 Flash
+      - "Google: Gemini 2.5 Flash"
+      - Gemini-2.5-Flash
+      - google/gemini-2.5-flash
+      - openrouter/google/gemini-2.5-flash
+    currency: USD
+    input: 0.3
+    output: 2.5
+    cache: 0.03
+    cacheWrite: 0.083333
+  gemini-2.5-flash-lite:
+    aliases:
+      - gemini-2.5-flash-lite
+      - "Google: Gemini 2.5 Flash Lite"
+      - Gemini 2.5 Flash Lite
+      - Gemini-2.5-Flash-Lite
+      - google/gemini-2.5-flash-lite
+      - openrouter/google/gemini-2.5-flash-lite
+    currency: USD
+    input: 0.1
+    output: 0.4
+    cache: 0.01
+    cacheWrite: 0.083333
+  gemini-3-flash-preview:
+    aliases:
+      - gemini-3-flash-preview
+      - "Google: Gemini 3 Flash Preview"
+      - Gemini 3 Flash Preview
+      - Gemini-3-Flash-Preview
+      - google/gemini-3-flash-preview
+      - openrouter/google/gemini-3-flash-preview
+    currency: USD
+    input: 0.5
+    output: 3.0
+    cache: 0.05
+    cacheWrite: 0.083333
+  gemini-3.1-flash-lite:
+    aliases:
+      - gemini-3.1-flash-lite
+      - "Google: Gemini 3.1 Flash Lite"
+      - Gemini 3.1 Flash Lite
+      - Gemini-3.1-Flash-Lite
+      - google/gemini-3.1-flash-lite
+      - openrouter/google/gemini-3.1-flash-lite
+    currency: USD
+    input: 0.25
+    output: 1.5
+    cache: 0.025
+    cacheWrite: 0.083333
+  # xAI Grok — OpenRouter USD/1M 2026-09-19.
+  grok-4.6:
+    aliases:
+      - grok-4.6
+      - Grok 4.6
+      - Grok-4.6
+      - "SpaceXAI: Grok 4.6"
+      - x-ai/grok-4.6
+      - openrouter/x-ai/grok-4.6
+      - xai/grok-4.6
+    currency: USD
+    input: 2.0
+    output: 6.0
+    cache: 0.5
+  grok-4.5:
+    aliases:
+      - grok-4.5
+      - "SpaceXAI: Grok 4.5"
+      - Grok 4.5
+      - Grok-4.5
+      - x-ai/grok-4.5
+      - openrouter/x-ai/grok-4.5
+      - xai/grok-4.5
+    currency: USD
+    input: 2.0
+    output: 6.0
+    cache: 0.3
+  grok-4.3:
+    aliases:
+      - grok-4.3
+      - "SpaceXAI: Grok 4.3"
+      - Grok 4.3
+      - Grok-4.3
+      - x-ai/grok-4.3
+      - openrouter/x-ai/grok-4.3
+      - xai/grok-4.3
+    currency: USD
+    input: 1.25
+    output: 2.5
+    cache: 0.2
+  grok-4.20:
+    aliases:
+      - grok-4.20
+      - "SpaceXAI: Grok 4.20"
+      - Grok 4.20
+      - Grok-4.20
+      - x-ai/grok-4.20
+      - openrouter/x-ai/grok-4.20
+      - xai/grok-4.20
+    currency: USD
+    input: 1.25
+    output: 2.5
+    cache: 0.2
+  # Additional DeepSeek OpenRouter row (R1). Flash/Pro stay official.
+  deepseek-r1:
+    aliases:
+      - deepseek-r1
+      - "DeepSeek: R1"
+      - R1
+      - deepseek/deepseek-r1
+      - openrouter/deepseek/deepseek-r1
+    currency: USD
+    input: 0.7
+    output: 2.5
+  # Additional MiniMax OpenRouter rows. M2.7 stays official.
+  minimax-m3:
+    aliases:
+      - minimax-m3
+      - "MiniMax: MiniMax M3"
+      - MiniMax M3
+      - MiniMax-M3
+      - minimax/minimax-m3
+      - openrouter/minimax/minimax-m3
+    currency: USD
+    input: 0.3
+    output: 1.2
+    cache: 0.06
+  minimax-m2.5:
+    aliases:
+      - minimax-m2.5
+      - "MiniMax: MiniMax M2.5"
+      - MiniMax M2.5
+      - MiniMax-M2.5
+      - minimax/minimax-m2.5
+      - openrouter/minimax/minimax-m2.5
+    currency: USD
+    input: 0.27
+    output: 1.08
+    cache: 0.027
+  minimax-m2.1:
+    aliases:
+      - minimax-m2.1
+      - "MiniMax: MiniMax M2.1"
+      - MiniMax M2.1
+      - MiniMax-M2.1
+      - minimax/minimax-m2.1
+      - openrouter/minimax/minimax-m2.1
+    currency: USD
+    input: 0.3
+    output: 1.2
+    cache: 0.03
+  # Zhipu / GLM — OpenRouter USD/1M 2026-09-19.
+  glm-5:
+    aliases:
+      - glm-5
+      - GLM-5
+      - GLM 5
+      - "Z.ai: GLM 5"
+      - z-ai/glm-5
+      - openrouter/z-ai/glm-5
+      - zhipu/glm-5
+      - zai/glm-5
+      - glm/glm-5
+    currency: USD
+    input: 0.6
+    output: 1.92
+    cache: 0.12
+  glm-5.3:
+    aliases:
+      - glm-5.3
+      - "Z.ai: GLM 5.3"
+      - GLM 5.3
+      - GLM-5.3
+      - z-ai/glm-5.3
+      - openrouter/z-ai/glm-5.3
+      - zhipu/glm-5.3
+      - zai/glm-5.3
+      - glm/glm-5.3
+    currency: USD
+    input: 0.91
+    output: 2.86
+    cache: 0.169
+  glm-5.2:
+    aliases:
+      - glm-5.2
+      - "Z.ai: GLM 5.2"
+      - GLM 5.2
+      - GLM-5.2
+      - z-ai/glm-5.2
+      - openrouter/z-ai/glm-5.2
+      - zhipu/glm-5.2
+      - zai/glm-5.2
+      - glm/glm-5.2
+    currency: USD
+    input: 0.5544
+    output: 1.7424
+    cache: 0.10296
+  glm-4.7:
+    aliases:
+      - glm-4.7
+      - "Z.ai: GLM 4.7"
+      - GLM 4.7
+      - GLM-4.7
+      - z-ai/glm-4.7
+      - openrouter/z-ai/glm-4.7
+      - zhipu/glm-4.7
+      - zai/glm-4.7
+      - glm/glm-4.7
+    currency: USD
+    input: 0.4
+    output: 1.75
+    cache: 0.08
+  glm-4.6:
+    aliases:
+      - glm-4.6
+      - "Z.ai: GLM 4.6"
+      - GLM 4.6
+      - GLM-4.6
+      - z-ai/glm-4.6
+      - openrouter/z-ai/glm-4.6
+      - zhipu/glm-4.6
+      - zai/glm-4.6
+      - glm/glm-4.6
+    currency: USD
+    input: 0.43
+    output: 1.75
+    cache: 0.08
+  glm-4.5:
+    aliases:
+      - glm-4.5
+      - "Z.ai: GLM 4.5"
+      - GLM 4.5
+      - GLM-4.5
+      - z-ai/glm-4.5
+      - openrouter/z-ai/glm-4.5
+      - zhipu/glm-4.5
+      - zai/glm-4.5
+      - glm/glm-4.5
+    currency: USD
+    input: 0.6
+    output: 2.2
+    cache: 0.11
+  glm-4.7-flash:
+    aliases:
+      - glm-4.7-flash
+      - "Z.ai: GLM 4.7 Flash"
+      - GLM 4.7 Flash
+      - GLM-4.7-Flash
+      - z-ai/glm-4.7-flash
+      - openrouter/z-ai/glm-4.7-flash
+      - zhipu/glm-4.7-flash
+      - zai/glm-4.7-flash
+      - glm/glm-4.7-flash
+    currency: USD
+    input: 0.0605
+    output: 0.4
+  glm-5.3-flash:
+    aliases:
+      - glm-5.3-flash
+      - "Z.ai: GLM 5.3 Flash"
+      - GLM 5.3 Flash
+      - GLM-5.3-Flash
+      - z-ai/glm-5.3-flash
+      - openrouter/z-ai/glm-5.3-flash
+      - zhipu/glm-5.3-flash
+      - zai/glm-5.3-flash
+      - glm/glm-5.3-flash
+    currency: USD
+    input: 0.09
+    output: 0.3
+    cache: 0.018
+  # Qwen — OpenRouter USD/1M 2026-09-19.
+  qwen3.8-flash:
+    aliases:
+      - qwen3.8-flash
+      - Qwen3.8 Flash
+      - Qwen3.8-Flash
+      - "Qwen: Qwen3.8 Flash"
+      - qwen/qwen3.8-flash
+      - openrouter/qwen/qwen3.8-flash
+    currency: USD
+    input: 0.15
+    output: 0.47
+    cache: 0.016
+    cacheWrite: 0.2
+  qwen3.7-flash:
+    aliases:
+      - qwen3.7-flash
+      - "Qwen: Qwen3.7 Flash"
+      - Qwen3.7 Flash
+      - Qwen3.7-Flash
+      - qwen/qwen3.7-flash
+      - openrouter/qwen/qwen3.7-flash
+    currency: USD
+    input: 0.03
+    output: 0.13
+    cache: 0.006
+    cacheWrite: 0.038
+  qwen3-coder-flash:
+    aliases:
+      - qwen3-coder-flash
+      - "Qwen: Qwen3 Coder Flash"
+      - Qwen3 Coder Flash
+      - Qwen3-Coder-Flash
+      - qwen/qwen3-coder-flash
+      - openrouter/qwen/qwen3-coder-flash
+    currency: USD
+    input: 0.195
+    output: 0.975
+    cache: 0.039
+    cacheWrite: 0.24375
+  qwen3-coder-next:
+    aliases:
+      - qwen3-coder-next
+      - "Qwen: Qwen3 Coder Next"
+      - Qwen3 Coder Next
+      - Qwen3-Coder-Next
+      - qwen/qwen3-coder-next
+      - openrouter/qwen/qwen3-coder-next
+    currency: USD
+    input: 0.12
+    output: 0.8
+    cache: 0.07
+  qwen3-235b-a22b-2507:
+    aliases:
+      - qwen3-235b-a22b-2507
+      - "Qwen: Qwen3 235B A22B Instruct 2507"
+      - Qwen3 235B A22B Instruct 2507
+      - Qwen3-235B-A22B-Instruct-2507
+      - qwen/qwen3-235b-a22b-2507
+      - openrouter/qwen/qwen3-235b-a22b-2507
+    currency: USD
+    input: 0.0875
+    output: 0.35
+    cache: 0.0175
+  qwen3-next-80b-a3b-instruct:
+    aliases:
+      - qwen3-next-80b-a3b-instruct
+      - "Qwen: Qwen3 Next 80B A3B Instruct"
+      - Qwen3 Next 80B A3B Instruct
+      - Qwen3-Next-80B-A3B-Instruct
+      - qwen/qwen3-next-80b-a3b-instruct
+      - openrouter/qwen/qwen3-next-80b-a3b-instruct
+    currency: USD
+    input: 0.09
+    output: 1.1
