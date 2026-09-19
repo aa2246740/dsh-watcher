@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.2 — 2026-09-19
+
 - Added **估算费用 / Estimated cost** next to total token usage on the Watcher insights HUD and the settings summary. Input, output, and cache buckets are priced from the matching rate; a missing model or missing bucket shows **未知 / Unknown** and is never treated as $0.
 - Default list prices live in `pricing/models.yaml` (USD per 1M tokens). Official preferred rows win for DeepSeek off-peak (2026-09-18), MiniMax-M2.7 / highspeed pay-as-you-go (2026-09-18), and Anthropic flagship (2026-09-19). Other mainstream OpenAI / Gemini / Grok / GLM / Qwen rows are OpenRouter USD/1M as of 2026-09-19 and may differ from vendor list prices. Rates lag official pages. v1 does not fetch live prices.
 - Settings hero Token / 估算费用 share one two-column skeleton (caption, same-size number). The caption already says 估算费用, so **估算，非账单** is not repeated under the dollar. Partial estimates keep the known dollar in the main number and add a quiet **含未标价模型 / Some models unpriced** line only when needed — never `$x + 未知`.
