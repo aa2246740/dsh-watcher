@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.4.3 — 2026-09-19
+
+- npm release of the estimated-cost feature set (same as git `0.4.2`). Use this tag on the registry; `0.4.2` was staged but never became installable.
+
 ## 0.4.2 — 2026-09-19
 
 - Added **估算费用 / Estimated cost** next to total token usage on the Watcher insights HUD and the settings summary. Input, output, and cache buckets are priced from the matching rate; a missing model or missing bucket shows **未知 / Unknown** and is never treated as $0.
