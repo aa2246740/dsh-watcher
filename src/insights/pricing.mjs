@@ -2,7 +2,6 @@
 import { costCopy } from './i18n.mjs';
 
 export const PRICING_STORAGE_KEY = 'dsh-watcher:pricing-override:v1';
-export const PRICING_OVERRIDE_FILE = '$DSH_HOME/profiles/web/dsh-watcher-pricing.override.json';
 export const PRICING_UNIT = 'per_1m_tokens';
 const PER_MILLION = 1_000_000;
 const UNLABELED = new Set(['', 'unknown', '未标注', '其他模型', '全部模型']);

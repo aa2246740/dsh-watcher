@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 // Untyped local ESM helpers: single .mjs source kept for node tests.
 // @ts-ignore TS7016: no declarations for the local .mjs module
-import { alertsOf, DEFAULT_LIMITS, limitsOf, scanSessions, mergeModels } from '../insights/presentation.mjs'
+import { alertsOf, DEFAULT_LIMITS, limitsOf, scanSessions } from '../insights/presentation.mjs'
 // @ts-ignore TS7016: no declarations for the local .mjs module
 import { estimateFromInsights, estimateUsageRows, formatEstimate, formatEstimateNote, estimateDisclaimer, mergePricing, defaultPricing, readStoredOverride, persistPricingEditor, clearPricingEditor, effectivePricingText } from '../insights/pricing.mjs'
 // @ts-ignore TS7016: no declarations for the local .mjs module
@@ -371,7 +371,7 @@ export function InsightsSettings(props: { remote?: any }) {
   const [overrideText, setOverrideText] = useState(() => effectivePricingText(globalThis.localStorage))
   const [overrideError, setOverrideError] = useState('')
   const [overrideSaved, setOverrideSaved] = useState(false)
-  const [userPickedRange, setUserPickedRange] = useState<boolean>(false)
+  const userPickedRange = useRef(false)
   const [range, setRange] = useState<'7' | '30' | '180'>('7')
   const [customViewMode, setCustomViewMode] = useState<'bar' | 'line' | null>(null)
   const activeViewMode = customViewMode ?? (range === '30' || range === '180' ? 'line' : 'bar')
@@ -387,6 +387,11 @@ export function InsightsSettings(props: { remote?: any }) {
   const [openSessionId, setOpenSessionId] = useState<string | null>(null)
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
   const [activeDrilldown, setActiveDrilldown] = useState<'speed' | 'latency' | 'thinking' | 'cache' | 'tool' | 'reliability' | null>(null)
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
 
   useEffect(() => {
     if (!props.remote) return
@@ -397,7 +402,7 @@ export function InsightsSettings(props: { remote?: any }) {
         if (active) {
           setSessions(res)
           // 智能感知：如果历史跨度确实超过 7 天，自动提档到 30 天；否则保持清爽的 7 天
-          if (!userPickedRange) {
+          if (!userPickedRange.current) {
             const times = (res?.rows ?? [])
               .map((r: any) => r.updatedAt)
               .filter((t: any) => typeof t === 'number' && t > 0)
@@ -413,15 +418,15 @@ export function InsightsSettings(props: { remote?: any }) {
       .catch(console.error)
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [props.remote, userPickedRange])
+  }, [props.remote])
 
   const refresh = () => {
     if (!props.remote || loading) return
     setLoading(true)
     scanSessions(props.remote, { limit: 300 })
-      .then(setSessions)
+      .then((res: any) => { if (mountedRef.current) setSessions(res) })
       .catch(console.error)
-      .finally(() => setLoading(false))
+      .finally(() => { if (mountedRef.current) setLoading(false) })
   }
 
   const save = () => {
@@ -861,7 +866,7 @@ export function InsightsSettings(props: { remote?: any }) {
               type="button"
               className={css.rangeBtn}
               data-active={range === '7' ? '' : undefined}
-              onClick={() => { setUserPickedRange(true); setRange('7'); setCustomViewMode(null); }}
+              onClick={() => { userPickedRange.current = true; setRange('7'); setCustomViewMode(null); }}
             >
               近 7 天
             </button>
@@ -869,7 +874,7 @@ export function InsightsSettings(props: { remote?: any }) {
               type="button"
               className={css.rangeBtn}
               data-active={range === '30' ? '' : undefined}
-              onClick={() => { setUserPickedRange(true); setRange('30'); setCustomViewMode(null); }}
+              onClick={() => { userPickedRange.current = true; setRange('30'); setCustomViewMode(null); }}
             >
               近 30 天
             </button>
@@ -877,7 +882,7 @@ export function InsightsSettings(props: { remote?: any }) {
               type="button"
               className={css.rangeBtn}
               data-active={range === '180' ? '' : undefined}
-              onClick={() => { setUserPickedRange(true); setRange('180'); setCustomViewMode(null); }}
+              onClick={() => { userPickedRange.current = true; setRange('180'); setCustomViewMode(null); }}
             >
               近 6 个月
             </button>

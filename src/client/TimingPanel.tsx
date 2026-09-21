@@ -207,7 +207,7 @@ export function TimingPanel({
                 {hoverSlice === 'ttft' && '首字排队响应 (TTFT)'}
                 {hoverSlice === 'output' && '正文流式输出阶段'}
                 {hoverSlice === 'bash' && '本地终端命令 (Bash)'}
-                {hoverSlice === 'file' && '文件读写与其它工具'}
+                {hoverSlice === 'file' && '终端以外的工具调用'}
               </span>
               <span>
                 {hoverSlice === 'think' && `${duration(thinkMs)} (${thinkSubPct}%)`}
@@ -371,7 +371,7 @@ export function TimingPanel({
                   <div className={css.popRow}>
                     <div className={css.popLeft}>
                       <i className={css.dot} style={{ background: 'var(--c-file)' }} />
-                      <span>文件读写总耗时</span>
+                      <span>其它工具总耗时</span>
                     </div>
                     <span className={css.popRight}>{duration(fileMs)} (占工具 {fileSubPct}%)</span>
                   </div>
@@ -385,18 +385,18 @@ export function TimingPanel({
                   </div>
                   <div className={css.popRow}>
                     <div className={css.popLeft}>
-                      <span>单次调用平均耗时</span>
+                      <span>全部工具单次平均耗时</span>
                     </div>
                     <span className={css.popRight}>
-                      {Math.round(fileMs / Math.max(1, stats.tools))} ms / 次
+                      {Math.round(toolTotalMs / Math.max(1, stats.tools))} ms / 次
                     </span>
                   </div>
                   <div className={css.popRow} style={{ borderTop: '1px dashed rgba(255,255,255,0.15)', marginTop: '4px', paddingTop: '4px' }}>
                     <div className={css.popLeft}>
-                      <span>文件 IO 评价</span>
+                      <span>其它工具评价</span>
                     </div>
                     <span className={css.popRight}>
-                      {fileMs < 2000 ? '毫秒级极速读写，无性能损耗' : '读写较为密集，轻微耗时累积'}
+                      {fileMs < 2000 ? '毫秒级极速执行，无性能损耗' : '调用较为密集，轻微耗时累积'}
                     </span>
                   </div>
                 </>

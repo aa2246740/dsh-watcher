@@ -21,7 +21,7 @@ const stateSchema = z.object({version:z.literal(1),sessionId:z.string(),skip:num
   open:z.object({turn:number,step:number,start:nullableTime,first:nullableTime,reasoningFirst:nullableTime,reasoningLast:nullableTime,lastContentAt:nullableTime,usage,route}).nullable(),
   tools:z.array(z.object({id:z.string(),name:z.string(),start:z.number().finite(),seq:number,step:number,route,signature:z.string().nullable()})),
   previousFailure:z.object({signature:z.string(),resultHash:z.string(),turn:number,seqs:z.array(number),steps:z.array(number)}).nullable(),
-  findings:z.array(finding).max(30),findingCount:number,wire:viewSchema})
+  findings:z.array(finding).max(30),findingCount:number})
 export type InsightsView = z.infer<typeof viewSchema>
 type InsightsState = z.infer<typeof stateSchema>
 declare module '@deepseek-ai/dsh-session-projection/types' {
@@ -35,8 +35,14 @@ export function installProjection(ctx:Context):void {
   ctx.inject(['sessions'], c => {
     try {
       for (const session of (c.sessions as any).list?.() ?? []) {
-        try { c.sessionProjections.snapshot(session) } catch {}
+        try {
+          c.sessionProjections.snapshot(session)
+        } catch (error) {
+          c.logger?.warn?.(`dsh-watcher: projection warm-up failed for a session: ${String(error)}`)
+        }
       }
-    } catch {}
+    } catch (error) {
+      c.logger?.warn?.(`dsh-watcher: session warm-up skipped: ${String(error)}`)
+    }
   })
 }

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.4.5 — 2026-09-21
+
+- Closing the inspector no longer silently re-arms follow. The `←` back control now clears the pinned selection and leaves the rail where the user left it; only the `查看最新` unread pill still jumps to the newest work.
+- Insights settings no longer rescans the whole session list on the first manual range pick: `userPickedRange` is a ref now, so the scan effect runs once per `remote` change. The manual refresh button also no longer writes state after the panel unmounts.
+- The Host projection state no longer stores a copy of its own wire view. `viewOf` now derives and caches the view by state identity, so every persisted checkpoint and every per-event `structuredClone` stops carrying a redundant snapshot of itself.
+- Timing panel hover card stops claiming the non-terminal slice is "文件读写": it is every non-bash tool, so the title, total, per-call average and verdict labels now say what the number actually is.
+- Removed the dead auto-load `useEffect` stub in the Watcher panel and the contract test that pinned it; the test now asserts the explicit history-load button instead.
+- Removed the unused `PRICING_OVERRIDE_FILE` constant that pointed at a file path nothing ever wrote.
+- Projection warm-up failures are logged via `ctx.logger.warn` instead of being silently swallowed.
+
 ## 0.4.4 — 2026-09-19
 
 - Fixed the docked detail column having no way back. `返回工作路径` was hidden by CSS at desktop width, so an opened inspector could not be collapsed at all.

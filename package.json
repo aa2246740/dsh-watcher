@@ -1,6 +1,6 @@
 {
   "name": "dsh-watcher",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "Read-only DSH session insights and local model usage statistics",
   "type": "module",
   "main": "lib/dsh-watcher.js",

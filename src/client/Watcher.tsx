@@ -1150,6 +1150,7 @@ function ReadyWatcher({
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const [inspectorClosing, setInspectorClosing] = useState(false)
   const inspectorExitTimer = useRef<number | null>(null)
+  const inspectorExitToLatest = useRef(false)
   const [panelPin, setPanelPin] = useState<{ top: number; right: number } | null>(null)
   const panelPinTimer = useRef<number | null>(null)
   const [observationMode, setObservationMode] = useState<ObservationMode>('itemized')
@@ -1314,16 +1315,19 @@ function ReadyWatcher({
    * the detail content slides right and disappears under the work-path card.
    * The collapse animation already ends at the closed width, so the unmount
    * that finishes it cannot flash or jump.
+   * `toLatest` is for the "查看最新" affordance only; the plain back control
+   * just closes the detail and keeps the rail pinned where the user left it.
    */
   const finishInspectorExit = () => {
     clearInspectorExit()
-    backToLatest()
+    setUi(inspectorExitToLatest.current ? followRef.current.backToLatest() : followRef.current.clearSelection())
     setSelectedItemId(null)
     setInspectorClosing(false)
   }
 
-  const closeInspector = () => {
+  const closeInspector = (toLatest = false) => {
     if (inspectorClosing) return
+    inspectorExitToLatest.current = toLatest
     pinPanelFrame()
     setInspectorClosing(true)
     // The animation end is the primary signal; this keeps the control working
@@ -1386,11 +1390,7 @@ function ReadyWatcher({
     })
   }
 
-  useEffect(() => {
-    // Full history is an explicit choice. Summary comes from the Host projection.
-    if (!open || !snapshot.hasMore || historyLoad.kind !== 'idle') return
-  }, [open, snapshot.hasMore, historyLoad.kind, sessionId])
-
+  // Full history is an explicit choice; the summary comes from the Host projection.
   useEffect(() => {
     if (historyLoad.kind !== 'complete' || snapshot.hasMore) return
     setHistoryLoad({ kind: 'idle' })
@@ -1437,7 +1437,7 @@ function ReadyWatcher({
                   now={now}
                   closing={inspectorClosing}
                   onSelectItem={setSelectedItemId}
-                  onBack={closeInspector}
+                  onBack={() => closeInspector()}
                   onExited={finishInspectorExit}
                 />
               )}
@@ -1555,7 +1555,7 @@ function ReadyWatcher({
                   <button
                     type="button"
                     className={css.unread}
-                    onClick={selected === undefined ? backToLatest : closeInspector}
+                    onClick={selected === undefined ? backToLatest : () => closeInspector(true)}
                   >
                     <IconRefreshOutline14 size={12} />
                     {ui.unread} 条新进展 · 查看最新

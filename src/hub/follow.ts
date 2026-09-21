@@ -94,6 +94,12 @@ export function createFollow() {
       return snapshot()
     },
 
+    /** Drop a pinned selection without re-arming follow: closing the inspector keeps the rail where the user left it. */
+    clearSelection(): FollowSnapshot {
+      selectedId = null
+      return snapshot()
+    },
+
     reset(): FollowSnapshot {
       catchUp()
       lastCursor = null

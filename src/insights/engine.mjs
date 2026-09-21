@@ -11,12 +11,10 @@ export function emptyStats() {
     tools: 0, toolErrors: 0, toolMs: 0, bashMs: 0, retries: 0 };
 }
 export function initialState(header = {}, inherited = 0) {
-  const s = { version: 1, sessionId: String(header.id ?? ''), skip: inherited, seq: -1,
+  return { version: 1, sessionId: String(header.id ?? ''), skip: inherited, seq: -1,
     updatedAt: 0, route: { provider: 'unknown', model: 'unknown' }, totals: emptyStats(),
     models: [], turn: null, open: null, tools: [], previousFailure: null,
     findings: [], findingCount: 0 };
-  s.wire = buildView(s);
-  return s;
 }
 function normalizeUsage(value) {
   if (!record(value) || !count(value.inputTokens) || !count(value.outputTokens)) return null;
@@ -124,7 +122,6 @@ export function reduceEvent(state, event) {
   if ((event.type === 'assistant/attempt' || event.type === 'assistant/message') && d.stream !== undefined && !Array.isArray(d.stream)) return state;
   if (event.type === 'assistant/attempt' && (!state.open || state.open.turn !== d.turn || state.open.step !== d.step)) return state;
   const s = structuredClone(state);
-  s.wire = state.wire;
   s.seq = event.seq; s.updatedAt = event.time;
   if (event.type === 'request/header') {
     const config = d.header?.config;
@@ -199,9 +196,12 @@ export function reduceEvent(state, event) {
     if (s.turn) s.turn.endedAt = event.time;
     s.tools = []; s.previousFailure = null;
   }
-  s.wire = buildView(s);
   return s;
 }
+// The wire view is derived, never stored in state: a stored copy would double
+// every persisted checkpoint and be discarded by the next event anyway.
+// viewOf caches by state identity so an unchanged state republishes nothing.
+const wireCache = new WeakMap();
 function buildView(s) {
   return { version: s.version, sessionId: s.sessionId, seq: s.seq, updatedAt: s.updatedAt,
     totals: s.totals, models: s.models, turn: s.turn,
@@ -210,4 +210,8 @@ function buildView(s) {
       lastContentAt: s.open.lastContentAt } : null,
     findings: s.findings, findingCount: s.findingCount };
 }
-export function viewOf(s) { return s.wire; }
+export function viewOf(s) {
+  let wire = wireCache.get(s);
+  if (wire === undefined) { wire = buildView(s); wireCache.set(s, wire); }
+  return wire;
+}

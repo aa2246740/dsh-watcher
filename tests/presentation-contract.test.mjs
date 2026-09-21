@@ -80,8 +80,8 @@ test('partial history stays explicitly loadable without blocking Host summary', 
 
   assert.match(source, /正在补齐历史/)
   assert.match(source, /snapshot\.hasMore/)
-  assert.match(source, /if \(!open \|\| !snapshot\.hasMore \|\| historyLoad\.kind !== 'idle'\) return/)
   assert.match(source, /onClick=\{startHistoryLoad\}/)
+  assert.match(source, /void loadAllHistory\(controller\.signal\)/)
   assert.doesNotMatch(source, /载入全部轮次/)
   assert.match(styles, /\.historyNotice\s*\{/)
 })
@@ -155,9 +155,11 @@ test('collapsing the docked inspector animates its column instead of popping awa
 
   assert.match(source, /data-closing=\{closing \? '' : undefined\}/)
   assert.match(source, /onAnimationEnd=\{closing/)
-  assert.match(source, /const closeInspector = \(\) =>/)
+  assert.match(source, /const closeInspector = \(toLatest = false\) =>/)
   assert.match(source, /setInspectorClosing\(true\)/)
-  assert.match(source, /onClick=\{selected === undefined \? backToLatest : closeInspector\}/)
+  assert.match(source, /onClick=\{selected === undefined \? backToLatest : \(\) => closeInspector\(true\)\}/)
+  // Closing must not silently re-arm follow; only the "查看最新" affordance does.
+  assert.match(source, /clearSelection/)
   // Animating the column changes the panel's clamped width; the frame must be
   // frozen for the transition or the whole panel flicks on every observer tick.
   assert.match(source, /const pinPanelFrame = \(\) => \{/)
