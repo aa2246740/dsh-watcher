@@ -282,9 +282,18 @@ export function SessionInsights({ value, now, running, waiting, onEvidence }: {
   const costText = formatEstimate(estimate, locale)
   const costNote = formatEstimateNote(estimate, locale)
   const costTitle = costNote ? `${copy.estimatedCost}: ${costText} · ${costNote}` : `${copy.estimatedCost}: ${costText}`
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return globalThis.localStorage?.getItem('dsh-watcher:hud-collapsed') === '1' } catch { return false }
+  })
+  const toggleCollapsed = () => {
+    setCollapsed(c => {
+      try { globalThis.localStorage?.setItem('dsh-watcher:hud-collapsed', c ? '0' : '1') } catch {}
+      return !c
+    })
+  }
 
   return (
-    <section className={css.hudBox} aria-label="耗时分布与运行健康度">
+    <section className={css.hudBox} aria-label="耗时分布与运行健康度" data-collapsed={collapsed ? '' : undefined}>
       <div className={css.hudTop}>
         <div className={css.hudTopLeft}>
           <span className={css.hudHeading}>
@@ -319,9 +328,19 @@ export function SessionInsights({ value, now, running, waiting, onEvidence }: {
             <button type="button" className={css.scopeBtn} data-active={scope === 'session' ? '' : undefined}
               onClick={() => setScope('session')}>全会话</button>
           </div>
+          <button
+            type="button"
+            className={css.collapseBtn}
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? '展开耗时统计' : '收起耗时统计'}
+            title={collapsed ? '展开耗时统计' : '收起耗时统计'}
+            onClick={toggleCollapsed}
+          >
+            <span className={css.collapseChevron} aria-hidden="true">▾</span>
+          </button>
         </div>
       </div>
-      {scope === 'session' && isMultiModel ? (
+      {!collapsed && scope === 'session' && isMultiModel ? (
         <div className={css.modelTabBar} role="tablist" aria-label="多模型切换">
           <button type="button" className={css.modelTabBtn} data-active={modelFilter === 'all' ? '' : undefined}
             onClick={() => setModelFilter('all')}>全部模型汇总 ({value.models.length})</button>
@@ -331,6 +350,7 @@ export function SessionInsights({ value, now, running, waiting, onEvidence }: {
           ))}
         </div>
       ) : null}
+      {collapsed ? null : (
       <div className={css.hudBody}>
         <TimingPanel stats={stats} scope={scope} />
         {alerts.length > 0 ? (
@@ -356,6 +376,7 @@ export function SessionInsights({ value, now, running, waiting, onEvidence }: {
           </div>
         ) : null}
       </div>
+      )}
     </section>
   )
 }

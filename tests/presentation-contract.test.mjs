@@ -164,7 +164,7 @@ test('collapsing the docked inspector animates its column instead of popping awa
   // frozen for the transition or the whole panel flicks on every observer tick.
   assert.match(source, /const pinPanelFrame = \(\) => \{/)
   assert.match(source, /setPanelPin\(\{ top, right \}\)/)
-  assert.match(source, /: \{ top: panelPin\.top, right: panelPin\.right, left: 'auto' \}/)
+  assert.match(source, /: \{ top: panelPin\.top, right: panelPin\.right, left: 'auto' as const \}/)
   assert.match(styles, /@keyframes watcher-inspector-enter \{\s*from \{ width: 0; \}\s*\}/)
   assert.match(styles, /@keyframes watcher-inspector-exit \{\s*to \{ width: 0; \}\s*\}/)
   assert.match(styles, /animation: watcher-inspector-exit var\(--watcher-motion-inspector\) var\(--watcher-ease-glide\) var\(--watcher-motion-content-out\)/)

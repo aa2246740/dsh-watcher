@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.5.0 — 2026-09-21
+
+- The panel is resizable from its right edge, bottom edge, and the corner grip. The panel frame stays put while dragging — only the size changes — and the floor is the size it opened at, so it can grow but never shrink below the layout it needs.
+- The insights HUD collapses to its one-line top bar via a `▾` toggle next to the scope switch; the choice is remembered in `localStorage`.
+- `定位现场` now actually lands on the failing work: it finds the item matching the alert's turn and step, opens the inspector on it, and scrolls the rail to that turn instead of scrolling to a bare turn header with nothing highlighted.
+- Repeated-failure cards no longer duplicate: the finding id is anchored on the operation signature instead of the first failing seq, so a chain that grows past the trimmed history updates its single card in place. Titles now name the turn (`第 N 轮 · 同一操作连续失败 N 次`).
+
 ## 0.4.5 — 2026-09-21
 
 - Closing the inspector no longer silently re-arms follow. The `←` back control now clears the pinned selection and leaves the rail where the user left it; only the `查看最新` unread pill still jumps to the newest work.

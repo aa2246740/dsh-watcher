@@ -5,7 +5,7 @@
 Prefer npm (version-pinable):
 
 ```sh
-dsh plugin --profile web add dsh-watcher@0.4.4
+dsh plugin --profile web add dsh-watcher@0.5.0
 ```
 
 Or latest:
@@ -59,14 +59,14 @@ The settings summary and session HUD show **Estimated cost** (not “total value
 
 The interaction contract lives in [DESIGN.md](./DESIGN.md). MIT.
 
-## What's new in 0.4.4
+## What's new in 0.5.0
 
-A round of fixes for the detail column (the left pane you get by opening any record):
+- **The panel resizes.** Drag the right edge, the bottom edge, or the corner grip; the frame stays put while it grows, and it can never shrink below the size it opened at.
+- **The HUD folds to one line.** A `▾` next to the scope switch collapses the timing panel to just the top bar, and the choice is remembered.
+- **"定位现场" lands on the actual failure.** It now selects the exact failing step and opens the inspector on it instead of scrolling to a bare turn header.
+- **Repeated failures no longer stack.** One failure chain updates one card, and the title names its turn (`第 N 轮`).
 
-- **It can be closed again.** In the docked layout `返回工作路径` was hidden by CSS, leaving the opened column with no way back.
-- **Closing is a motion, not a removal.** The detail content fades toward the work path first, then the column narrows, so the closing edge never slices a readable line. Opening runs the same beats in reverse.
-- **The panel no longer flicks sideways.** The column's width changes every frame while the panel's own `left` was re-derived a frame late by a resize observer; the measured frame is now pinned for the transition, so only the left edge follows layout.
-- **The header status line stays inside the column.** `对话轮次 … · … 个步骤 · …` used to slip under the work-path card because the docked children laid out wider than their column; they now use `border-box`, and an over-long line wraps.
+Plus the 0.4.5 fixes: the inspector back control no longer re-arms follow, the first range pick no longer rescans sessions, the projection state no longer stores a copy of its own view, and the timing panel's non-terminal slice is labelled correctly.
 
 Older releases: [CHANGELOG.md](./CHANGELOG.md).
 

@@ -89,6 +89,40 @@
   flex-shrink: 0;
 }
 
+.collapseBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.collapseBtn:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.collapseChevron {
+  display: inline-block;
+  font-size: 11px;
+  transition: transform 120ms ease;
+}
+
+.hudBox[data-collapsed] .collapseChevron {
+  transform: rotate(-90deg);
+}
+
+.hudBox[data-collapsed] .hudTop {
+  border-bottom: none;
+}
+
 .tokenStat {
   font-size: 11px;
   color: var(--dsw-alias-label-secondary);

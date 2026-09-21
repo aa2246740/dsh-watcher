@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {} from '@deepseek-ai/dsh-session-stats/client'
@@ -1153,6 +1153,14 @@ function ReadyWatcher({
   const inspectorExitToLatest = useRef(false)
   const [panelPin, setPanelPin] = useState<{ top: number; right: number } | null>(null)
   const panelPinTimer = useRef<number | null>(null)
+  /** Resize anchors the panel at its current top-left; null until first resized. */
+  const [panelPos, setPanelPos] = useState<{ left: number; top: number } | null>(null)
+  /** User-chosen panel size; unset falls back to the CSS auto/max-height layout. */
+  const [panelSize, setPanelSize] = useState<{ width: number; height: number } | null>(null)
+  const [resizing, setResizing] = useState(false)
+  const resizeStart = useRef<{ x: number; y: number; w: number; h: number } | null>(null)
+  /** The natural size the panel opened at — the floor; resize can only grow. */
+  const resizeMin = useRef<{ w: number; h: number } | null>(null)
   const [observationMode, setObservationMode] = useState<ObservationMode>('itemized')
   const [disclosure, setDisclosure] = useState(createDisclosureState)
   const [historyLoad, setHistoryLoad] = useState<HistoryLoadState>({ kind: 'idle' })
@@ -1260,6 +1268,26 @@ function ReadyWatcher({
     setSelectedItemId(item.id)
   }
 
+  /**
+   * "定位现场" must end at the failing work item, not just somewhere near the
+   * turn: opening the inspector on that exact item is the whole point of the
+   * affordance. A finding whose step can't be matched still lands on its turn.
+   */
+  const locateEvidence = (e: { turn: number; steps: number[]; seqs: number[] }) => {
+    pinForDisclosure()
+    setDisclosure(chooseDisclosureDepth('detail'))
+    const turn = picture.turns.find(t => t.turn === e.turn)
+    const group = turn?.groups.find(g => g.items.some(i =>
+      i.status === 'failure' && e.steps.includes(i.step ?? -1)))
+    const item = group?.items.find(i => i.status === 'failure' && e.steps.includes(i.step ?? -1))
+    if (turn && group && item) {
+      selectItem(group, item)
+      requestAnimationFrame(() => document.getElementById(`watcher-turn-${turn.turn}`)?.scrollIntoView({ block: 'nearest' }))
+    } else {
+      requestAnimationFrame(() => document.getElementById(`watcher-turn-${e.turn}`)?.scrollIntoView({ block: 'nearest' }))
+    }
+  }
+
   const onRailScroll = () => {
     if (programmaticScrollRef.current) return
     const rail = railRef.current
@@ -1298,7 +1326,21 @@ function ReadyWatcher({
    */
   const pinPanelFrame = () => {
     const panel = panelRef.current
-    if (panel === null || panelPosition === null) return
+    if (panel === null) return
+    // A resized panel owns its left; the width change can still push it off the
+    // right edge, so re-clamp after the new frame lands instead of pinning.
+    if (panelPos !== null) {
+      requestAnimationFrame(() => {
+        const w = panel.offsetWidth
+        const h = panel.offsetHeight
+        setPanelPos(current => current === null ? current : {
+          left: Math.min(Math.max(current.left, PANEL_MARGIN), window.innerWidth - w - PANEL_MARGIN),
+          top: Math.min(Math.max(current.top, PANEL_MARGIN), window.innerHeight - h - PANEL_MARGIN),
+        })
+      })
+      return
+    }
+    if (panelPosition === null) return
     const { left, top } = panelPosition
     // Layout values, not getBoundingClientRect: the panel's entry animation is
     // scaled, and offsetWidth/top ignore transforms.
@@ -1308,6 +1350,51 @@ function ReadyWatcher({
     setPanelPin({ top, right })
     if (panelPinTimer.current !== null) window.clearTimeout(panelPinTimer.current)
     panelPinTimer.current = window.setTimeout(clearPanelPin, INSPECTOR_EXIT_FALLBACK_MS)
+  }
+
+  /**
+   * Resize the panel from its right / bottom / corner edges. The panel keeps
+   * its frame position the whole time — resize only changes the size, so the
+   * anchored spot is never lost. The floor is the natural size the panel
+   * opened at: it can grow but never shrink below what the layout needs.
+   */
+  const onResizeStart = (event: ReactPointerEvent<HTMLElement>, axes: 'both' | 'x' | 'y') => {
+    if (event.button !== 0) return
+    const panel = panelRef.current
+    if (panel === null) return
+    event.preventDefault()
+    event.stopPropagation()
+    const rect = panel.getBoundingClientRect()
+    // Freeze the current frame into left/top so a right-pinned or
+    // anchor-clamped panel holds its position while only its size changes.
+    if (panelPos === null) setPanelPos({ left: rect.left, top: rect.top })
+    setPanelPin(null)
+    // The first resize establishes the minimum; the panel can only grow.
+    if (resizeMin.current === null) resizeMin.current = { w: rect.width, h: rect.height }
+    resizeStart.current = { x: event.clientX, y: event.clientY, w: rect.width, h: rect.height }
+    setResizing(true)
+    const minW = resizeMin.current.w
+    const minH = resizeMin.current.h
+    // The panel's fixed left/top doesn't move during a resize, so the max
+    // width/height is whatever still fits to its right/below.
+    const maxW = Math.max(minW, window.innerWidth - rect.left - PANEL_MARGIN)
+    const maxH = Math.max(minH, window.innerHeight - rect.top - PANEL_MARGIN)
+    const move = (e: PointerEvent) => {
+      const s = resizeStart.current
+      if (s === null) return
+      setPanelSize(current => ({
+        width: axes === 'y' ? (current?.width ?? s.w) : Math.min(Math.max(s.w + (e.clientX - s.x), minW), maxW),
+        height: axes === 'x' ? (current?.height ?? s.h) : Math.min(Math.max(s.h + (e.clientY - s.y), minH), maxH),
+      }))
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      resizeStart.current = null
+      setResizing(false)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
   }
 
   /**
@@ -1418,9 +1505,16 @@ function ReadyWatcher({
           <div
             ref={panelRef}
             className={css.menu}
-            style={panelPin === null
-              ? panelPosition ?? UNPLACED_PANEL_STYLE
-              : { top: panelPin.top, right: panelPin.right, left: 'auto' }}
+            style={(() => {
+              const pos = panelPos !== null
+                ? panelPos
+                : panelPin === null
+                  ? panelPosition ?? UNPLACED_PANEL_STYLE
+                  : { top: panelPin.top, right: panelPin.right, left: 'auto' as const }
+              return panelSize === null ? pos : { ...pos, width: panelSize.width, height: panelSize.height, maxHeight: 'none' as const }
+            })()}
+            data-sized={panelSize !== null ? '' : undefined}
+            data-resizing={resizing ? '' : undefined}
             role="dialog"
             aria-modal="false"
             aria-label="Watcher 工作图"
@@ -1495,11 +1589,7 @@ function ReadyWatcher({
                 </Pill>
               </header>
 
-              <SessionInsights value={wholeSessionInsights} now={now} running={picture.running} waiting={picture.pendingCount > 0} onEvidence={e => {
-                pinForDisclosure()
-                setDisclosure(chooseDisclosureDepth('detail'))
-                requestAnimationFrame(() => document.getElementById('watcher-turn-' + e.turn)?.scrollIntoView({ block: 'nearest' }))
-              }} />
+              <SessionInsights value={wholeSessionInsights} now={now} running={picture.running} waiting={picture.pendingCount > 0} onEvidence={locateEvidence} />
 
               <div className={css.viewToolbar} aria-label="路径视图设置">
                 <div className={css.viewControl}>
@@ -1692,6 +1782,9 @@ function ReadyWatcher({
                   </div>
                 )}
             </section>
+            <div className={css.resizeEdgeRight} aria-hidden="true" onPointerDown={e => onResizeStart(e, 'x')} />
+            <div className={css.resizeEdgeBottom} aria-hidden="true" onPointerDown={e => onResizeStart(e, 'y')} />
+            <div className={css.resizeGrip} aria-hidden="true" title="拖动调整大小" onPointerDown={e => onResizeStart(e, 'both')} />
           </div>,
           document.body,
         )

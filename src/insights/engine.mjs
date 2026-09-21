@@ -179,9 +179,12 @@ export function reduceEvent(state, event) {
           seqs: [...(same ? prev.seqs : []), t.seq].slice(-10), steps: [...(same ? prev.steps : []), t.step].slice(-10) };
         s.previousFailure = failure;
         if (failure.seqs.length >= 3) {
-          const id = `repeat:${d.turn}:${failure.seqs[0]}`;
+          // Anchor the id on the signature, not seqs[0]: seqs is trimmed to the
+          // last 10, so seqs[0] shifts at the 11th failure and a seqs-anchored id
+          // would orphan the old card and mint a second one for the same chain.
+          const id = `repeat:${d.turn}:${t.signature.slice(0, 16)}`;
           const finding = { id, kind: 'repeated-failure', turn: d.turn, seqs: failure.seqs, steps: failure.steps,
-            title: `同一操作连续失败 ${failure.seqs.length} 次`,
+            title: `第 ${d.turn} 轮 · 同一操作连续失败 ${failure.seqs.length} 次`,
             detail: '参数与错误结果指纹相同；这是重复失败证据，不是确定的空转或质量判决。' };
           const old = s.findings.findIndex(f => f.id === id);
           if (old >= 0) s.findings[old] = finding;

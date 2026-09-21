@@ -110,6 +110,60 @@
   isolation: isolate;
 }
 
+/* 用户显式拖拽出的尺寸覆盖自动布局：内容区随面板一起伸缩。 */
+.menu[data-sized] {
+  max-width: none;
+}
+
+.menu[data-sized] .workPicture {
+  flex: 1 1 auto;
+  width: auto;
+  min-height: 0;
+  max-height: none;
+}
+
+.resizeEdgeRight,
+.resizeEdgeBottom,
+.resizeGrip {
+  position: absolute;
+  z-index: 5;
+  touch-action: none;
+}
+
+.resizeEdgeRight {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.resizeEdgeBottom {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.resizeGrip {
+  right: 3px;
+  bottom: 3px;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  border-right: 2px solid var(--dsw-alias-border-l2);
+  border-bottom: 2px solid var(--dsw-alias-border-l2);
+  border-bottom-right-radius: 4px;
+  opacity: .55;
+  transition: opacity 120ms ease;
+}
+
+.resizeGrip:hover {
+  opacity: 1;
+  border-color: var(--dsw-alias-label-secondary);
+}
+
 @keyframes watcher-panel-enter {
   from { opacity: 0; transform: translateY(-5px) scale(.992); }
   to { opacity: 1; transform: translateY(0) scale(1); }
