@@ -1,4 +1,4 @@
-/** Read-only DSH 0.1.5-rc.2 log fold. No prompt, reasoning or tool body is retained. */
+/** Read-only DSH 0.1.5-rc.3 log fold. No prompt, reasoning or tool body is retained. */
 import { createHash } from 'node:crypto';
 export const KEY = 'watcherInsights';
 const record = v => v !== null && typeof v === 'object' && !Array.isArray(v);

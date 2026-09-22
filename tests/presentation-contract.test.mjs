@@ -23,8 +23,28 @@ test('text results use the official semantic reader while raw evidence stays exa
 
 test('the Markdown reader is supplied through the declared RC1 client injection', async () => {
   const pkg = JSON.parse(await readFile(packageSource, 'utf8'))
+  const source = await readFile(clientSource, 'utf8')
+  const bundle = await readFile(new URL('../lib/client.js', import.meta.url), 'utf8')
   assert.ok(pkg.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-primitives'))
-  assert.equal(pkg.peerDependencies['@deepseek-ai/dsh-client-ui-primitives'], '^0.1.2-rc.1')
+  for (const [name, range] of Object.entries(pkg.peerDependencies)) {
+    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(range, '^0.1.5-rc.3', name)
+  }
+  for (const [name, version] of Object.entries(pkg.devDependencies)) {
+    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(version, '0.1.5-rc.3', name)
+  }
+  assert.equal(pkg.peerDependencies['@deepseek-ai/cordis'], '^4.0.2')
+  assert.equal(pkg.devDependencies['@deepseek-ai/cordis'], '4.0.2')
+  for (const icon of [
+    'IconChevronRightOutline14',
+    'IconRefreshOutline14',
+    'IconCheckOutline16',
+    'IconCopyOutline16',
+  ]) {
+    assert.match(source, new RegExp(`\\b${icon}\\b`))
+    assert.match(bundle, new RegExp(`\\b${icon}\\b`))
+  }
+  assert.doesNotMatch(source, /OutlineRegular|OutlineMedium/)
+  assert.doesNotMatch(bundle, /OutlineRegular|OutlineMedium/)
 })
 
 test('the overview keeps every Step and occurrence reachable through folding and reversible grouping', async () => {
