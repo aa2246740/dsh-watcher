@@ -19,7 +19,7 @@ test('Watcher waits for chat projection, then mounts its ready child', () => {
   } })
   let views = new Map()
   const props = { sessionId: 'cold', useConversation: select => select({ views }),
-    useSession: select => select({}), useSessionPendingInteraction: select => select(new Map()) }
+    useSession: select => select({}), useSessionStatus: select => select(new Map()) }
   const cold = exports.Watcher(props)
   assert.equal(cold.type, 'span')
   assert.equal(cold.props.role, 'status')

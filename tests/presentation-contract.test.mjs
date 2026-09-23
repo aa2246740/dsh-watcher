@@ -27,24 +27,35 @@ test('the Markdown reader is supplied through the declared RC1 client injection'
   const bundle = await readFile(new URL('../lib/client.js', import.meta.url), 'utf8')
   assert.ok(pkg.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-primitives'))
   for (const [name, range] of Object.entries(pkg.peerDependencies)) {
-    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(range, '^0.1.5-rc.3', name)
+    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(range, '>=0.1.7-rc.1 <0.1.8', name)
   }
   for (const [name, version] of Object.entries(pkg.devDependencies)) {
-    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(version, '0.1.5-rc.3', name)
+    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(version, '0.1.7-rc.1', name)
   }
-  assert.equal(pkg.peerDependencies['@deepseek-ai/cordis'], '^4.0.2')
-  assert.equal(pkg.devDependencies['@deepseek-ai/cordis'], '4.0.2')
+  assert.equal(pkg.peerDependencies['@deepseek-ai/cordis'], '~4.0.4')
+  assert.equal(pkg.devDependencies['@deepseek-ai/cordis'], '4.0.4')
   for (const icon of [
+    'IconChevronRightOutlineRegular',
+    'IconRefreshOutlineRegular',
+    'IconCheckOutlineRegular',
+    'IconCopyOutlineRegular',
+  ]) {
+    assert.match(source, new RegExp(`\\b${icon}\\b`))
+    assert.match(bundle, new RegExp(`\\b${icon}\\b`))
+  }
+  for (const retired of [
     'IconChevronRightOutline14',
     'IconRefreshOutline14',
     'IconCheckOutline16',
     'IconCopyOutline16',
   ]) {
-    assert.match(source, new RegExp(`\\b${icon}\\b`))
-    assert.match(bundle, new RegExp(`\\b${icon}\\b`))
+    assert.doesNotMatch(source, new RegExp(`\\b${retired}\\b`))
+    assert.doesNotMatch(bundle, new RegExp(`\\b${retired}\\b`))
   }
-  assert.doesNotMatch(source, /OutlineRegular|OutlineMedium/)
-  assert.doesNotMatch(bundle, /OutlineRegular|OutlineMedium/)
+  assert.match(source, /noExitCode: '未正常退出'/)
+  assert.match(source, /codeLabel: '代码块'/)
+  assert.match(source, /useSessionStatus/)
+  assert.doesNotMatch(source, /useSessionPendingInteraction/)
 })
 
 test('the overview keeps every Step and occurrence reachable through folding and reversible grouping', async () => {

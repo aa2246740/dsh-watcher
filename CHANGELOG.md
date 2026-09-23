@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.6.0 — 2026-09-23
+
+- Target official DeepSeek Harness **0.1.7-rc.1** (`dsh-v0.1.7-rc.1`, `@deepseek-ai/dsh@0.1.7-rc.1`, commit `46a7f68b0922371ce7144b668b90e377d8e799f4`). `@deepseek-ai/dsh-*` peers are `>=0.1.7-rc.1 <0.1.8`, which accepts `0.1.7-rc.1` and rejects `0.1.7-alpha.*`. `@deepseek-ai/cordis` peer is `~4.0.4`.
+- Client icons follow the rc.1 stroke set: `IconChevronRightOutlineRegular`, `IconRefreshOutlineRegular`, `IconCheckOutlineRegular`, and `IconCopyOutlineRegular`. rc.1 removed the size-suffixed names (`Outline14` / `Outline16`) with no aliases. Main at 0.5.1 still used those names because 0.1.5-rc.3 still exported them.
+- Read, diff, and terminal cards supply the rc.1 toolbar and `noExitCode` labels. The diff card no longer passes the removed `files` label.
+- The header utility reads the waiting interaction from `useSessionStatus`. rc.1 no longer passes `useSessionPendingInteraction` into that slot.
+- A running tool call in the `preparing` phase has no arguments yet. Only the `start` phase supplies `argsRaw`.
+
 ## 0.5.1 — 2026-09-22
 
 - Target official DeepSeek Harness **0.1.5-rc.3** (`dsh-v0.1.5-rc.3`, `@deepseek-ai/dsh@0.1.5-rc.3`). `@deepseek-ai/dsh-*` peers are `^0.1.5-rc.3`, which accepts `0.1.5-rc.3`. The previous `^0.1.2-rc.1` range does not.

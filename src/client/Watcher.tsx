@@ -4,10 +4,10 @@ import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {} from '@deepseek-ai/dsh-session-stats/client'
 import {
   DiffBlock,
-  IconCheckOutline16,
-  IconChevronRightOutline14,
-  IconCopyOutline16,
-  IconRefreshOutline14,
+  IconCheckOutlineRegular,
+  IconChevronRightOutlineRegular,
+  IconCopyOutlineRegular,
+  IconRefreshOutlineRegular,
   JsonTree,
   MarkdownText,
   Pill,
@@ -25,6 +25,7 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import { createFollow } from '../hub/follow.ts'
 import type { CompleteHistoryResult } from '../hub/history.ts'
 import {
@@ -105,13 +106,23 @@ const INSPECTOR_CONTENT_EXIT_MS = 120
 const INSPECTOR_EXIT_MS = 200
 const INSPECTOR_EXIT_FALLBACK_MS = INSPECTOR_CONTENT_EXIT_MS + INSPECTOR_EXIT_MS + 250
 const UNPLACED_PANEL_STYLE: CSSProperties = { visibility: 'hidden', left: 0, top: 0 }
+const CODE_TOOLBAR_LABELS = Object.freeze({
+  codeLabel: '代码块',
+  wrapLabel: '自动换行',
+  unwrapLabel: '取消自动换行',
+})
 const MARKDOWN_LABELS: MarkdownLabels = Object.freeze({
-  code: Object.freeze({ copyLabel: '复制', copiedLabel: '已复制' }),
+  code: Object.freeze({
+    copyLabel: '复制',
+    copiedLabel: '已复制',
+    toolbarLabels: CODE_TOOLBAR_LABELS,
+  }),
   footnotes: '脚注',
 })
 const TERMINAL_LABELS: TerminalBlockLabels = Object.freeze({
   signal: (signal: string) => `信号 ${signal}`,
   exitCode: (exitCode: number) => `退出码 ${exitCode}`,
+  noExitCode: '未正常退出',
   running: '运行中',
   failed: '失败',
   done: '完成',
@@ -124,6 +135,7 @@ const TERMINAL_LABELS: TerminalBlockLabels = Object.freeze({
   expand: (hidden: number) => `展开 ${hidden} 行`,
 })
 const READ_LABELS: ReadBlockLabels = Object.freeze({
+  ...CODE_TOOLBAR_LABELS,
   window: (shown: number, total: number) => `显示 ${shown}/${total} 行`,
   copy: '复制',
   copied: '已复制',
@@ -133,13 +145,13 @@ const READ_LABELS: ReadBlockLabels = Object.freeze({
   expand: (hidden: number) => `展开 ${hidden} 行`,
 })
 const DIFF_LABELS: DiffBlockLabels = Object.freeze({
+  ...CODE_TOOLBAR_LABELS,
   copy: '复制',
   copied: '已复制',
   collapseAria: '收起变更内容',
   expandAria: (hidden: number) => `展开其余 ${hidden} 行变更`,
   collapse: '收起',
   expand: (hidden: number) => `展开 ${hidden} 行`,
-  files: (count: number) => `${count} 个文件`,
 })
 const JSON_LABELS: JsonTreeLabels = Object.freeze({
   copyValue: '复制值',
@@ -257,7 +269,7 @@ function CopyRawButton({ text }: { text: string }) {
 
   return (
     <button type="button" className={css.copyRaw} onClick={copy} aria-label={copied ? '原始数据已复制' : '复制原始数据'}>
-      {copied ? <IconCheckOutline16 size={14} /> : <IconCopyOutline16 size={14} />}
+      {copied ? <IconCheckOutlineRegular size={14} /> : <IconCopyOutlineRegular size={14} />}
       {copied ? '已复制' : '复制'}
     </button>
   )
@@ -388,7 +400,7 @@ function ExecutionInspector({
           aria-label="返回工作路径"
           title="返回工作路径"
         >
-          <IconChevronRightOutline14 size={13} aria-hidden="true" />
+          <IconChevronRightOutlineRegular size={13} aria-hidden="true" />
           工作路径
         </button>
         <div className={css.statusLine} data-status={group.status}>
@@ -448,7 +460,7 @@ function ExecutionInspector({
                         </span>
                       </span>
                       {itemDuration === null ? null : <span className={css.occurrenceDuration}>{itemDuration}</span>}
-                      <IconChevronRightOutline14 size={12} className={css.occurrenceChevron} />
+                      <IconChevronRightOutlineRegular size={12} className={css.occurrenceChevron} />
                     </button>
                   })}
                 </div>
@@ -682,7 +694,7 @@ function ModelStage({
         title="模型阶段只使用 DSH 会话中供应商公开写入的事件"
         onClick={onToggle}
       >
-        <IconChevronRightOutline14 size={11} className={css.modelStageChevron} />
+        <IconChevronRightOutlineRegular size={11} className={css.modelStageChevron} />
         <span className={css.modelStageGlyph} aria-hidden="true" />
         <span className={css.modelStageCopy}>
           <span className={css.modelStageTitle}>模型阶段</span>
@@ -742,7 +754,7 @@ function ModelStage({
                       aria-controls={`watcher-reasoning-${key}`}
                       onClick={() => onToggleReasoning(key)}
                     >
-                      <IconChevronRightOutline14 size={11} className={css.reasoningChevron} />
+                      <IconChevronRightOutlineRegular size={11} className={css.reasoningChevron} />
                       <span className={css.reasoningLabel}>
                         {reasoningAttempts.length === 1 ? '推理记录' : `尝试 ${attempt.attempt}`}
                       </span>
@@ -808,7 +820,7 @@ function OverviewOccurrenceButton({
         <span className={css.overviewOccurrenceMeta}>{meta}</span>
       </span>
       {duration === null ? null : <span className={css.overviewOccurrenceDuration}>{duration}</span>}
-      <IconChevronRightOutline14 size={12} className={css.overviewOccurrenceChevron} />
+      <IconChevronRightOutlineRegular size={12} className={css.overviewOccurrenceChevron} />
     </button>
   )
 }
@@ -873,7 +885,7 @@ function PhaseOverview({
           onClick={onToggle}
         >
           <span className={css.phaseMarker} data-state={phaseState} aria-hidden="true" />
-          <IconChevronRightOutline14 size={12} className={css.phaseChevron} />
+          <IconChevronRightOutlineRegular size={12} className={css.phaseChevron} />
           <span className={css.phaseCopy}>
             <span className={css.phaseTitleLine}>
               <span className={css.phaseTitle} data-watcher-group-title="">{group.title}</span>
@@ -916,7 +928,7 @@ function PhaseOverview({
                         aria-label={`步骤 ${step.step || '—'}，${step.executionCount} 次执行${stepDuration === null ? '' : `，耗时 ${stepDuration}`}，${stepOpen ? '收起步骤' : '展开步骤'}`}
                         onClick={() => onToggleLayer('step', step.id)}
                       >
-                        <IconChevronRightOutline14 size={11} className={css.stepChevron} />
+                        <IconChevronRightOutlineRegular size={11} className={css.stepChevron} />
                         <span className={css.overviewStepLabel}>步骤 {step.step || '—'}</span>
                         <span className={css.overviewStepSignals}>
                           {step.executionCount > 0 ? <span>{step.executionCount} 次</span> : null}
@@ -977,7 +989,7 @@ function PhaseOverview({
                       aria-controls={`watcher-grouped-models-${group.id}`}
                       onClick={() => onToggleLayer('model', groupedModelsKey)}
                     >
-                      <IconChevronRightOutline14 size={11} className={css.groupedModelChevron} />
+                      <IconChevronRightOutlineRegular size={11} className={css.groupedModelChevron} />
                       <span>
                         <strong>模型阶段汇总</strong>
                         <small>{modelSteps.length} 个 Step · 按 Step 保留，不合并推理</small>
@@ -1047,7 +1059,7 @@ function PhaseOverview({
                       aria-label={`${cluster.title}，${clusterMeta}，${clusterOpen ? '收起同类执行' : '展开同类执行'}`}
                       onClick={() => onToggleLayer('cluster', cluster.id)}
                     >
-                      <IconChevronRightOutline14 size={11} className={css.analysisClusterChevron} />
+                      <IconChevronRightOutlineRegular size={11} className={css.analysisClusterChevron} />
                       <span className={css.analysisClusterDotSlot} aria-hidden="true">
                         <StatusMark status={cluster.latestStatus} className={css.analysisClusterDot} />
                       </span>
@@ -1102,7 +1114,7 @@ export function Watcher(props: WatcherProps) {
 
 function ReadyWatcher({
   useSession,
-  useSessionPendingInteraction,
+  useSessionStatus,
   useProjection,
   sessionId,
   loadAllHistory,
@@ -1110,7 +1122,7 @@ function ReadyWatcher({
   views,
 }: WatcherProps & Pick<WatcherSnapshot, 'chat' | 'views'>) {
   const sessionSnapshot = useSession((state: any) => state)
-  const pending = useSessionPendingInteraction((state: any) => state.get(sessionId))
+  const pending = useSessionStatus((state: any) => state.get(sessionId)?.pendingInteraction)
   const snapshot = useMemo<WatcherSnapshot>(() => ({
     views,
     chat,
@@ -1584,7 +1596,7 @@ function ReadyWatcher({
                     setUi(followRef.current.setFollow(!ui.follow))
                   }}
                 >
-                  <IconRefreshOutline14 size={12} />
+                  <IconRefreshOutlineRegular size={12} />
                   {ui.follow ? '自动跟随' : '浏览历史'}
                 </Pill>
               </header>
@@ -1647,7 +1659,7 @@ function ReadyWatcher({
                     className={css.unread}
                     onClick={selected === undefined ? backToLatest : () => closeInspector(true)}
                   >
-                    <IconRefreshOutline14 size={12} />
+                    <IconRefreshOutlineRegular size={12} />
                     {ui.unread} 条新进展 · 查看最新
                   </button>
                 )
@@ -1706,7 +1718,7 @@ function ReadyWatcher({
                                     ))
                                   }}
                                 >
-                                  <IconChevronRightOutline14 size={13} className={css.turnChevron} />
+                                  <IconChevronRightOutlineRegular size={13} className={css.turnChevron} />
                                       <span className={css.turnCopy}>
                                         <span className={css.turnTitleLine}>
                                           <span className={css.turnTitle}>{turnTitle}</span>
