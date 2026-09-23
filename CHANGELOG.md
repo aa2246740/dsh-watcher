@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.5.1 — 2026-09-22
+
+- Target official DeepSeek Harness **0.1.5-rc.3** (`dsh-v0.1.5-rc.3`, `@deepseek-ai/dsh@0.1.5-rc.3`). `@deepseek-ai/dsh-*` peers are `^0.1.5-rc.3`, which accepts `0.1.5-rc.3`. The previous `^0.1.2-rc.1` range does not.
+- Client icons stay `IconChevronRightOutline14`, `IconRefreshOutline14`, `IconCheckOutline16`, and `IconCopyOutline16`. Those exports still exist on 0.1.5-rc.3.
+- `pnpm test` typechecks against the 0.1.5-rc.3 packages. `@types/node` is a devDependency so that check resolves Node types without a Harness checkout.
+
 ## 0.5.0 — 2026-09-21
 
 - The panel is resizable from its right edge, bottom edge, and the corner grip. The panel frame stays put while dragging — only the size changes — and the floor is the size it opened at, so it can grow but never shrink below the layout it needs.
