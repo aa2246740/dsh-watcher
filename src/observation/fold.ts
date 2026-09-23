@@ -959,6 +959,7 @@ function pairFromSettled(node: ToolResultNode): ToolPair {
 }
 
 function pairFromRunning(call: RunningToolCall, index: number): ToolPair {
+  const argsRaw = call.phase === 'start' ? call.argsRaw : ''
   return {
     callId: call.callId,
     seq: Number.MAX_SAFE_INTEGER - 1000 + index,
@@ -968,8 +969,8 @@ function pairFromRunning(call: RunningToolCall, index: number): ToolPair {
     turn: call.turn,
     step: call.step,
     name: call.name,
-    args: parseArgs(call.argsRaw),
-    argsRaw: call.argsRaw,
+    args: parseArgs(argsRaw),
+    argsRaw,
     result: null,
     meta: null,
     callView: null,
