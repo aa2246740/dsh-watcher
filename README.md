@@ -5,7 +5,7 @@
 推荐用 npm（可钉版本）：
 
 ```sh
-dsh plugin --profile web add dsh-watcher@0.6.0
+dsh plugin --profile web add dsh-watcher@0.6.1
 ```
 
 也可以装 latest：
@@ -22,7 +22,7 @@ dsh plugin --profile web add github:aa2246740/dsh-watcher
 
 PATH 上需要官方 `dsh`（或 `npx @deepseek-ai/dsh`）和 **pnpm**。`dsh plugin add` 会在 `$DSH_HOME/profiles/web` 里跑 pnpm，并因为本包装了 `dsh.bundle.patch` 而写入 profile bundles。然后**重启这个 Host，再刷新页面**。它只写 profile，不会热挂正在跑的进程。
 
-仓库已提交 `lib/`，npm / git 安装不用再构建，也不走 `prepare` / `allowBuilds`。需要 DeepSeek Harness **0.1.7-rc.1**（`@deepseek-ai/dsh@0.1.7-rc.1`），Node `^22.19.0` 或 `>=24`。
+仓库已提交 `lib/`，npm / git 安装不用再构建，也不走 `prepare` / `allowBuilds`。需要 DeepSeek Harness **0.1.7-rc.2**（`@deepseek-ai/dsh@0.1.7-rc.2`）。peer 范围 `>=0.1.7-rc.1 <0.1.8` 也接受 **0.1.7-rc.1**。Node `^22.19.0` 或 `>=24`。
 
 DeepSeek Harness Web 的只读插件。点会话标题栏里的眼睛，把 Session 收成一张能折叠的工作路径：这轮走了几步、跑了几次、花了多久；再展开某一步看并行分支、工具结果，或一条默认折着的推理记录。
 
@@ -59,7 +59,12 @@ DSH.app 的 `desktop` profile 不接受 `github:`。用 `dsh web` 装进 web pro
 
 交互约定在 [DESIGN.md](./DESIGN.md)。MIT。
 
-## 本次更新（0.6.0）
+## 本次更新（0.6.1）
+
+- 在官方 DeepSeek Harness **0.1.7-rc.2** 上核对通过。`@deepseek-ai/dsh-*` 的 peer 仍是 `>=0.1.7-rc.1 <0.1.8`，安装期接受 `0.1.7-rc.1` 和 `0.1.7-rc.2`，不接受 `0.1.7-alpha.*`。
+- 图标仍是 `IconChevronRightOutlineRegular`、`IconRefreshOutlineRegular`、`IconCheckOutlineRegular`、`IconCopyOutlineRegular`。rc.2 同样没有带尺寸后缀的旧导出。
+
+## 0.6.0
 
 - 对齐官方 DeepSeek Harness **0.1.7-rc.1**。`@deepseek-ai/dsh-*` 的 peer 改为 `>=0.1.7-rc.1 <0.1.8`，安装期接受 `0.1.7-rc.1`，不接受 `0.1.7-alpha.*`。
 - 图标改为 `IconChevronRightOutlineRegular`、`IconRefreshOutlineRegular`、`IconCheckOutlineRegular`、`IconCopyOutlineRegular`。rc.1 删掉了带尺寸后缀的旧导出，没有别名。

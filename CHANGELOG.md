@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.6.1 — 2026-09-24
+
+- Prove Watcher on official DeepSeek Harness **0.1.7-rc.2** (`dsh-v0.1.7-rc.2`, `@deepseek-ai/dsh@0.1.7-rc.2`, commit `477b4f420553e8a52c2fbccc464d7561b239c443`). Dev pins are `0.1.7-rc.2`. `@deepseek-ai/dsh-*` peers stay `>=0.1.7-rc.1 <0.1.8`, which already accepts `0.1.7-rc.2` and still rejects `0.1.7-alpha.*`. `@deepseek-ai/cordis` stays `~4.0.4`.
+- Keep the rc.1 stroke icons: `IconChevronRightOutlineRegular`, `IconRefreshOutlineRegular`, `IconCheckOutlineRegular`, and `IconCopyOutlineRegular`. rc.2 still does not export `IconChevronRightOutline14`, `IconRefreshOutline14`, `IconCheckOutline16`, or `IconCopyOutline16`.
+- The vendored client-build adapter from PR #13 remains the build path. The Watcher client entry, CSS modules, and Regular icon names are the same bytes this release ships.
+
 ## 0.6.0 — 2026-09-23
 
 - Target official DeepSeek Harness **0.1.7-rc.1** (`dsh-v0.1.7-rc.1`, `@deepseek-ai/dsh@0.1.7-rc.1`, commit `46a7f68b0922371ce7144b668b90e377d8e799f4`). `@deepseek-ai/dsh-*` peers are `>=0.1.7-rc.1 <0.1.8`, which accepts `0.1.7-rc.1` and rejects `0.1.7-alpha.*`. `@deepseek-ai/cordis` peer is `~4.0.4`.

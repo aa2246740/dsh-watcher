@@ -30,7 +30,7 @@ test('the Markdown reader is supplied through the declared RC1 client injection'
     if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(range, '>=0.1.7-rc.1 <0.1.8', name)
   }
   for (const [name, version] of Object.entries(pkg.devDependencies)) {
-    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(version, '0.1.7-rc.1', name)
+    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(version, '0.1.7-rc.2', name)
   }
   assert.equal(pkg.peerDependencies['@deepseek-ai/cordis'], '~4.0.4')
   assert.equal(pkg.devDependencies['@deepseek-ai/cordis'], '4.0.4')
