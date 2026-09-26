@@ -2,27 +2,27 @@
 
 # Watcher
 
-Prefer npm (version-pinable):
+## Install
 
-```sh
-dsh plugin --profile web add dsh-watcher@0.6.1
+### DSH Studio desktop app (recommended)
+
+Open **Settings → Plugins → Add plugin** and enter this in “Package name or address”:
+
+```text
+github:aa2246740/dsh-watcher#v0.6.1
 ```
 
-Or latest:
+The desktop plugin manager owns the Desktop profile and bundled package manager. This release commits `lib/`; normal use needs no clone, build, or DSHX installation. Follow the app if it asks you to reload or reopen after installation.
+
+### Web CLI
 
 ```sh
-dsh plugin --profile web add dsh-watcher
+dsh plugin --profile web add github:aa2246740/dsh-watcher#v0.6.1
 ```
 
-Fallback: install from GitHub (tracks the default branch tip):
+This official CLI command writes only the `web` profile; it cannot modify the Desktop App profile. For an already-running Web Host, reopen that Host once and reload the page.
 
-```sh
-dsh plugin --profile web add github:aa2246740/dsh-watcher
-```
-
-You need official `dsh` (or `npx @deepseek-ai/dsh`) and **pnpm** on `PATH`. `dsh plugin add` runs pnpm in `$DSH_HOME/profiles/web` and, because this package declares `dsh.bundle.patch`, appends the bundle to that profile. Then **restart that Host and reload the page**. The command writes the profile. It does not hot-load a running process.
-
-`lib/` is committed, so npm / git installs do not need a local build, `prepare`, or `allowBuilds`. DeepSeek Harness **0.1.7-rc.2** (`@deepseek-ai/dsh@0.1.7-rc.2`). The peer range `>=0.1.7-rc.1 <0.1.8` also accepts **0.1.7-rc.1**. Node `^22.19.0` or `>=24`.
+DeepSeek Harness **0.1.7-rc.2** (`@deepseek-ai/dsh@0.1.7-rc.2`). The peer range `>=0.1.7-rc.1 <0.1.8` also accepts **0.1.7-rc.1**. Node `^22.19.0` or `>=24`.
 
 A read-only plugin for DeepSeek Harness Web. Open the eye in the session header. A Session becomes a foldable work path: how many steps ran, how many tools fired, how long it took. Open a step for parallel branches, a tool result, or a reasoning row that stays folded until you ask.
 
@@ -40,20 +40,20 @@ It does not inject messages, invent hidden chain-of-thought, or replace the offi
 
 Grouped view only stacks what it can prove. Two different bash calls stay apart. The model stage shows only provider-visible reasoning already written into the Session. If nothing was recorded, it says so.
 
-From a clone:
+From a clone (development/local testing):
 
 ```sh
 git clone https://github.com/aa2246740/dsh-watcher.git
 dsh plugin --profile web add ./dsh-watcher
 ```
 
-That path also needs pnpm, then a Host restart and page reload.
+That path also needs pnpm, then reopen that Web Host and reload the page.
 
 ```sh
 dsh plugin --profile web remove dsh-watcher
 ```
 
-DSH.app's `desktop` profile rejects `github:`. Use `dsh web` and install into the `web` profile.
+The public CLI manages `web` only; use the in-app “Add plugin” entry above for the Desktop App.
 
 The settings summary and session HUD show **Estimated cost** (not “total value”) next to total tokens. Input / output / cache buckets are priced from `pricing/models.yaml`. A missing row is **Unknown**, never $0. A partial estimate keeps the known dollar in the main number and footnotes **Some models unpriced**. It is an estimate, not a bill. The default table covers mainstream DeepSeek, MiniMax, OpenAI, Anthropic, Gemini, Grok, GLM, and Qwen rows and is static (no live fetch). Override it in Watcher settings (`localStorage` key `dsh-watcher:pricing-override:v1`). PRs to the default table are welcome.
 

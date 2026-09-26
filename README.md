@@ -2,27 +2,27 @@
 
 # Watcher
 
-推荐用 npm（可钉版本）：
+## 安装
 
-```sh
-dsh plugin --profile web add dsh-watcher@0.6.1
+### DSH Studio 桌面 App（推荐）
+
+打开 **设置 → 插件 → 添加插件**，在“包名或地址”中输入：
+
+```text
+github:aa2246740/dsh-watcher#v0.6.1
 ```
 
-也可以装 latest：
+桌面端插件管理器负责 Desktop profile 和内置包管理器。本发布已提交 `lib/`；普通使用不需要 clone、构建或安装 DSHX。若应用提示刷新或重新打开，请按提示完成。
+
+### Web CLI
 
 ```sh
-dsh plugin --profile web add dsh-watcher
+dsh plugin --profile web add github:aa2246740/dsh-watcher#v0.6.1
 ```
 
-备选：从 GitHub 直装（跟默认分支最新提交）：
+这条官方 CLI 命令只写入 `web` profile，不能修改 Desktop App 的 profile。对于已经运行的 Web Host，请重新打开该 Host 一次，再刷新网页。
 
-```sh
-dsh plugin --profile web add github:aa2246740/dsh-watcher
-```
-
-PATH 上需要官方 `dsh`（或 `npx @deepseek-ai/dsh`）和 **pnpm**。`dsh plugin add` 会在 `$DSH_HOME/profiles/web` 里跑 pnpm，并因为本包装了 `dsh.bundle.patch` 而写入 profile bundles。然后**重启这个 Host，再刷新页面**。它只写 profile，不会热挂正在跑的进程。
-
-仓库已提交 `lib/`，npm / git 安装不用再构建，也不走 `prepare` / `allowBuilds`。需要 DeepSeek Harness **0.1.7-rc.2**（`@deepseek-ai/dsh@0.1.7-rc.2`）。peer 范围 `>=0.1.7-rc.1 <0.1.8` 也接受 **0.1.7-rc.1**。Node `^22.19.0` 或 `>=24`。
+需要 DeepSeek Harness **0.1.7-rc.2**（`@deepseek-ai/dsh@0.1.7-rc.2`）。peer 范围 `>=0.1.7-rc.1 <0.1.8` 也接受 **0.1.7-rc.1**。Node `^22.19.0` 或 `>=24`。
 
 DeepSeek Harness Web 的只读插件。点会话标题栏里的眼睛，把 Session 收成一张能折叠的工作路径：这轮走了几步、跑了几次、花了多久；再展开某一步看并行分支、工具结果，或一条默认折着的推理记录。
 
@@ -40,20 +40,20 @@ DeepSeek Harness Web 的只读插件。点会话标题栏里的眼睛，把 Sess
 
 归类只叠能证明相同的调用。两条不同的 bash 不会被捏在一起。模型阶段只显示供应商已经写进 Session 的可见 reasoning；没有记录就写未记录。
 
-已经 clone 过的目录也可以：
+已经 clone 过的目录也可以（开发/本地测试）：
 
 ```sh
 git clone https://github.com/aa2246740/dsh-watcher.git
 dsh plugin --profile web add ./dsh-watcher
 ```
 
-同样需要 pnpm，然后重启 Host 并刷新页面。
+同样需要 pnpm，然后重新打开该 Web Host 并刷新页面。
 
 ```sh
 dsh plugin --profile web remove dsh-watcher
 ```
 
-DSH.app 的 `desktop` profile 不接受 `github:`。用 `dsh web` 装进 web profile。
+官方 CLI 只管理 `web` profile；Desktop App 请使用上面的应用内“添加插件”入口。
 
 设置页和会话 HUD 的 Token 总数旁有 **估算费用**（不是「总价值」）。按模型的输入 / 输出 / 缓存桶对照 `pricing/models.yaml` 计价；缺行显示 **未知**，不会当成 $0。部分已知时主数字只显示已标价金额，未标价写在脚注。这是估算，不是账单。默认表含 DeepSeek、MiniMax、OpenAI、Anthropic、Gemini、Grok、GLM、Qwen 主流行，不联网。设置里打开的是当前生效价格表；保存只把改动过的行写入 `localStorage` 键 `dsh-watcher:pricing-override:v1`。欢迎对默认表提 PR。
 
