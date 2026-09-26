@@ -15,6 +15,10 @@ import { TimingPanel } from './TimingPanel.tsx'
 type Limits = { silenceSeconds: number; reasoningSeconds: number }
 const STORAGE = 'dsh-watcher:insights-display:v1'
 
+function routeLabel(route?: { provider?: string; model?: string }): string {
+  return `${route?.provider || '未标注提供方'}/${route?.model || '未标注模型'}`
+}
+
 function readLimits(): Limits {
   try {
     return limitsOf(JSON.parse(localStorage.getItem(STORAGE) ?? '{}'))
@@ -300,12 +304,12 @@ export function SessionInsights({ value, now, running, waiting, onEvidence }: {
             {scope === 'turn'
               ? '本轮'
               : selectedModel
-                ? `模型: ${selectedModel.model}`
+                ? `模型: ${routeLabel(selectedModel)}`
                 : '全会话'}
           </span>
           {scope === 'turn' && currentRoute?.model ? (
-            <span className={css.currentModelTag} title={currentRoute.model}>
-              <strong className={css.modelTagText}>{currentRoute.model}</strong>
+            <span className={css.currentModelTag} title={routeLabel(currentRoute)}>
+              <strong className={css.modelTagText}>{routeLabel(currentRoute)}</strong>
               {currentRoute.effort ? (
                 <span className={css.effortTag}>思考: {effortLabel(currentRoute.effort)}</span>
               ) : null}
@@ -346,7 +350,7 @@ export function SessionInsights({ value, now, running, waiting, onEvidence }: {
             onClick={() => setModelFilter('all')}>全部模型汇总 ({value.models.length})</button>
           {value.models.map((m: any, idx: number) => (
             <button type="button" key={idx} className={css.modelTabBtn} data-active={modelFilter === idx ? '' : undefined}
-              onClick={() => setModelFilter(idx)}>{m.model} ({m.calls}次)</button>
+              onClick={() => setModelFilter(idx)} title={routeLabel(m)}>{routeLabel(m)} ({m.calls}次)</button>
           ))}
         </div>
       ) : null}
@@ -497,14 +501,14 @@ export function InsightsSettings(props: { remote?: any }) {
     const totalInAll = totalInput + totalCacheRead
     const cacheHitPct = totalInAll > 0 ? Math.round((totalCacheRead / totalInAll) * 100) : 0
 
-    // 重点：按纯模型名称汇总去重，确保模型级排行榜中每个模型仅出现一次，杜绝同名混杂和 React 重复 key 乱序！
+    // 按 provider/model 汇总，避免不同提供方的同名模型混在一起。
     const modelMap = new Map<string, any>()
     for (const view of validViews) {
       for (const m of view.models ?? []) {
-        const name = m.model || '未标注'
+        const name = routeLabel(m)
         let row = modelMap.get(name)
         if (!row) {
-          row = { model: name, calls: 0, tokens: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, modelMs: 0, firstMs: 0, firstSamples: 0 }
+          row = { model: name, provider: m.provider, pricingModel: m.model, calls: 0, tokens: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, modelMs: 0, firstMs: 0, firstSamples: 0 }
           modelMap.set(name, row)
         }
         for (const k of ['calls', 'tokens', 'input', 'output', 'cacheRead', 'cacheWrite', 'reasoning', 'modelMs', 'firstMs', 'firstSamples']) {
@@ -639,7 +643,7 @@ export function InsightsSettings(props: { remote?: any }) {
         ? row.value.models
         : [{ model: '未标注', tokens: row.value.totals.tokens ?? 0 }]
       models.forEach((m: any) => {
-        bucket.models.set(m.model, (bucket.models.get(m.model) ?? 0) + (m.tokens ?? 0))
+        bucket.models.set(routeLabel(m), (bucket.models.get(routeLabel(m)) ?? 0) + (m.tokens ?? 0))
       })
     })
 
@@ -717,7 +721,7 @@ export function InsightsSettings(props: { remote?: any }) {
       dEntry.tokens += r.value.totals?.tokens ?? 0
       dEntry.sessions += 1
       ;(r.value.models ?? []).forEach((m: any) => {
-        dEntry!.models.set(m.model, (dEntry!.models.get(m.model) ?? 0) + (m.tokens ?? 0))
+        dEntry!.models.set(routeLabel(m), (dEntry!.models.get(routeLabel(m)) ?? 0) + (m.tokens ?? 0))
       })
     })
 
@@ -809,7 +813,7 @@ export function InsightsSettings(props: { remote?: any }) {
     const totalHeatmapSessions = allHistoricalRows.length
 
     const costRows = uniqueModels.length > 0
-      ? uniqueModels
+      ? uniqueModels.map(({ pricingModel, ...row }) => ({ ...row, model: pricingModel }))
       : [{ model: '未标注', tokens: totalTokens, input: totalInput, output: totalOutput, cacheRead: totalCacheRead, cacheWrite: totalCacheWrite }]
     const estimatedCost = estimateUsageRows(costRows, pricing)
 
@@ -1303,7 +1307,7 @@ export function InsightsSettings(props: { remote?: any }) {
                           <div className={css.rankItemLeft}>
                             <span className={`${css.rankBadge} ${idx === 0 ? css.rankBadgeGold : ''}`}>#{idx + 1}</span>
                             <span className={css.sessionIdTag}>{s.sessionId.slice(0, 14)}…</span>
-                            <span className={css.rankName} title={s.value?.models?.[0]?.model}>{s.value?.models?.[0]?.model ?? '通用会话'}</span>
+                            <span className={css.rankName} title={s.value?.models?.[0] ? routeLabel(s.value.models[0]) : undefined}>{s.value?.models?.[0] ? routeLabel(s.value.models[0]) : '通用会话'}</span>
                           </div>
                           <span className={css.rankValMain}>
                             总计 {Math.round(tMs / 1000)} 秒
@@ -1339,7 +1343,7 @@ export function InsightsSettings(props: { remote?: any }) {
                     <div key={s.sessionId} className={css.errorSessionRow}>
                       <span className={`${css.rankBadge} ${idx === 0 ? css.rankBadgeGold : ''}`}>#{idx + 1}</span>
                       <span className={css.sessionIdTag}>{s.sessionId.slice(0, 14)}…</span>
-                      <span className={css.rankName}>{s.value?.models?.[0]?.model ?? '通用对话'}</span>
+                      <span className={css.rankName}>{s.value?.models?.[0] ? routeLabel(s.value.models[0]) : '通用对话'}</span>
                       <span className={s.value?.totals?.toolErrors > 0 ? css.statusBad : css.statusOk}>
                         {s.value?.totals?.toolErrors > 0 ? `${s.value.totals.toolErrors} 次报错` : '0 报错'}
                       </span>
@@ -1991,7 +1995,7 @@ export function InsightsSettings(props: { remote?: any }) {
                     <span className={css.sessionIdTag} title={row.sessionId}>
                       <strong className={css.tableRankNum}>#{idx + 1}</strong> {row.sessionId.length > 12 ? `${row.sessionId.slice(0, 6)}…${row.sessionId.slice(-3)}` : row.sessionId}
                     </span>
-                    <span className={css.sessionModelCell} title={val.models?.[0]?.model}>{val.models?.[0]?.model ?? '未标注'}</span>
+                    <span className={css.sessionModelCell} title={routeLabel(val.models?.[0])}>{routeLabel(val.models?.[0])}</span>
                     <div className={css.sessionTokenCell}>
                       <span>{fmtCompact(val.totals.tokens)}</span>
                       <div className={css.sessionTokenBar} style={{ width: `${tokenBarPct}%` }} />
