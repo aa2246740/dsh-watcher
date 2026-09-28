@@ -9,7 +9,7 @@
 Open **Settings → Plugins → Add plugin** and enter this in “Package name or address”:
 
 ```text
-github:aa2246740/dsh-watcher#v0.6.1
+github:aa2246740/dsh-watcher#v0.7.0
 ```
 
 The desktop plugin manager owns the Desktop profile and bundled package manager. This release commits `lib/`; normal use needs no clone, build, or DSHX installation. Follow the app if it asks you to reload or reopen after installation.
@@ -17,12 +17,12 @@ The desktop plugin manager owns the Desktop profile and bundled package manager.
 ### Web CLI
 
 ```sh
-dsh plugin --profile web add github:aa2246740/dsh-watcher#v0.6.1
+dsh plugin --profile web add github:aa2246740/dsh-watcher#v0.7.0
 ```
 
 This official CLI command writes only the `web` profile; it cannot modify the Desktop App profile. For an already-running Web Host, reopen that Host once and reload the page.
 
-DeepSeek Harness **0.1.7-rc.2** (`@deepseek-ai/dsh@0.1.7-rc.2`). The peer range `>=0.1.7-rc.1 <0.1.8` also accepts **0.1.7-rc.1**. Node `^22.19.0` or `>=24`.
+DeepSeek Harness **0.2.0-rc.1** (`@deepseek-ai/dsh@0.2.0-rc.1`, `dsh-v0.2.0-rc.1`). The `@deepseek-ai/dsh-*` peer range is `>=0.2.0-rc.1 <0.2.1`: it accepts **0.2.0-rc.1** and stable **0.2.0**, rejects alphas, and rejects **0.1.7-rc.2**. Node `^22.19.0` or `>=24`.
 
 A read-only plugin for DeepSeek Harness Web. Open the eye in the session header. A Session becomes a foldable work path: how many steps ran, how many tools fired, how long it took. Open a step for parallel branches, a tool result, or a reasoning row that stays folded until you ask.
 
@@ -59,7 +59,12 @@ The settings summary and session HUD show **Estimated cost** (not “total value
 
 The interaction contract lives in [DESIGN.md](./DESIGN.md). MIT.
 
-## What's new in 0.6.1
+## What's new in 0.7.0
+
+- Targets official DeepSeek Harness **0.2.0-rc.1** (`dsh-v0.2.0-rc.1`, SHA `4878cdabd87d4041bdaff61d04c966883b9fd07a`). `@deepseek-ai/dsh-*` peers are `>=0.2.0-rc.1 <0.2.1`: the range accepts `0.2.0-rc.1` and stable `0.2.0`, rejects alphas, and rejects `0.1.7-rc.2`.
+- Icons stay `IconChevronRightOutlineRegular`, `IconRefreshOutlineRegular`, `IconCheckOutlineRegular`, and `IconCopyOutlineRegular`. Those four names are still exported by primitives at `dsh-v0.2.0-rc.1`. The size-suffixed names are still absent.
+
+## 0.6.1
 
 - Checked on official DeepSeek Harness **0.1.7-rc.2**. `@deepseek-ai/dsh-*` peers stay `>=0.1.7-rc.1 <0.1.8`, so install accepts `0.1.7-rc.1` and `0.1.7-rc.2` and rejects `0.1.7-alpha.*`.
 - Icons stay `IconChevronRightOutlineRegular`, `IconRefreshOutlineRegular`, `IconCheckOutlineRegular`, and `IconCopyOutlineRegular`. rc.2 still does not export the size-suffixed names.
