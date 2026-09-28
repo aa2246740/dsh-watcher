@@ -137,10 +137,10 @@ export function externalClientBundle(id, entries, { clientEntry } = {}) {
     sourcemap: false,
     clean: false,
     dts: false,
-    deps: {
-      neverBundle: (specifier) => !/^[./]/.test(specifier),
-      alwaysBundle: (specifier) => /^[./]/.test(specifier),
-    },
+    // No `deps` overrides: tsdown defaults externalize package.json
+    // dependencies/peerDependencies and bundle relative imports. Function-form
+    // `deps.alwaysBundle` regressed on tsdown 0.22 and left host entries as
+    // external `.ts` imports that fail to load at runtime.
     outputOptions: { entryFileNames: '[name].js' },
   })
   if (clientEntry !== undefined) {
