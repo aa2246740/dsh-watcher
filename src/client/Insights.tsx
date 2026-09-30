@@ -406,7 +406,6 @@ export function InsightsSettings(props: { remote?: any }) {
   const [hoveredLineAnchor, setHoveredLineAnchor] = useState<ChartAnchor | null>(null)
   const [hoveredHeatmapDay, setHoveredHeatmapDay] = useState<any | null>(null)
   const [hoveredHeatmapAnchor, setHoveredHeatmapAnchor] = useState<ChartAnchor | null>(null)
-  const [hoveredHour, setHoveredHour] = useState<any | null>(null)
   const [sessionSort, setSessionSort] = useState<'tokens' | 'time' | 'errors'>('tokens')
   const [loading, setLoading] = useState(false)
   const [sessions, setSessions] = useState<{ total: number; rows: any[] } | null>(null)
@@ -612,8 +611,9 @@ export function InsightsSettings(props: { remote?: any }) {
     const workspaceCosts = new Map(workspaceRank.map((w: any) => [w.cwd, estimateUsageRows(w.modelRows, pricing)]))
 
     // 轮次流水驱动的分布图：只统计落在当前范围内的轮次
-    const hourCells: number[][] = Array.from({ length: 7 }, () => new Array(24).fill(0))
-    const hourTurns: number[][] = Array.from({ length: 7 }, () => new Array(24).fill(0))
+    // 星期活跃：周一~周日 7 格（个人 Agent 只看哪天用得多，不到小时粒度）
+    const weekdayTokens = new Array(7).fill(0)
+    const weekdayTurns = new Array(7).fill(0)
     // 会话形态：每轮工具调用数分桶（magpie 同口径：0 / 1-2 / 3-5 / 6-10 / 11-20 / 21+）
     const shapeBuckets = new Array(6).fill(0)
     let scopedTurns = 0
@@ -622,19 +622,15 @@ export function InsightsSettings(props: { remote?: any }) {
       scopedTurns++
       const d = new Date(t.start)
       const wd = (d.getDay() + 6) % 7
-      hourCells[wd][d.getHours()] += t.tokens ?? 0
-      hourTurns[wd][d.getHours()]++
+      weekdayTokens[wd] += t.tokens ?? 0
+      weekdayTurns[wd]++
       const n = t.tools ?? 0
       shapeBuckets[n < 1 ? 0 : n <= 2 ? 1 : n <= 5 ? 2 : n <= 10 ? 3 : n <= 20 ? 4 : 5]++
     }
-    const hourValues = hourCells.flat().filter((v: number) => v > 0).sort((a, b) => a - b)
-    const hq1 = hourValues[Math.floor(hourValues.length * 0.25)] || 1
-    const hq2 = hourValues[Math.floor(hourValues.length * 0.50)] || hq1
-    const hq3 = hourValues[Math.floor(hourValues.length * 0.75)] || hq2
-    const hourLevel = (t: number): 0 | 1 | 2 | 3 | 4 => (!t || t <= 0 ? 0 : t <= hq1 ? 1 : t <= hq2 ? 2 : t <= hq3 ? 3 : 4)
-    let busiest: { wd: number; hour: number; tokens: number; turns: number } | null = null
-    for (let wd = 0; wd < 7; wd++) for (let h = 0; h < 24; h++) {
-      if (hourCells[wd][h] > (busiest?.tokens ?? 0)) busiest = { wd, hour: h, tokens: hourCells[wd][h], turns: hourTurns[wd][h] }
+    const weekdayMax = Math.max(1, ...weekdayTokens)
+    let busiest: { wd: number; tokens: number; turns: number } | null = null
+    for (let wd = 0; wd < 7; wd++) {
+      if (weekdayTokens[wd] > (busiest?.tokens ?? 0)) busiest = { wd, tokens: weekdayTokens[wd], turns: weekdayTurns[wd] }
     }
     const shapeMax = Math.max(1, ...shapeBuckets)
 
@@ -926,9 +922,9 @@ export function InsightsSettings(props: { remote?: any }) {
       skillRank,
       workspaceRank,
       workspaceCosts,
-      hourCells,
-      hourTurns,
-      hourLevel,
+      weekdayTokens,
+      weekdayTurns,
+      weekdayMax,
       busiest,
       scopedTurns,
       shapeBuckets,
@@ -2163,50 +2159,39 @@ export function InsightsSettings(props: { remote?: any }) {
         </div>
       )}
 
-      {/* 按时段活跃（周一~周日 × 24 小时，168 格固定矩阵）+ 会话形态分布 */}
+      {/* 星期活跃（周一~周日 7 格）+ 会话形态分布 */}
       {analytics ? (
         <div className={css.rankBoard} data-cols="2">
           <div className={css.vizPanel}>
             <div className={css.vizHead}>
               <div className={css.tableTitleGroup}>
-                <span className={css.vizTitle}>按时段活跃</span>
-                <span className={css.vizSub}>周一~周日 × 0~23 点 · 每格累计 Token · 共 {fmt(analytics.scopedTurns)} 轮</span>
+                <span className={css.vizTitle}>星期活跃</span>
+                <span className={css.vizSub}>历史轮次按周一~周日聚合 · 共 {fmt(analytics.scopedTurns)} 轮</span>
               </div>
-              {hoveredHour ? (
-                <div className={css.heatmapLiveHud}>
-                  <span className={css.heatmapLiveDate}>周{'一二三四五六日'[hoveredHour.wd]} {String(hoveredHour.hour).padStart(2, '0')}:00–{String(hoveredHour.hour + 1).padStart(2, '0')}:00</span>
-                  <span className={css.heatmapLiveTokens}>
-                    {hoveredHour.tokens > 0 ? `${fmtCompact(hoveredHour.tokens)} Token · ${hoveredHour.turns} 轮` : '无调用'}
-                  </span>
-                </div>
-              ) : analytics.busiest ? (
+              {analytics.busiest ? (
                 <div className={css.heatmapStatsRow}>
-                  <span>最忙时段 <strong>周{'一二三四五六日'[analytics.busiest.wd]} {String(analytics.busiest.hour).padStart(2, '0')}:00</strong></span>
+                  <span>最忙 <strong>周{'一二三四五六日'[analytics.busiest.wd]}</strong></span>
                   <span><strong>{fmtCompact(analytics.busiest.tokens)}</strong> Token · {analytics.busiest.turns} 轮</span>
                 </div>
               ) : null}
             </div>
-            <div className={css.hourMatrix} onMouseLeave={() => setHoveredHour(null)}>
-              {analytics.hourCells.map((row: number[], wd: number) => (
-                <div key={wd} className={css.hourRow}>
-                  <span className={css.hourRowLabel}>周{'一二三四五六日'[wd]}</span>
-                  <div className={css.hourCells}>
-                    {row.map((tokens: number, hour: number) => (
-                      <div
-                        key={hour}
-                        className={`${css.heatmapCell} ${css.hourCell}`}
-                        data-level={analytics.hourLevel(tokens)}
-                        onMouseEnter={() => setHoveredHour({ wd, hour, tokens, turns: analytics.hourTurns[wd][hour] })}
-                      />
-                    ))}
+            <div className={css.shapeList}>
+              {analytics.weekdayTokens.map((tokens: number, wd: number) => {
+                const pct = tokens > 0 ? Math.max(4, Math.round((tokens / analytics.weekdayMax) * 100)) : 0
+                const turns = analytics.weekdayTurns[wd]
+                const label = `周${'一二三四五六日'[wd]}`
+                return (
+                  <div key={wd} className={css.shapeRow} title={`${label} · ${fmtCompact(tokens)} Token · ${turns} 轮`}>
+                    <span className={css.shapeLabel}>{label}</span>
+                    <div className={css.shapeTrack}>
+                      <div className={css.shapeFill} style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className={css.shapeCount}>{turns > 0 ? fmtCompact(tokens) : '—'}</span>
                   </div>
-                </div>
-              ))}
-              <div className={css.hourTicks}>
-                <span>0</span><span>6</span><span>12</span><span>18</span><span>23</span>
-              </div>
+                )
+              })}
             </div>
-            <div className={css.chartFoot}>所有历史轮次聚合进这 168 格，看的是规律不是流水账；只有最近约 500 轮参与统计。</div>
+            <div className={css.chartFoot}>所有历史轮次归进周一~周日 7 格，看的是哪几天用得多；只有最近约 500 轮参与统计。</div>
           </div>
 
           <div className={css.vizPanel}>

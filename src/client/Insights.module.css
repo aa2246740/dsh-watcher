@@ -2008,53 +2008,7 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
-/* 按时段活跃：周一~周日 × 24 小时矩阵 */
-.hourMatrix {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  width: 100%;
-}
-
-.hourRow {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.hourRowLabel {
-  width: 26px;
-  flex-shrink: 0;
-  font-size: 9px;
-  color: var(--dsw-alias-label-tertiary);
-  user-select: none;
-}
-
-.hourCells {
-  display: flex;
-  gap: 2px;
-  flex: 1;
-  min-width: 0;
-}
-
-.hourCell {
-  width: auto;
-  height: 14px;
-  flex: 1 1 0;
-  min-width: 0;
-  cursor: default;
-}
-
-.hourTicks {
-  display: flex;
-  justify-content: space-between;
-  margin-left: 32px;
-  font-size: 9px;
-  color: var(--dsw-alias-label-tertiary);
-  font-variant-numeric: tabular-nums;
-}
-
-/* 会话形态：每轮工具调用次数分布 */
+/* 星期活跃 / 会话形态：横向条形分布（.shapeRow 复用） */
 .shapeList {
   display: flex;
   flex-direction: column;
