@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 // Untyped local ESM helpers: single .mjs source kept for node tests.
 // @ts-ignore TS7016: no declarations for the local .mjs module
-import { alertsOf, DEFAULT_LIMITS, limitsOf, scanSessions } from '../insights/presentation.mjs'
+import { alertsOf, DEFAULT_LIMITS, limitsOf, scanSessions, mergeTools, mergeSkills, mergeWorkspaces, workspaceLabel } from '../insights/presentation.mjs'
 // @ts-ignore TS7016: no declarations for the local .mjs module
 import { estimateFromInsights, estimateUsageRows, formatEstimate, formatEstimateNote, estimateDisclaimer, mergePricing, defaultPricing, readStoredOverride, persistPricingEditor, clearPricingEditor, effectivePricingText } from '../insights/pricing.mjs'
 // @ts-ignore TS7016: no declarations for the local .mjs module
@@ -397,9 +397,9 @@ export function InsightsSettings(props: { remote?: any }) {
   const [overrideError, setOverrideError] = useState('')
   const [overrideSaved, setOverrideSaved] = useState(false)
   const userPickedRange = useRef(false)
-  const [range, setRange] = useState<'7' | '30' | '180'>('7')
+  const [range, setRange] = useState<'1' | '7' | '30' | '180' | 'all'>('7')
   const [customViewMode, setCustomViewMode] = useState<'bar' | 'line' | null>(null)
-  const activeViewMode = customViewMode ?? (range === '30' || range === '180' ? 'line' : 'bar')
+  const activeViewMode = customViewMode ?? (range === '30' || range === '180' || range === 'all' ? 'line' : 'bar')
   const [hoveredDayIdx, setHoveredDayIdx] = useState<number | null>(null)
   const [hoveredDayAnchor, setHoveredDayAnchor] = useState<ChartAnchor | null>(null)
   const [hoveredLineIdx, setHoveredLineIdx] = useState<number | null>(null)
@@ -463,8 +463,19 @@ export function InsightsSettings(props: { remote?: any }) {
 
   const analytics = useMemo(() => {
     if (!sessions) return null
-    const days = Number(range)
-    const cutoff = Date.now() - days * 86400000
+    const now = Date.now()
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
+    // '全部' 的日图按最早记录起算，封顶 365 天；更早数据只进汇总不进日图
+    const earliest = sessions.rows.reduce((min: number, r: any) => {
+      if (!r.value) return min
+      const firstTurn = (r.value.turns ?? []).length ? Math.min(...r.value.turns.map((t: any) => t.start)) : null
+      const candidates = [r.updatedAt, firstTurn].filter((t: any) => Number.isFinite(t) && t > 0)
+      return candidates.length ? Math.min(min, ...candidates) : min
+    }, now)
+    const days = range === 'all'
+      ? Math.min(365, Math.max(1, Math.ceil((now - earliest) / 86400000) + 1))
+      : range === '1' ? 1 : Number(range)
+    const cutoff = range === 'all' ? 0 : range === '1' ? todayStart.getTime() : now - days * 86400000
     const validRows = sessions.rows.filter((r: any) => r.value && (!r.updatedAt || r.updatedAt >= cutoff))
     const validViews = validRows.map((r: any) => r.value)
     let totalTokens = 0
@@ -478,8 +489,10 @@ export function InsightsSettings(props: { remote?: any }) {
     let totalOutput = 0
     let totalErrors = 0
     let totalRetries = 0
+    let totalPrompts = 0
 
     validViews.forEach((v: any) => {
+      totalPrompts += v.prompts ?? 0
       totalTokens += v.totals.tokens ?? 0
       totalModelMs += v.totals.modelMs ?? 0
       totalToolMs += v.totals.toolMs ?? 0
@@ -591,6 +604,65 @@ export function InsightsSettings(props: { remote?: any }) {
     })
     const maxSessionTokens = Math.max(1, ...sortedSessions.map((s: any) => s.value?.totals?.tokens ?? 0))
 
+    // 三大消耗排行榜：工具 / Skill / 工作区（Token 口径：产出调用的那一次模型请求消耗）
+    // 占比分母用全量聚合（含未进前 8 的长尾）
+    const toolRowsAll = mergeTools(validViews)
+    const skillRowsAll = mergeSkills(validViews)
+    const workspaceAll = mergeWorkspaces(validRows)
+    const toolRank = toolRowsAll.slice(0, 8)
+    const skillRank = skillRowsAll.slice(0, 8)
+    const workspaceRank = workspaceAll.slice(0, 8)
+    const toolTokensSum = toolRowsAll.reduce((s: number, t: any) => s + (t.stepTokens ?? 0), 0) || 1
+    const skillTokensSum = skillRowsAll.reduce((s: number, t: any) => s + (t.stepTokens ?? 0), 0) || 1
+    const workspaceTokensSum = workspaceAll.reduce((s: number, w: any) => s + (w.tokens ?? 0), 0) || 1
+    const workspaceCosts = new Map(workspaceRank.map((w: any) => [w.cwd, estimateUsageRows(w.modelRows, pricing)]))
+    // 本周看点：报错工具、只被模型调用而未手动用过的 Skill、最费项目——异常自己跳出来
+    const highlights: string[] = []
+    for (const t of toolRowsAll) {
+      if ((t.errors ?? 0) > 0) highlights.push(`「${t.name}」报错 ${t.errors} 次`)
+    }
+    const ghostSkill = skillRowsAll.find((s: any) => (s.userCalls ?? 0) === 0 && (s.modelCalls ?? 0) > 0)
+    if (ghostSkill) highlights.push(`「${ghostSkill.name}」只被模型调用，你从未手动唤起`)
+    let bigInjectAvg = 0
+    let bigInjectName = ''
+    for (const s of skillRowsAll) {
+      const calls = (s.modelCalls ?? 0) + (s.userCalls ?? 0)
+      if (calls > 0 && (s.injectedChars ?? 0) / calls > bigInjectAvg) {
+        bigInjectAvg = (s.injectedChars ?? 0) / calls
+        bigInjectName = s.name
+      }
+    }
+    if (bigInjectAvg >= 1024) {
+      highlights.push(`「${bigInjectName}」每次注入约 ${fmtCompact(Math.round(bigInjectAvg))}字`)
+    }
+    const topWorkspace = workspaceAll[0]
+    const topWorkspacePct = topWorkspace ? Math.round((topWorkspace.tokens / workspaceTokensSum) * 100) : 0
+    if (topWorkspace) highlights.push(`最费项目「${topWorkspace.label}」占 ${topWorkspacePct}%`)
+
+    // 轮次流水驱动的分布图：只统计落在当前范围内的轮次
+    // 星期活跃：周一~周日 7 格（个人 Agent 只看哪天用得多，不到小时粒度）
+    const weekdayTokens = new Array(7).fill(0)
+    const weekdayTurns = new Array(7).fill(0)
+    // 会话形态：每轮工具调用数分桶（magpie 同口径：0 / 1-2 / 3-5 / 6-10 / 11-20 / 21+）
+    const shapeBuckets = new Array(6).fill(0)
+    let scopedTurns = 0
+    for (const v of validViews) for (const t of v.turns ?? []) {
+      if (!Number.isFinite(t?.start) || t.start < cutoff || t.start > now + 60000) continue
+      scopedTurns++
+      const d = new Date(t.start)
+      const wd = (d.getDay() + 6) % 7
+      weekdayTokens[wd] += t.tokens ?? 0
+      weekdayTurns[wd]++
+      const n = t.tools ?? 0
+      shapeBuckets[n < 1 ? 0 : n <= 2 ? 1 : n <= 5 ? 2 : n <= 10 ? 3 : n <= 20 ? 4 : 5]++
+    }
+    const weekdayMax = Math.max(1, ...weekdayTokens)
+    let busiest: { wd: number; tokens: number; turns: number } | null = null
+    for (let wd = 0; wd < 7; wd++) {
+      if (weekdayTokens[wd] > (busiest?.tokens ?? 0)) busiest = { wd, tokens: weekdayTokens[wd], turns: weekdayTurns[wd] }
+    }
+    const shapeMax = Math.max(1, ...shapeBuckets)
+
     // 环形图数据：纯模型排序，前 4 名 + 其余汇总为 "其他"，并保证严格按 Token 降序排列！
     const tokenRankedModels = [...uniqueModels].sort((a, b) => b.tokens - a.tokens)
     const topModels = tokenRankedModels.slice(0, 4)
@@ -630,21 +702,37 @@ export function InsightsSettings(props: { remote?: any }) {
       }
     })
 
-    // 每日活动序列
+    // 每日活动序列：有轮次流水的按轮次真实日期分摊（模型构成按会话模型占比拆分）；无流水退回最后活跃日
     const keys: string[] = []
-    for (let i = days - 1; i >= 0; i--) keys.push(dayKey(Date.now() - i * 86400000))
+    for (let i = days - 1; i >= 0; i--) keys.push(dayKey(now - i * 86400000))
     const byDay = new Map(keys.map(k => [k, { models: new Map<string, number>(), sessions: 0 }]))
+    const addModels = (bucket: { models: Map<string, number> }, models: any[], tokens: number) => {
+      const total = Math.max(1, models.reduce((s: number, m: any) => s + (m.tokens ?? 0), 0))
+      models.forEach((m: any) => {
+        bucket.models.set(routeLabel(m), (bucket.models.get(routeLabel(m)) ?? 0) + tokens * ((m.tokens ?? 0) / total))
+      })
+    }
     validRows.forEach((row: any) => {
-      const key = row.updatedAt ? dayKey(row.updatedAt) : keys[keys.length - 1]
-      const bucket = byDay.get(key)
-      if (!bucket) return
-      bucket.sessions += 1
       const models = row.value.models?.length
         ? row.value.models
         : [{ model: '未标注', tokens: row.value.totals.tokens ?? 0 }]
-      models.forEach((m: any) => {
-        bucket.models.set(routeLabel(m), (bucket.models.get(routeLabel(m)) ?? 0) + (m.tokens ?? 0))
-      })
+      const turns = Array.isArray(row.value.turns) ? row.value.turns : []
+      if (turns.length === 0) {
+        const key = row.updatedAt ? dayKey(row.updatedAt) : keys[keys.length - 1]
+        const bucket = byDay.get(key)
+        if (!bucket) return
+        bucket.sessions += 1
+        addModels(bucket, models, row.value.totals.tokens ?? 0)
+        return
+      }
+      const seen = new Set<string>()
+      for (const t of turns) {
+        if (!Number.isFinite(t?.start)) continue
+        const bucket = byDay.get(dayKey(t.start))
+        if (!bucket) continue
+        if (!seen.has(dayKey(t.start))) { seen.add(dayKey(t.start)); bucket.sessions += 1 }
+        addModels(bucket, models, t.tokens ?? 0)
+      }
     })
 
     const todayStr = dayKey(Date.now())
@@ -712,17 +800,40 @@ export function InsightsSettings(props: { remote?: any }) {
     const allHistoricalRows = sessions.rows.filter((r: any) => r.value && r.updatedAt && r.updatedAt >= heatmapStart.getTime())
     const heatmapDayMap = new Map<string, { tokens: number; sessions: number; models: Map<string, number> }>()
     allHistoricalRows.forEach((r: any) => {
-      const k = dayKey(r.updatedAt)
-      let dEntry = heatmapDayMap.get(k)
-      if (!dEntry) {
-        dEntry = { tokens: 0, sessions: 0, models: new Map() }
-        heatmapDayMap.set(k, dEntry)
+      const turns = Array.isArray(r.value.turns) ? r.value.turns : []
+      if (turns.length === 0) {
+        const k = dayKey(r.updatedAt)
+        let dEntry = heatmapDayMap.get(k)
+        if (!dEntry) {
+          dEntry = { tokens: 0, sessions: 0, models: new Map() }
+          heatmapDayMap.set(k, dEntry)
+        }
+        dEntry.tokens += r.value.totals?.tokens ?? 0
+        dEntry.sessions += 1
+        ;(r.value.models ?? []).forEach((m: any) => {
+          dEntry!.models.set(routeLabel(m), (dEntry!.models.get(routeLabel(m)) ?? 0) + (m.tokens ?? 0))
+        })
+        return
       }
-      dEntry.tokens += r.value.totals?.tokens ?? 0
-      dEntry.sessions += 1
-      ;(r.value.models ?? []).forEach((m: any) => {
-        dEntry!.models.set(routeLabel(m), (dEntry!.models.get(routeLabel(m)) ?? 0) + (m.tokens ?? 0))
-      })
+      const models = r.value.models?.length
+        ? r.value.models
+        : [{ model: '未标注', tokens: r.value.totals?.tokens ?? 0 }]
+      const modelTotal = Math.max(1, models.reduce((s: number, m: any) => s + (m.tokens ?? 0), 0))
+      const seen = new Set<string>()
+      for (const t of turns) {
+        if (!Number.isFinite(t?.start) || t.start < heatmapStart.getTime() || t.start > todayDate.getTime()) continue
+        const k = dayKey(t.start)
+        let dEntry = heatmapDayMap.get(k)
+        if (!dEntry) {
+          dEntry = { tokens: 0, sessions: 0, models: new Map() }
+          heatmapDayMap.set(k, dEntry)
+        }
+        dEntry.tokens += t.tokens ?? 0
+        if (!seen.has(k)) { seen.add(k); dEntry.sessions += 1 }
+        models.forEach((m: any) => {
+          dEntry!.models.set(routeLabel(m), (dEntry!.models.get(routeLabel(m)) ?? 0) + (t.tokens ?? 0) * ((m.tokens ?? 0) / modelTotal))
+        })
+      }
     })
 
     const nonZeroTokenDays = [...heatmapDayMap.values()].map(d => d.tokens).filter(t => t > 0).sort((a, b) => a - b)
@@ -835,6 +946,25 @@ export function InsightsSettings(props: { remote?: any }) {
       sortedSessions,
       maxSessionTokens,
       totalTools,
+      totalPrompts,
+      toolRank,
+      skillRank,
+      workspaceRank,
+      workspaceCosts,
+      toolTokensSum,
+      skillTokensSum,
+      workspaceTokensSum,
+      highlights,
+      topWorkspace,
+      topWorkspacePct,
+      workspaceCount: workspaceAll.length,
+      weekdayTokens,
+      weekdayTurns,
+      weekdayMax,
+      busiest,
+      scopedTurns,
+      shapeBuckets,
+      shapeMax,
       toolTimePct,
       totalErrors,
       totalRetries,
@@ -890,6 +1020,14 @@ export function InsightsSettings(props: { remote?: any }) {
             <button
               type="button"
               className={css.rangeBtn}
+              data-active={range === '1' ? '' : undefined}
+              onClick={() => { userPickedRange.current = true; setRange('1'); setCustomViewMode(null); }}
+            >
+              今天
+            </button>
+            <button
+              type="button"
+              className={css.rangeBtn}
               data-active={range === '7' ? '' : undefined}
               onClick={() => { userPickedRange.current = true; setRange('7'); setCustomViewMode(null); }}
             >
@@ -910,6 +1048,14 @@ export function InsightsSettings(props: { remote?: any }) {
               onClick={() => { userPickedRange.current = true; setRange('180'); setCustomViewMode(null); }}
             >
               近 6 个月
+            </button>
+            <button
+              type="button"
+              className={css.rangeBtn}
+              data-active={range === 'all' ? '' : undefined}
+              onClick={() => { userPickedRange.current = true; setRange('all'); setCustomViewMode(null); }}
+            >
+              全部
             </button>
           </div>
           <button type="button" className={css.settingsScanBtn} onClick={refresh} disabled={loading || !props.remote}>
@@ -937,9 +1083,19 @@ export function InsightsSettings(props: { remote?: any }) {
         <div className={css.heroMetaCol}>
           <span>累计耗时 <strong>{analytics ? `${analytics.totalTimeHours} 小时` : '-'}</strong></span>
           <span>缓存命中 <strong>{analytics ? `${analytics.cacheHitPct}% (${cacheNote})` : '-'}</strong></span>
+          <span>累计提问 <strong>{analytics ? `${fmt(analytics.totalPrompts)} 次` : '-'}</strong></span>
           <span>有统计的对话 <strong>{analytics ? `${analytics.validCount} / ${analytics.listed}` : '-'}</strong></span>
         </div>
       </div>
+
+      {/* 一句话小结：本周值回多少、花在哪——对应“一周下来干了多少活”的复盘视角 */}
+      {analytics && analytics.validCount > 0 ? (
+        <div className={css.heroSummary}>
+          {range === '1' ? '今天' : range === 'all' ? '全部记录' : range === '7' ? '近 7 天' : range === '30' ? '近 30 天' : '近 6 个月'}：
+          {fmtCompact(analytics.totalTokens)} Token ≈ <strong>{heroCostText}</strong>，{fmt(analytics.totalPrompts)} 次提问分布在 {analytics.workspaceCount} 个工作区
+          {analytics.topWorkspace ? `；最费「${analytics.topWorkspace.label}」占 ${analytics.topWorkspacePct}%` : ''}
+        </div>
+      ) : null}
 
       {/* 六大极客风云与问题洞察榜单：两列规整自适应排版，右下角动作条绝对平齐 */}
       <div className={css.roastGrid}>
@@ -1359,6 +1515,130 @@ export function InsightsSettings(props: { remote?: any }) {
         </div>
       ) : null}
 
+      {/* 消耗明细排行：工具 / Skill / 工作区 三榜并列。Token 口径 = 产出调用的那次模型请求消耗 */}
+      {analytics ? (
+        <div className={css.vizPanel}>
+          <div className={css.vizHead}>
+            <div className={css.tableTitleGroup}>
+              <span className={css.vizTitle}>消耗明细排行</span>
+              <span className={css.vizSub}>Token 口径：调用它的那一次模型请求消耗；Skill 另计手动唤起与注入体量</span>
+            </div>
+          </div>
+          {analytics.highlights.length > 0 ? (
+            <div className={css.rankHighlights}>看点：{analytics.highlights.join(' · ')}</div>
+          ) : null}
+          <div className={css.rankBoard}>
+            {/* 工具消耗榜 */}
+            <div className={css.rankCol}>
+              <div className={css.rankColHead}>
+                <span className={css.rankColTitle}>工具消耗榜</span>
+                <span className={css.rankColSub}>按关联 Token 降序 · 共 {analytics.toolRank.length} 款</span>
+              </div>
+              <div className={css.rankList}>
+                {analytics.toolRank.map((t: any, idx: number) => {
+                  const max = analytics.toolRank[0]?.stepTokens || 1
+                  const pct = Math.max(4, Math.round((t.stepTokens / max) * 100))
+                  return (
+                    <div key={t.name} className={css.rankItem}>
+                      <div className={css.rankItemTop}>
+                        <div className={css.rankItemLeft}>
+                          <span className={`${css.rankBadge} ${idx === 0 ? css.rankBadgeGold : ''}`}>#{idx + 1}</span>
+                          <span className={css.rankName} title={t.name}>{t.name}</span>
+                        </div>
+                        <span className={css.rankValMain}>{fmtCompact(t.stepTokens)}<em className={css.rankPct}>{Math.round((t.stepTokens / analytics.toolTokensSum) * 100)}%</em></span>
+                      </div>
+                      <div className={css.rankTrack}>
+                        <div className={css.rankBar} style={{ width: `${pct}%`, background: '#3b82f6' }} />
+                      </div>
+                      <div className={css.rankSubText}>
+                        <span>调用 <strong>{t.calls}</strong> 次{t.errors > 0 ? <em className={css.rankWarn}> · 报错 {t.errors} 次</em> : ''}</span>
+                        <span>耗时 {Math.round(t.toolMs / 1000)}s · 回传 {fmtCompact(Math.round(t.resultChars / 1024))}KB</span>
+                      </div>
+                    </div>
+                  )
+                })}
+                {analytics.toolRank.length === 0 ? (
+                  <div className={css.drilldownEmpty}>暂无可统计的工具调用；升级插件后新跑过的会话才会记录。</div>
+                ) : null}
+              </div>
+            </div>
+
+            {/* Skill 榜 */}
+            <div className={css.rankCol}>
+              <div className={css.rankColHead}>
+                <span className={css.rankColTitle}>Skill 榜</span>
+                <span className={css.rankColSub}>模型调用与 /唤起 分开计 · 共 {analytics.skillRank.length} 款</span>
+              </div>
+              <div className={css.rankList}>
+                {analytics.skillRank.map((t: any, idx: number) => {
+                  const max = analytics.skillRank[0]?.stepTokens || 1
+                  const pct = Math.max(4, Math.round((t.stepTokens / max) * 100))
+                  const callsText = [t.modelCalls > 0 ? `模型调 ${t.modelCalls} 次` : '', t.userCalls > 0 ? `/唤起 ${t.userCalls} 次` : ''].filter(Boolean).join(' · ') || '未调用'
+                  return (
+                    <div key={t.name} className={css.rankItem}>
+                      <div className={css.rankItemTop}>
+                        <div className={css.rankItemLeft}>
+                          <span className={`${css.rankBadge} ${idx === 0 ? css.rankBadgeGold : ''}`}>#{idx + 1}</span>
+                          <span className={css.rankName} title={t.name}>{t.name}</span>
+                        </div>
+                        <span className={css.rankValMain}>{t.stepTokens > 0 ? <>{fmtCompact(t.stepTokens)}<em className={css.rankPct}>{Math.round((t.stepTokens / analytics.skillTokensSum) * 100)}%</em></> : '—'}</span>
+                      </div>
+                      <div className={css.rankTrack}>
+                        <div className={css.rankBar} style={{ width: `${pct}%`, background: '#8b5cf6' }} />
+                      </div>
+                      <div className={css.rankSubText}>
+                        <span>{callsText}{t.errors > 0 ? <em className={css.rankWarn}> · 报错 {t.errors}</em> : ''}</span>
+                        <span>注入 {fmtCompact(t.injectedChars)}字{(t.modelCalls + t.userCalls) > 1 ? ` · 每次 ~${fmtCompact(Math.round(t.injectedChars / (t.modelCalls + t.userCalls)))}字` : ''}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+                {analytics.skillRank.length === 0 ? (
+                  <div className={css.drilldownEmpty}>暂无 Skill 调用记录；模型调用 skill 工具或手动 /唤起 后会出现在这里。</div>
+                ) : null}
+              </div>
+            </div>
+
+            {/* 工作区榜 */}
+            <div className={css.rankCol}>
+              <div className={css.rankColHead}>
+                <span className={css.rankColTitle}>工作区榜</span>
+                <span className={css.rankColSub}>按会话工作目录归组 · 共 {analytics.workspaceRank.length} 个</span>
+              </div>
+              <div className={css.rankList}>
+                {analytics.workspaceRank.map((w: any, idx: number) => {
+                  const max = analytics.workspaceRank[0]?.tokens || 1
+                  const pct = Math.max(4, Math.round((w.tokens / max) * 100))
+                  const est = analytics.workspaceCosts.get(w.cwd)
+                  const costText = est ? formatEstimate(est, locale) : ''
+                  return (
+                    <div key={w.cwd || 'unknown'} className={css.rankItem}>
+                      <div className={css.rankItemTop}>
+                        <div className={css.rankItemLeft}>
+                          <span className={`${css.rankBadge} ${idx === 0 ? css.rankBadgeGold : ''}`}>#{idx + 1}</span>
+                          <span className={css.rankName} title={w.cwd || '未记录目录'}>{w.label}</span>
+                        </div>
+                        <span className={css.rankValMain}>{fmtCompact(w.tokens)}<em className={css.rankPct}>{Math.round((w.tokens / analytics.workspaceTokensSum) * 100)}%</em></span>
+                      </div>
+                      <div className={css.rankTrack}>
+                        <div className={css.rankBar} style={{ width: `${pct}%`, background: '#f59e0b' }} />
+                      </div>
+                      <div className={css.rankSubText}>
+                        <span><strong>{w.sessions}</strong> 个会话 · 提问 {w.prompts} 次</span>
+                        <span>{costText} · 耗时 {((w.modelMs + w.toolMs) / 3600000).toFixed(1)}h{w.errors > 0 ? ` · 报错 ${w.errors}` : ''}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+                {analytics.workspaceRank.length === 0 ? (
+                  <div className={css.drilldownEmpty}>暂无工作区记录；升级插件后新跑过的会话才会带上工作目录。</div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className={css.vizSplitGrid}>
         {/* 模型支出份额 (环形图 100% 闭环无缺口，图例按 Token 严格降序) */}
         <div className={css.vizPanel}>
@@ -1436,7 +1716,7 @@ export function InsightsSettings(props: { remote?: any }) {
           <div className={css.vizHead}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
               <span className={css.vizTitle}>
-                {range === '7' ? '近 7 日活动分布' : range === '30' ? '近 30 日走势' : '近 6 个月趋势'}
+                {range === '1' ? '今日活动' : range === '7' ? '近 7 日活动分布' : range === '30' ? '近 30 日走势' : range === 'all' ? '全部记录走势' : '近 6 个月趋势'}
               </span>
               <span className={css.vizSub}>
                 {activeViewMode === 'bar' ? '柱状堆叠图 · 分色对应模型' : '平滑折线图 · 活动趋势'}
@@ -1780,8 +2060,8 @@ export function InsightsSettings(props: { remote?: any }) {
 
           <div className={css.chartFoot}>
             {activeViewMode === 'bar'
-              ? '每日柱高代表当天最后活动的对话 Token 汇总，分色对应上方模型图例。'
-              : '折线展示编码活跃趋势，鼠标滑动可透视任意一天的 Token 消耗与调用明细。'}
+              ? '每日柱高代表当天实际发生的轮次 Token 汇总（按轮次真实时间分摊，模型构成按会话占比拆分），分色对应上方图例。'
+              : '折线展示编码活跃趋势，按轮次真实时间分摊；鼠标滑动可透视任意一天的 Token 消耗与调用明细。'}
           </div>
         </div>
       </div>
@@ -1913,7 +2193,7 @@ export function InsightsSettings(props: { remote?: any }) {
           </div>
 
           <div className={css.heatmapFoot}>
-            <span>只读汇总本地已缓存对话。方块深浅代表当天 Token 消耗强度（自适应四分位数分阶）。</span>
+            <span>只读汇总本地已缓存对话。方块深浅代表当天 Token 消耗强度（按轮次真实时间分摊，自适应四分位数分阶）。</span>
             <div className={css.heatmapLegend}>
               <span>少</span>
               <div className={css.heatmapLegendCell} style={{ background: 'var(--dsw-alias-bg-layer-2, rgba(255, 255, 255, 0.04))', border: '1px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.08))' }} />
@@ -1926,6 +2206,75 @@ export function InsightsSettings(props: { remote?: any }) {
           </div>
         </div>
       )}
+
+      {/* 星期活跃（周一~周日 7 格）+ 会话形态分布 */}
+      {analytics ? (
+        <div className={css.rankBoard} data-cols="2">
+          <div className={css.vizPanel}>
+            <div className={css.vizHead}>
+              <div className={css.tableTitleGroup}>
+                <span className={css.vizTitle}>星期活跃</span>
+                <span className={css.vizSub}>历史轮次按周一~周日聚合 · 共 {fmt(analytics.scopedTurns)} 轮</span>
+              </div>
+              {analytics.busiest ? (
+                <div className={css.heatmapStatsRow}>
+                  <span>最忙 <strong>周{'一二三四五六日'[analytics.busiest.wd]}</strong></span>
+                  <span><strong>{fmtCompact(analytics.busiest.tokens)}</strong> Token · {analytics.busiest.turns} 轮</span>
+                </div>
+              ) : null}
+            </div>
+            <div className={css.shapeList}>
+              {analytics.weekdayTokens.map((tokens: number, wd: number) => {
+                const pct = tokens > 0 ? Math.max(4, Math.round((tokens / analytics.weekdayMax) * 100)) : 0
+                const turns = analytics.weekdayTurns[wd]
+                const label = `周${'一二三四五六日'[wd]}`
+                return (
+                  <div key={wd} className={css.shapeRow} title={`${label} · ${fmtCompact(tokens)} Token · ${turns} 轮`}>
+                    <span className={css.shapeLabel}>{label}</span>
+                    <div className={css.shapeTrack}>
+                      <div className={css.shapeFill} style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className={css.shapeCount}>{turns > 0 ? fmtCompact(tokens) : '—'}</span>
+                  </div>
+                )
+              })}
+            </div>
+            <div className={css.chartFoot}>所有历史轮次归进周一~周日 7 格，看的是哪几天用得多；只有最近约 500 轮参与统计。</div>
+          </div>
+
+          <div className={css.vizPanel}>
+            <div className={css.vizHead}>
+              <div className={css.tableTitleGroup}>
+                <span className={css.vizTitle}>会话形态</span>
+                <span className={css.vizSub}>每发一次提问，Agent 自己调用工具的次数分布</span>
+              </div>
+              <div className={css.heatmapStatsRow}>
+                <span>覆盖轮次 <strong>{fmt(analytics.scopedTurns)}</strong></span>
+              </div>
+            </div>
+            <div className={css.shapeList}>
+              {['0 次（纯对话）', '1–2 次', '3–5 次', '6–10 次', '11–20 次', '21+ 次'].map((label, idx) => {
+                const n = analytics.shapeBuckets[idx]
+                const pct = Math.round((n / analytics.shapeMax) * 100)
+                return (
+                  <div key={label} className={css.shapeRow}>
+                    <span className={css.shapeLabel}>{label}</span>
+                    <div className={css.shapeTrack}>
+                      <div className={css.shapeFill} style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className={css.shapeCount}>{fmt(n)}</span>
+                  </div>
+                )
+              })}
+            </div>
+            <div className={css.chartFoot}>
+              {analytics.scopedTurns > 0
+                ? `中位形态：${(() => { let acc = 0; const mid = analytics.scopedTurns / 2; for (let i = 0; i < 6; i++) { acc += analytics.shapeBuckets[i]; if (acc >= mid) return ['纯对话', '1–2 次', '3–5 次', '6–10 次', '11–20 次', '21+ 次'][i]; } return '-' })()}；轮次越多、档位越高，自动化程度越深。`
+                : '当前范围内暂无可统计的轮次。'}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* 重点对话账单：严格按选定维度降序排序！ */}
       <div className={css.vizPanel}>
@@ -1992,8 +2341,9 @@ export function InsightsSettings(props: { remote?: any }) {
               return (
                 <div key={row.sessionId} className={`${css.sessionItemRow} ${isOpen ? css.sessionItemOpen : ''}`}>
                   <button type="button" className={css.sessionItemHead} onClick={() => setOpenSessionId(isOpen ? null : row.sessionId)}>
-                    <span className={css.sessionIdTag} title={row.sessionId}>
+                    <span className={css.sessionIdTag} title={`${row.sessionId}${(row.cwd ?? val.cwd) ? ` · ${row.cwd ?? val.cwd}` : ''}`}>
                       <strong className={css.tableRankNum}>#{idx + 1}</strong> {row.sessionId.length > 12 ? `${row.sessionId.slice(0, 6)}…${row.sessionId.slice(-3)}` : row.sessionId}
+                      {(row.cwd ?? val.cwd) ? <em className={css.sessionCwd}>{workspaceLabel(row.cwd ?? val.cwd)}</em> : null}
                     </span>
                     <span className={css.sessionModelCell} title={routeLabel(val.models?.[0])}>{routeLabel(val.models?.[0])}</span>
                     <div className={css.sessionTokenCell}>
