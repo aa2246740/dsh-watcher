@@ -728,11 +728,12 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: 2px 8px;
   line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex-wrap: wrap;
 }
 
 .rankSubText strong {
@@ -2006,6 +2007,40 @@
 .rankColSub {
   font-size: 10px;
   color: var(--dsw-alias-label-tertiary);
+}
+
+/* hero 下方一句话小结 */
+.heroSummary {
+  margin: 8px 2px 0;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* 消耗明细排行：异常看点条 */
+.rankHighlights {
+  margin: 10px 2px 2px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--dsw-specific-menu);
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+  line-height: 1.5;
+}
+
+/* 榜单主数值旁的占比 */
+.rankPct {
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 500;
+  margin-left: 4px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* 榜单副信息里的报错高亮 */
+.rankWarn {
+  font-style: normal;
+  color: var(--dsw-alias-state-error-primary, #ef4444);
+  font-weight: 600;
 }
 
 /* 星期活跃 / 会话形态：横向条形分布（.shapeRow 复用） */

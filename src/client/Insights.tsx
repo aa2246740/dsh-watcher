@@ -605,10 +605,39 @@ export function InsightsSettings(props: { remote?: any }) {
     const maxSessionTokens = Math.max(1, ...sortedSessions.map((s: any) => s.value?.totals?.tokens ?? 0))
 
     // 三大消耗排行榜：工具 / Skill / 工作区（Token 口径：产出调用的那一次模型请求消耗）
-    const toolRank = mergeTools(validViews).slice(0, 8)
-    const skillRank = mergeSkills(validViews).slice(0, 8)
-    const workspaceRank = mergeWorkspaces(validRows).slice(0, 8)
+    // 占比分母用全量聚合（含未进前 8 的长尾）
+    const toolRowsAll = mergeTools(validViews)
+    const skillRowsAll = mergeSkills(validViews)
+    const workspaceAll = mergeWorkspaces(validRows)
+    const toolRank = toolRowsAll.slice(0, 8)
+    const skillRank = skillRowsAll.slice(0, 8)
+    const workspaceRank = workspaceAll.slice(0, 8)
+    const toolTokensSum = toolRowsAll.reduce((s: number, t: any) => s + (t.stepTokens ?? 0), 0) || 1
+    const skillTokensSum = skillRowsAll.reduce((s: number, t: any) => s + (t.stepTokens ?? 0), 0) || 1
+    const workspaceTokensSum = workspaceAll.reduce((s: number, w: any) => s + (w.tokens ?? 0), 0) || 1
     const workspaceCosts = new Map(workspaceRank.map((w: any) => [w.cwd, estimateUsageRows(w.modelRows, pricing)]))
+    // 本周看点：报错工具、只被模型调用而未手动用过的 Skill、最费项目——异常自己跳出来
+    const highlights: string[] = []
+    for (const t of toolRowsAll) {
+      if ((t.errors ?? 0) > 0) highlights.push(`「${t.name}」报错 ${t.errors} 次`)
+    }
+    const ghostSkill = skillRowsAll.find((s: any) => (s.userCalls ?? 0) === 0 && (s.modelCalls ?? 0) > 0)
+    if (ghostSkill) highlights.push(`「${ghostSkill.name}」只被模型调用，你从未手动唤起`)
+    let bigInjectAvg = 0
+    let bigInjectName = ''
+    for (const s of skillRowsAll) {
+      const calls = (s.modelCalls ?? 0) + (s.userCalls ?? 0)
+      if (calls > 0 && (s.injectedChars ?? 0) / calls > bigInjectAvg) {
+        bigInjectAvg = (s.injectedChars ?? 0) / calls
+        bigInjectName = s.name
+      }
+    }
+    if (bigInjectAvg >= 1024) {
+      highlights.push(`「${bigInjectName}」每次注入约 ${fmtCompact(Math.round(bigInjectAvg))}字`)
+    }
+    const topWorkspace = workspaceAll[0]
+    const topWorkspacePct = topWorkspace ? Math.round((topWorkspace.tokens / workspaceTokensSum) * 100) : 0
+    if (topWorkspace) highlights.push(`最费项目「${topWorkspace.label}」占 ${topWorkspacePct}%`)
 
     // 轮次流水驱动的分布图：只统计落在当前范围内的轮次
     // 星期活跃：周一~周日 7 格（个人 Agent 只看哪天用得多，不到小时粒度）
@@ -922,6 +951,13 @@ export function InsightsSettings(props: { remote?: any }) {
       skillRank,
       workspaceRank,
       workspaceCosts,
+      toolTokensSum,
+      skillTokensSum,
+      workspaceTokensSum,
+      highlights,
+      topWorkspace,
+      topWorkspacePct,
+      workspaceCount: workspaceAll.length,
       weekdayTokens,
       weekdayTurns,
       weekdayMax,
@@ -1051,6 +1087,15 @@ export function InsightsSettings(props: { remote?: any }) {
           <span>有统计的对话 <strong>{analytics ? `${analytics.validCount} / ${analytics.listed}` : '-'}</strong></span>
         </div>
       </div>
+
+      {/* 一句话小结：本周值回多少、花在哪——对应“一周下来干了多少活”的复盘视角 */}
+      {analytics && analytics.validCount > 0 ? (
+        <div className={css.heroSummary}>
+          {range === '1' ? '今天' : range === 'all' ? '全部记录' : range === '7' ? '近 7 天' : range === '30' ? '近 30 天' : '近 6 个月'}：
+          {fmtCompact(analytics.totalTokens)} Token ≈ <strong>{heroCostText}</strong>，{fmt(analytics.totalPrompts)} 次提问分布在 {analytics.workspaceCount} 个工作区
+          {analytics.topWorkspace ? `；最费「${analytics.topWorkspace.label}」占 ${analytics.topWorkspacePct}%` : ''}
+        </div>
+      ) : null}
 
       {/* 六大极客风云与问题洞察榜单：两列规整自适应排版，右下角动作条绝对平齐 */}
       <div className={css.roastGrid}>
@@ -1479,6 +1524,9 @@ export function InsightsSettings(props: { remote?: any }) {
               <span className={css.vizSub}>Token 口径：调用它的那一次模型请求消耗；Skill 另计手动唤起与注入体量</span>
             </div>
           </div>
+          {analytics.highlights.length > 0 ? (
+            <div className={css.rankHighlights}>看点：{analytics.highlights.join(' · ')}</div>
+          ) : null}
           <div className={css.rankBoard}>
             {/* 工具消耗榜 */}
             <div className={css.rankCol}>
@@ -1497,13 +1545,13 @@ export function InsightsSettings(props: { remote?: any }) {
                           <span className={`${css.rankBadge} ${idx === 0 ? css.rankBadgeGold : ''}`}>#{idx + 1}</span>
                           <span className={css.rankName} title={t.name}>{t.name}</span>
                         </div>
-                        <span className={css.rankValMain}>{fmtCompact(t.stepTokens)}</span>
+                        <span className={css.rankValMain}>{fmtCompact(t.stepTokens)}<em className={css.rankPct}>{Math.round((t.stepTokens / analytics.toolTokensSum) * 100)}%</em></span>
                       </div>
                       <div className={css.rankTrack}>
                         <div className={css.rankBar} style={{ width: `${pct}%`, background: '#3b82f6' }} />
                       </div>
                       <div className={css.rankSubText}>
-                        <span>调用 <strong>{t.calls}</strong> 次{t.errors > 0 ? ` · 报错 ${t.errors} 次` : ''}</span>
+                        <span>调用 <strong>{t.calls}</strong> 次{t.errors > 0 ? <em className={css.rankWarn}> · 报错 {t.errors} 次</em> : ''}</span>
                         <span>耗时 {Math.round(t.toolMs / 1000)}s · 回传 {fmtCompact(Math.round(t.resultChars / 1024))}KB</span>
                       </div>
                     </div>
@@ -1533,14 +1581,14 @@ export function InsightsSettings(props: { remote?: any }) {
                           <span className={`${css.rankBadge} ${idx === 0 ? css.rankBadgeGold : ''}`}>#{idx + 1}</span>
                           <span className={css.rankName} title={t.name}>{t.name}</span>
                         </div>
-                        <span className={css.rankValMain}>{t.stepTokens > 0 ? fmtCompact(t.stepTokens) : '—'}</span>
+                        <span className={css.rankValMain}>{t.stepTokens > 0 ? <>{fmtCompact(t.stepTokens)}<em className={css.rankPct}>{Math.round((t.stepTokens / analytics.skillTokensSum) * 100)}%</em></> : '—'}</span>
                       </div>
                       <div className={css.rankTrack}>
                         <div className={css.rankBar} style={{ width: `${pct}%`, background: '#8b5cf6' }} />
                       </div>
                       <div className={css.rankSubText}>
-                        <span>{callsText}{t.errors > 0 ? ` · 报错 ${t.errors}` : ''}</span>
-                        <span>注入 {fmtCompact(Math.round(t.injectedChars / 1024))}KB</span>
+                        <span>{callsText}{t.errors > 0 ? <em className={css.rankWarn}> · 报错 {t.errors}</em> : ''}</span>
+                        <span>注入 {fmtCompact(t.injectedChars)}字{(t.modelCalls + t.userCalls) > 1 ? ` · 每次 ~${fmtCompact(Math.round(t.injectedChars / (t.modelCalls + t.userCalls)))}字` : ''}</span>
                       </div>
                     </div>
                   )
@@ -1570,7 +1618,7 @@ export function InsightsSettings(props: { remote?: any }) {
                           <span className={`${css.rankBadge} ${idx === 0 ? css.rankBadgeGold : ''}`}>#{idx + 1}</span>
                           <span className={css.rankName} title={w.cwd || '未记录目录'}>{w.label}</span>
                         </div>
-                        <span className={css.rankValMain}>{fmtCompact(w.tokens)}</span>
+                        <span className={css.rankValMain}>{fmtCompact(w.tokens)}<em className={css.rankPct}>{Math.round((w.tokens / analytics.workspaceTokensSum) * 100)}%</em></span>
                       </div>
                       <div className={css.rankTrack}>
                         <div className={css.rankBar} style={{ width: `${pct}%`, background: '#f59e0b' }} />
