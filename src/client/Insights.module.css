@@ -1964,3 +1964,142 @@
   border-radius: 2px;
 }
 
+
+/* 消耗明细排行：三榜并列栅格 */
+.rankBoard {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+}
+
+.rankBoard[data-cols='2'] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 960px) {
+  .rankBoard,
+  .rankBoard[data-cols='2'] {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rankCol {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rankColHead {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rankColTitle {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--dsw-alias-label-primary);
+}
+
+.rankColSub {
+  font-size: 10px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* 按时段活跃：周一~周日 × 24 小时矩阵 */
+.hourMatrix {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+}
+
+.hourRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hourRowLabel {
+  width: 26px;
+  flex-shrink: 0;
+  font-size: 9px;
+  color: var(--dsw-alias-label-tertiary);
+  user-select: none;
+}
+
+.hourCells {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.hourCell {
+  width: auto;
+  height: 14px;
+  flex: 1 1 0;
+  min-width: 0;
+  cursor: default;
+}
+
+.hourTicks {
+  display: flex;
+  justify-content: space-between;
+  margin-left: 32px;
+  font-size: 9px;
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 会话形态：每轮工具调用次数分布 */
+.shapeList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.shapeRow {
+  display: grid;
+  grid-template-columns: 88px 1fr 56px;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+}
+
+.shapeLabel {
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+}
+
+.shapeTrack {
+  height: 12px;
+  border-radius: 6px;
+  background: var(--dsw-specific-menu);
+  overflow: hidden;
+}
+
+.shapeFill {
+  height: 100%;
+  border-radius: 6px;
+  background: var(--dsw-static-deepseek-450, #5686fe);
+  transition: width 200ms ease;
+}
+
+.shapeCount {
+  text-align: right;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* 重点对话账单：会话行内工作区小标签 */
+.sessionCwd {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--dsw-alias-label-tertiary);
+  margin-left: 4px;
+}

@@ -10,11 +10,22 @@ export function emptyStats() {
     modelMs: 0, timedCalls: 0, firstMs: 0, firstSamples: 0, reasoningMs: 0,
     tools: 0, toolErrors: 0, toolMs: 0, bashMs: 0, retries: 0 };
 }
+/** Completed turns retained per session for time-of-day and shape analysis. */
+export const TURN_LOG_CAP = 500;
+export function emptyToolStat(name) {
+  return { name, calls: 0, errors: 0, toolMs: 0, stepTokens: 0, resultChars: 0 };
+}
+export function emptySkillStat(name) {
+  return { name, modelCalls: 0, userCalls: 0, errors: 0, toolMs: 0, stepTokens: 0, injectedChars: 0, lastSeen: 0 };
+}
 export function initialState(header = {}, inherited = 0) {
-  return { version: 1, sessionId: String(header.id ?? ''), skip: inherited, seq: -1,
+  return { version: 2, sessionId: String(header.id ?? ''), skip: inherited, seq: -1,
     updatedAt: 0, route: { provider: 'unknown', model: 'unknown' }, totals: emptyStats(),
+    cwd: typeof header.cwd === 'string' && header.cwd ? header.cwd : null,
+    preset: typeof header.agentPreset === 'string' && header.agentPreset ? header.agentPreset : null,
     models: [], turn: null, open: null, tools: [], previousFailure: null,
-    findings: [], findingCount: 0 };
+    findings: [], findingCount: 0,
+    prompts: 0, stepTokens: null, stepCalls: [], toolStats: [], skillStats: [], turns: [] };
 }
 function normalizeUsage(value) {
   if (!record(value) || !count(value.inputTokens) || !count(value.outputTokens)) return null;
@@ -42,6 +53,41 @@ function fingerprint(v) {
 function signatureOf(name, args) {
   const hash = fingerprint(args);
   return hash === null ? null : fingerprint([name, hash]);
+}
+/** Skill name inside a `skill` tool call's raw JSON arguments; absent fields are not invented. */
+function skillNameOf(args) {
+  try {
+    const value = typeof args === 'string' ? JSON.parse(args) : args;
+    return record(value) && typeof value.name === 'string' && value.name ? value.name : null;
+  } catch { return null; }
+}
+/** Text length of message content blocks without retaining any body. */
+function textLengthOf(content) {
+  if (!Array.isArray(content)) return 0;
+  let total = 0;
+  for (const block of content) if (record(block) && typeof block.text === 'string') total += block.text.length;
+  return total;
+}
+function toolStatRow(s, name) {
+  let row = s.toolStats.find(t => t.name === name);
+  if (!row) { row = emptyToolStat(name); s.toolStats.push(row); }
+  return row;
+}
+function skillStatRow(s, name) {
+  let row = s.skillStats.find(t => t.name === name);
+  if (!row) { row = emptySkillStat(name); s.skillStats.push(row); }
+  return row;
+}
+/** At a step boundary, charge its settled usage to every call the step produced. */
+function flushStepCalls(s, turn, step) {
+  const st = s.stepTokens;
+  const calls = s.stepCalls;
+  s.stepCalls = [];
+  if (!st || st.turn !== turn || st.step !== step || !calls.length) return;
+  for (const c of calls) {
+    toolStatRow(s, c.name).stepTokens += st.tokens;
+    if (c.skillName) skillStatRow(s, c.skillName).stepTokens += st.tokens;
+  }
 }
 function modelRow(s, route) {
   const effort = typeof route?.effort === 'string' ? route.effort : null;
@@ -75,6 +121,7 @@ function settle(s, time, usage, source) {
       if (u.reasoning !== null) { b.reasoningReports++; b.reasoning += u.reasoning; }
     }
   }
+  if (u && s.stepTokens) s.stepTokens.tokens += u.tokens;
   s.open = null;
 }
 function applyChunk(open, chunk, time) {
@@ -116,7 +163,7 @@ export function reduceEvent(state, event) {
   if (event.seq <= state.seq) return state;
   const d = event.data;
   if (event.seq < state.skip && event.type !== 'request/header') return state;
-  if (event.type === 'user/message' && !state.previousFailure) return state;
+  if (event.type === 'user/message' && !state.previousFailure && d.source?.kind !== 'user' && d.source?.kind !== 'skill-invocation') return state;
   if (!['request/header', 'user/message'].includes(event.type) && !count(d.turn)) return state;
   if (!['request/header', 'user/message', 'turn/start', 'turn/end'].includes(event.type) && !count(d.step)) return state;
   if ((event.type === 'assistant/attempt' || event.type === 'assistant/message') && d.stream !== undefined && !Array.isArray(d.stream)) return state;
@@ -133,14 +180,23 @@ export function reduceEvent(state, event) {
     }
   } else if (event.type === 'user/message') {
     s.previousFailure = null;
+    const kind = d.source?.kind;
+    if (kind === 'user') s.prompts++;
+    else if (kind === 'skill-invocation' && typeof d.source?.name === 'string' && d.source.name) {
+      const skill = skillStatRow(s, d.source.name);
+      skill.userCalls++; skill.lastSeen = event.time;
+      skill.injectedChars += textLengthOf(d.content);
+    }
   } else if (event.type === 'turn/start') {
     if (s.open) settle(s, event.time, null, null);
     s.turn = { number: d.turn, startedAt: event.time, endedAt: null, steps: 0, stats: emptyStats(), route: { ...s.route } };
-    s.previousFailure = null; s.tools = [];
+    s.previousFailure = null; s.tools = []; s.stepTokens = null; s.stepCalls = [];
   } else if (event.type === 'step/start') {
     if (s.open) settle(s, event.time, null, null);
+    if (s.stepTokens && s.turn && s.stepTokens.turn === s.turn.number) flushStepCalls(s, s.stepTokens.turn, s.stepTokens.step);
     begin(s, d, event.time);
     if (s.turn) s.turn.steps++;
+    s.stepTokens = { turn: d.turn, step: d.step, tokens: 0 };
   } else if (event.type === 'assistant/attempt') {
     applyStream(s.open, d.stream);
   } else if (event.type === 'assistant/message') {
@@ -157,9 +213,19 @@ export function reduceEvent(state, event) {
   } else if (event.type === 'tool/call') {
     const id = d.callId, name = d.name;
     if (typeof id === 'string' && typeof name === 'string' && !s.tools.some(t => t.id === id)) {
+      const skillName = name === 'skill' ? skillNameOf(d.arguments) : null;
       s.tools.push({ id, name, start: event.time, seq: event.seq, step: d.step,
-        route: { ...s.route }, signature: signatureOf(name, d.arguments) });
+        route: { ...s.route }, signature: signatureOf(name, d.arguments),
+        ...(skillName ? { skillName } : {}) });
       for (const b of books(s)) b.tools++;
+      const stat = toolStatRow(s, name);
+      stat.calls++;
+      // Token 归属口径：登记调用名单，该步用量在 step/end 统一结算给名单里每个调用（不拆分）。
+      if (s.stepCalls.length < TURN_LOG_CAP) s.stepCalls.push({ name, ...(skillName ? { skillName } : {}) });
+      if (skillName) {
+        const skill = skillStatRow(s, skillName);
+        skill.modelCalls++; skill.lastSeen = event.time;
+      }
     }
   } else if (event.type === 'tool/result') {
     // RC1 stores a ToolResultMessage, not top-level callId/result fields.
@@ -171,6 +237,13 @@ export function reduceEvent(state, event) {
       const failed = block?.isError === true || record(d.error);
       const dur = elapsed(t.start, event.time);
       for (const b of books(s, t.route)) { b.toolMs += dur; b.toolErrors += Number(failed); if (t.name === 'bash') b.bashMs = (b.bashMs ?? 0) + dur; }
+      const stat = toolStatRow(s, t.name);
+      const resultChars = block ? textLengthOf(block.content) : 0;
+      stat.toolMs += dur; stat.errors += Number(failed); stat.resultChars += resultChars;
+      if (t.skillName) {
+        const skill = skillStatRow(s, t.skillName);
+        skill.toolMs += dur; skill.errors += Number(failed); skill.injectedChars += resultChars;
+      }
       const resultHash = block ? fingerprint({ content: block.content, isError: failed, code: d.error?.code ?? null }) : null;
       const prev = s.previousFailure;
       if (failed && t.signature && resultHash) {
@@ -194,9 +267,18 @@ export function reduceEvent(state, event) {
     }
   } else if (event.type === 'step/end') {
     if (s.open?.turn === d.turn && s.open.step === d.step) settle(s, event.time, null, null);
+    flushStepCalls(s, d.turn, d.step);
   } else if (event.type === 'turn/end') {
     if (s.open) settle(s, event.time, null, null);
-    if (s.turn) s.turn.endedAt = event.time;
+    if (s.stepCalls.length && s.stepTokens && s.stepTokens.turn === d.turn) {
+      flushStepCalls(s, s.stepTokens.turn, s.stepTokens.step);
+    }
+    if (s.turn) {
+      s.turn.endedAt = event.time;
+      s.turns.push({ n: s.turn.number, start: s.turn.startedAt, end: event.time,
+        tokens: s.turn.stats.tokens, tools: s.turn.stats.tools, calls: s.turn.stats.calls });
+      if (s.turns.length > TURN_LOG_CAP) s.turns.splice(0, s.turns.length - TURN_LOG_CAP);
+    }
     s.tools = []; s.previousFailure = null;
   }
   return s;
@@ -211,7 +293,9 @@ function buildView(s) {
     pending: s.open ? { turn: s.open.turn, step: s.open.step, start: s.open.start,
       reasoningFirst: s.open.reasoningFirst, reasoningLast: s.open.reasoningLast,
       lastContentAt: s.open.lastContentAt } : null,
-    findings: s.findings, findingCount: s.findingCount };
+    findings: s.findings, findingCount: s.findingCount,
+    cwd: s.cwd, preset: s.preset, prompts: s.prompts,
+    toolStats: s.toolStats, skillStats: s.skillStats, turns: s.turns };
 }
 export function viewOf(s) {
   let wire = wireCache.get(s);
