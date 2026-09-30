@@ -2,25 +2,33 @@
 
 # Watcher
 
-## Install
+[![npm version](https://img.shields.io/npm/v/dsh-watcher)](https://www.npmjs.com/package/dsh-watcher)
 
-### DSH Studio desktop app (recommended)
+## Install / Update
 
-Open **Settings → Plugins → Add plugin** and enter this in “Package name or address”:
+### Install on DeepSeek Harness web or desktop
 
-```text
-github:aa2246740/dsh-watcher#v0.7.0
-```
+Fill `dsh-watcher` in the **Add plugin** wizard's search box, and click **Install**:
 
-The desktop plugin manager owns the Desktop profile and bundled package manager. This release commits `lib/`; normal use needs no clone, build, or DSHX installation. Follow the app if it asks you to reload or reopen after installation.
+![Add plugin wizard](https://raw.githubusercontent.com/aa2246740/dsh-watcher/main/docs/add-plugin-wizard.png)
 
-### Web CLI
+### Install with `dsh` cli
+
+Install [`dsh-watcher`](https://www.npmjs.com/package/dsh-watcher) plugin from [DeepSeek Harness](https://www.npmjs.com/package/@deepseek-ai/dsh):
 
 ```sh
-dsh plugin --profile web add github:aa2246740/dsh-watcher#v0.7.0
+dsh plugin --profile web add dsh-watcher
 ```
 
-This official CLI command writes only the `web` profile; it cannot modify the Desktop App profile. For an already-running Web Host, reopen that Host once and reload the page.
+Or update the `dsh-watcher` plugin:
+
+```sh
+dsh plugin --profile web update dsh-watcher@latest
+```
+
+Then start the web UI with `dsh web`. No build step, no restart.
+
+This official CLI command writes only the `web` profile; it cannot modify the Desktop App profile — use the in-app **Add plugin** wizard above for desktop. This release commits `lib/`; normal use needs no clone, build, or DSHX installation.
 
 DeepSeek Harness **0.2.0-rc.2** (`@deepseek-ai/dsh@0.2.0-rc.2`, `dsh-v0.2.0-rc.2`). The `@deepseek-ai/dsh-*` peer range is `>=0.2.0-rc.1 <0.2.1`: it accepts **0.2.0-rc.2** and stable **0.2.0**, rejects alphas, and rejects **0.1.7-rc.2**. Node `^22.19.0` or `>=24`.
 
@@ -39,6 +47,14 @@ It does not inject messages, invent hidden chain-of-thought, or replace the offi
 ![Grouped: edit package.json ×2, still steps 5 and 6 when opened](docs/screenshots/grouped.png)
 
 Grouped view only stacks what it can prove. Two different bash calls stay apart. The model stage shows only provider-visible reasoning already written into the Session. If nothing was recorded, it says so.
+
+### Advanced installs
+
+Pin to a GitHub tag:
+
+```sh
+dsh plugin --profile web add github:aa2246740/dsh-watcher#v0.7.0
+```
 
 From a clone (development/local testing):
 

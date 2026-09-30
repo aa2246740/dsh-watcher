@@ -2,25 +2,33 @@
 
 # Watcher
 
-## 安装
+[![npm version](https://img.shields.io/npm/v/dsh-watcher)](https://www.npmjs.com/package/dsh-watcher)
 
-### DSH Studio 桌面 App（推荐）
+## 安装 / 更新
 
-打开 **设置 → 插件 → 添加插件**，在“包名或地址”中输入：
+### 在 DeepSeek Harness 网页版或桌面端安装
 
-```text
-github:aa2246740/dsh-watcher#v0.7.0
-```
+在 **添加插件** 向导的搜索框中填入 `dsh-watcher`，点击 **Install**：
 
-桌面端插件管理器负责 Desktop profile 和内置包管理器。本发布已提交 `lib/`；普通使用不需要 clone、构建或安装 DSHX。若应用提示刷新或重新打开，请按提示完成。
+![Add plugin wizard](https://raw.githubusercontent.com/aa2246740/dsh-watcher/main/docs/add-plugin-wizard.png)
 
-### Web CLI
+### 使用 `dsh` 命令行安装
+
+从 [DeepSeek Harness](https://www.npmjs.com/package/@deepseek-ai/dsh) 安装 [`dsh-watcher`](https://www.npmjs.com/package/dsh-watcher) 插件：
 
 ```sh
-dsh plugin --profile web add github:aa2246740/dsh-watcher#v0.7.0
+dsh plugin --profile web add dsh-watcher
 ```
 
-这条官方 CLI 命令只写入 `web` profile，不能修改 Desktop App 的 profile。对于已经运行的 Web Host，请重新打开该 Host 一次，再刷新网页。
+更新 `dsh-watcher` 插件：
+
+```sh
+dsh plugin --profile web update dsh-watcher@latest
+```
+
+然后用 `dsh web` 启动 Web 界面。无需构建、无需重启。
+
+这条官方 CLI 命令只写入 `web` profile，不能修改 Desktop App 的 profile；桌面端请使用上面的应用内“添加插件”向导。本发布已提交 `lib/`；普通使用不需要 clone、构建或安装 DSHX。
 
 需要 DeepSeek Harness **0.2.0-rc.2**（`@deepseek-ai/dsh@0.2.0-rc.2`，`dsh-v0.2.0-rc.2`）。`@deepseek-ai/dsh-*` 的 peer 范围是 `>=0.2.0-rc.1 <0.2.1`：接受 **0.2.0-rc.2** 和稳定版 **0.2.0**，拒绝 alpha，也拒绝 **0.1.7-rc.2**。Node `^22.19.0` 或 `>=24`。
 
@@ -39,6 +47,14 @@ DeepSeek Harness Web 的只读插件。点会话标题栏里的眼睛，把 Sess
 ![归类：修改 package.json ×2，展开仍是步骤 5 和 6](docs/screenshots/grouped.png)
 
 归类只叠能证明相同的调用。两条不同的 bash 不会被捏在一起。模型阶段只显示供应商已经写进 Session 的可见 reasoning；没有记录就写未记录。
+
+### 高级安装方式
+
+固定到某个 GitHub 标签：
+
+```sh
+dsh plugin --profile web add github:aa2246740/dsh-watcher#v0.7.0
+```
 
 已经 clone 过的目录也可以（开发/本地测试）：
 
