@@ -635,16 +635,33 @@ export function InsightsSettings(props: { remote?: any }) {
     for (let i = days - 1; i >= 0; i--) keys.push(dayKey(Date.now() - i * 86400000))
     const byDay = new Map(keys.map(k => [k, { models: new Map<string, number>(), sessions: 0 }]))
     validRows.forEach((row: any) => {
+      // 会话数始终记在最后活动日，一天一次；token 则优先按结算日的 days 分账，
+      // 避免把整个会话的累计都压到 updatedAt 那天。days 键是本地日历日字符串，
+      // 直接使用，不做任何时区换算。旧缓存（无 days）维持原来的 updatedAt 口径。
       const key = row.updatedAt ? dayKey(row.updatedAt) : keys[keys.length - 1]
       const bucket = byDay.get(key)
       if (!bucket) return
       bucket.sessions += 1
-      const models = row.value.models?.length
-        ? row.value.models
-        : [{ model: '未标注', tokens: row.value.totals.tokens ?? 0 }]
-      models.forEach((m: any) => {
-        bucket.models.set(routeLabel(m), (bucket.models.get(routeLabel(m)) ?? 0) + (m.tokens ?? 0))
-      })
+      const dayBooks = row.value?.days
+      if (Array.isArray(dayBooks) && dayBooks.length > 0) {
+        dayBooks.forEach((d: any) => {
+          const dayBucket = byDay.get(d.key)
+          if (!dayBucket) return
+          const models = Array.isArray(d.models) && d.models.length
+            ? d.models
+            : [{ model: '未标注', tokens: d.tokens ?? 0 }]
+          models.forEach((m: any) => {
+            dayBucket.models.set(routeLabel(m), (dayBucket.models.get(routeLabel(m)) ?? 0) + (m.tokens ?? 0))
+          })
+        })
+      } else {
+        const models = row.value.models?.length
+          ? row.value.models
+          : [{ model: '未标注', tokens: row.value.totals.tokens ?? 0 }]
+        models.forEach((m: any) => {
+          bucket.models.set(routeLabel(m), (bucket.models.get(routeLabel(m)) ?? 0) + (m.tokens ?? 0))
+        })
+      }
     })
 
     const todayStr = dayKey(Date.now())
