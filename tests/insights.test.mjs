@@ -10,7 +10,7 @@ const complete = (seq=3, report=usage, model='a') => event('assistant/message',s
 function call(seq, id, args='{"command":"x"}') { return event('tool/call',seq,seq*100,{turn:1,step:1,callId:id,name:'bash',arguments:args}); }
 function result(seq,id,failed=true,content='denied',error) { return event('tool/result',seq,seq*100,{turn:1,step:1,message:{id:`message-${id}`,role:'user',source:{kind:'tool',callId:id},content:[{type:'tool-result',toolCallId:id,isError:failed,content:[{type:'text',text:content}]}]},...(error?{error}:{} )}); }
 function failures(repeat=true) { const rows=fixture([complete()]); for(let i=0;i<3;i++) rows.push(call(4+2*i,`c${i}`,repeat?'{"command":"x"}':JSON.stringify({command:`x${i}`})),result(5+2*i,`c${i}`));return rows; }
-test('usage chunk and final message are charged once despite replay',()=>{const s=fold(fixture([event('assistant/attempt',3,20,{turn:1,step:1,stream:[{type:'chunk',time:20,chunk:{type:'usage',usage}}]}),complete(4),event('step/end',5,120,{turn:1,step:1}),complete(4)]));assert.equal(s.totals.calls,1);assert.equal(s.totals.tokens,35);assert.equal(s.totals.reasoning,3);});
+test('usage chunk and final message are charged once despite replay',()=>{const s=fold(fixture([event('assistant/attempt',3,20,{turn:1,step:1,stream:[{type:'chunk',time:20,chunk:{type:'usage',usage}}]}),complete(4),event('step/end',5,120,{turn:1,step:1}),complete(4)]));assert.equal(s.totals.calls,1);assert.equal(s.totals.tokens,35);assert.equal(s.totals.reasoning,3);assert.equal(s.days.length,1);assert.equal(s.days[0].tokens,35);});
 test('canonical RC1 flat call and nested ToolResultMessage pair correctly',()=>{const s=fold(fixture([complete(),call(4,'c'),result(5,'c')]));assert.equal(s.totals.tools,1);assert.equal(s.totals.toolErrors,1);assert.equal(s.totals.toolMs,100);assert.equal(s.tools.length,0);});
 test('three canonical failures produce evidence without body leakage',()=>{const s=fold(failures());assert.equal(s.findings.length,1);assert.deepEqual(s.findings[0].seqs,[4,6,8]);const wire=JSON.stringify(viewOf(s));assert.ok(!wire.includes('denied'));assert.ok(!wire.includes('signature'));assert.ok(!wire.includes('message-c'));});
 test('changing the command does not prove repetition',()=>assert.equal(fold(failures(false)).findings.length,0));
@@ -71,3 +71,58 @@ test('cached foreign session identity is rejected',async()=>{const remote={sessi
 test('direct subagents are explicitly excluded',async()=>{const remote={session:{list:async()=>({items:[{sessionId:'sub',origin:'subagent'}]})}};assert.match((await scanSessions(remote)).rows[0].error,/子代理/);});
 test('durable attempt stream updates pending, settlement publishes immediately',()=>{const s=fold(fixture());const n=reduceEvent(s,event('assistant/attempt',3,200,{turn:1,step:1,stream:[{type:'text-chunks',time0:200,index:0,dt:[],texts:['x']}]}));assert.equal(viewOf(n).pending.lastContentAt,200);assert.equal(viewOf(reduceEvent(n,complete(4))).totals.reported,1);});
 test('checkpoint restore matches uninterrupted state',()=>{const s=fold(fixture());assert.deepEqual(viewOf(reduceEvent(JSON.parse(JSON.stringify(s)),complete())),viewOf(reduceEvent(s,complete())));});
+// Local calendar day key, identical to the engine's creditDay() and the client dayKey():
+// never UTC, so expectations hold in any timezone.
+const localDayKey = ms => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const settleAt = (seq, time, turnNo = 1, stepNo = 1, model = 'a') => [
+  event('turn/start', seq, time, { turn: turnNo }),
+  event('step/start', seq + 1, time + 1, { turn: turnNo, step: stepNo }),
+  event('assistant/message', seq + 2, time + 2, { turn: turnNo, step: stepNo, usage, message: { source: { kind: 'model', provider: 'p', model }, role: 'assistant', content: [] } }),
+  event('turn/end', seq + 3, time + 3, { turn: turnNo }),
+];
+test('viewOf publishes per-day usage alongside totals',()=>{const s=fold(fixture([complete()]));assert.ok(Array.isArray(s.days));assert.deepEqual(viewOf(s).days,s.days);assert.equal(viewOf(s).version,2);});
+test('two settlements 36 hours apart land on two distinct local days',()=>{
+  const hour = 3600000;
+  const t1 = 0;
+  const t2 = t1 + 36 * hour; // 36h apart always crosses local midnight, whatever the offset
+  const s = fold(fixture([...settleAt(3, t1, 1, 1, 'a'), ...settleAt(7, t2, 2, 1, 'b')]));
+  assert.equal(s.totals.reported, 2);
+  assert.deepEqual(s.days.map(d => d.key), [localDayKey(t1), localDayKey(t2)].sort());
+  assert.deepEqual(s.days.map(d => d.tokens), [35, 35]);
+  assert.deepEqual(s.days.map(d => d.models.map(m => m.model)), [['a'], ['b']]);
+  assert.equal(s.days.reduce((sum, d) => sum + d.tokens, 0), s.totals.tokens);
+});
+test('two settlements on the same local day merge into one day entry',()=>{
+  const hour = 3600000;
+  const t1 = 0;
+  const t2 = t1 + hour; // one hour apart: same local day for every real offset
+  const s = fold(fixture([...settleAt(3, t1, 1, 1, 'a'), ...settleAt(7, t2, 2, 1, 'a')]));
+  assert.equal(s.totals.reported, 2);
+  assert.equal(s.days.length, 1);
+  assert.equal(s.days[0].key, localDayKey(t1));
+  assert.equal(s.days[0].tokens, 70);
+  assert.equal(s.days[0].models.length, 1);
+  assert.equal(s.days[0].models[0].tokens, 70);
+  assert.equal(s.days[0].tokens, s.totals.tokens);
+});
+test('settlements without usage never manufacture a day',()=>{const s=fold(fixture());assert.deepEqual(s.days,[]);});
+test('effort changes split the same model into separate day model rows',()=>{
+  const rows = [
+    event('request/header', 0, 0, { header: { config: { provider: 'p', model: 'a', reasoningEffort: 'high' } } }),
+    ...settleAt(1, 3600000, 1, 1, 'a'),
+    event('request/header', 5, 7200000, { header: { config: { provider: 'p', model: 'a', reasoningEffort: 'low' } } }),
+    ...settleAt(6, 10800000, 2, 1, 'a'),
+  ];
+  const s = fold(rows);
+  assert.equal(s.days.length, 1);
+  assert.equal(s.days[0].models.length, 2);
+  assert.deepEqual(s.days[0].models.map(m => m.effort).sort(), ['high', 'low']);
+  assert.equal(s.days[0].tokens, 70);
+});
+test('day books survive checkpoint restore without double counting',()=>{const s=fold(fixture([complete()]));const restored=reduceEvent(JSON.parse(JSON.stringify(s)),complete());assert.equal(restored.days.length,1);assert.equal(restored.days[0].tokens,35);assert.deepEqual(viewOf(restored).days,viewOf(s).days);});
+test('settings scan accepts version 2 caches with days',async()=>{const v2=viewOf(fold(fixture([complete()])));const remote={session:{list:async()=>({items:[{sessionId:'s',projections:{values:{watcherInsights:v2}}}]})}};const r=await scanSessions(remote);assert.equal(r.rows[0].value,v2);assert.equal(r.rows[0].error,null);});
+test('version 1 cache without days still displays via the updatedAt fallback',async()=>{
+  const v1={...viewOf(fold(fixture([complete()]))),version:1};delete v1.days;
+  const remote={session:{list:async()=>({items:[{sessionId:'s',updatedAt:1234,projections:{values:{watcherInsights:v1}}}]})}};
+  const r=await scanSessions(remote);assert.equal(r.rows[0].value,v1);assert.equal(r.rows[0].error,null);
+});

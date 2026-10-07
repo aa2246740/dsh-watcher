@@ -13,11 +13,13 @@ const route = z.object({provider:z.string(),model:z.string(),effort:z.string().n
 const finding = z.object({id:z.string(),kind:z.string(),turn:number,seqs:z.array(number),steps:z.array(number),title:z.string(),detail:z.string()})
 const turn = z.object({number,startedAt:z.number().finite(),endedAt:nullableTime,steps:number,stats,route:route.optional()}).nullable()
 const pending = z.object({turn:number,step:number,start:nullableTime,reasoningFirst:nullableTime,reasoningLast:nullableTime,lastContentAt:nullableTime}).nullable()
-export const viewSchema = z.object({version:z.literal(1),sessionId:z.string(),seq:z.number().int().min(-1),updatedAt:z.number().finite(),
-  totals:stats,models:z.array(stats.extend({provider:z.string(),model:z.string(),effort:z.string().optional()})),turn,pending,findings:z.array(finding).max(30),findingCount:number})
+const dayModels = z.array(z.object({provider:z.string(),model:z.string(),effort:z.string().optional(),tokens:number}))
+const days = z.array(z.object({key:z.string(),tokens:number,models:dayModels}))
+export const viewSchema = z.object({version:z.literal(2),sessionId:z.string(),seq:z.number().int().min(-1),updatedAt:z.number().finite(),
+  totals:stats,models:z.array(stats.extend({provider:z.string(),model:z.string(),effort:z.string().optional()})),days,turn,pending,findings:z.array(finding).max(30),findingCount:number})
 const usage = z.object({input:number,output:number,cacheRead:number,cacheWrite:number,reasoning:number.nullable(),tokens:number,exact:z.boolean()}).nullable()
-const stateSchema = z.object({version:z.literal(1),sessionId:z.string(),skip:number,seq:z.number().int().min(-1),updatedAt:z.number().finite(),
-  route,totals:stats,models:z.array(stats.extend({provider:z.string(),model:z.string()})),turn,
+const stateSchema = z.object({version:z.literal(2),sessionId:z.string(),skip:number,seq:z.number().int().min(-1),updatedAt:z.number().finite(),
+  route,totals:stats,models:z.array(stats.extend({provider:z.string(),model:z.string()})),days,turn,
   open:z.object({turn:number,step:number,start:nullableTime,first:nullableTime,reasoningFirst:nullableTime,reasoningLast:nullableTime,lastContentAt:nullableTime,usage,route}).nullable(),
   tools:z.array(z.object({id:z.string(),name:z.string(),start:z.number().finite(),seq:number,step:number,route,signature:z.string().nullable()})),
   previousFailure:z.object({signature:z.string(),resultHash:z.string(),turn:number,seqs:z.array(number),steps:z.array(number)}).nullable(),
@@ -29,7 +31,7 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
   interface SessionProjectionMap {watcherInsights:InsightsView}
 }
 export function installProjection(ctx:Context):void {
-  ctx.sessionProjections.register<'watcherInsights',InsightsState>({key:'watcherInsights',stateVersion:1,stateSchema,
+  ctx.sessionProjections.register<'watcherInsights',InsightsState>({key:'watcherInsights',stateVersion:2,stateSchema,
     init:(header,inherited)=>stateSchema.parse(initialState(header,inherited)),apply:(state,event)=>reduceEvent(state,event),
     wire:{viewSchema,view:state=>viewOf(state)}})
   ctx.inject(['sessions'], c => {

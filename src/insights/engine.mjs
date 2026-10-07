@@ -1,6 +1,9 @@
 /** Read-only DSH 0.2.0-rc.2 log fold. No prompt, reasoning or tool body is retained. */
 import { createHash } from 'node:crypto';
 export const KEY = 'watcherInsights';
+const DAY_CAP = 400;
+// Local calendar day, identical to the client dayKey(): never UTC, never updatedAt.
+const localDayKey = ms => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const record = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const count = v => Number.isSafeInteger(v) && v >= 0;
 const elapsed = (start, end) => start === null ? 0 : Math.max(0, end - start);
@@ -11,9 +14,9 @@ export function emptyStats() {
     tools: 0, toolErrors: 0, toolMs: 0, bashMs: 0, retries: 0 };
 }
 export function initialState(header = {}, inherited = 0) {
-  return { version: 1, sessionId: String(header.id ?? ''), skip: inherited, seq: -1,
+  return { version: 2, sessionId: String(header.id ?? ''), skip: inherited, seq: -1,
     updatedAt: 0, route: { provider: 'unknown', model: 'unknown' }, totals: emptyStats(),
-    models: [], turn: null, open: null, tools: [], previousFailure: null,
+    models: [], days: [], turn: null, open: null, tools: [], previousFailure: null,
     findings: [], findingCount: 0 };
 }
 function normalizeUsage(value) {
@@ -53,6 +56,21 @@ function modelRow(s, route) {
   return row;
 }
 function books(s, route = s.route) { return [s.totals, modelRow(s, route), ...(s.turn ? [s.turn.stats] : [])]; }
+function creditDay(s, time, route, u) {
+  const key = localDayKey(time);
+  let day = s.days.find(d => d.key === key);
+  if (!day) {
+    day = { key, tokens: 0, models: [] };
+    s.days.push(day);
+    s.days.sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+  }
+  day.tokens += u.tokens;
+  const effort = typeof route?.effort === 'string' ? route.effort : null;
+  let row = day.models.find(m => m.provider === route.provider && m.model === route.model && (m.effort ?? null) === effort);
+  if (!row) { row = { provider: route.provider, model: route.model, ...(effort ? { effort } : {}), tokens: 0 }; day.models.push(row); }
+  row.tokens += u.tokens;
+  if (s.days.length > DAY_CAP) s.days = s.days.slice(s.days.length - DAY_CAP);
+}
 function begin(s, d, time, uncertain = false) {
   s.open = { turn: d.turn, step: d.step, start: uncertain ? null : time, first: null,
     reasoningFirst: null, reasoningLast: null, lastContentAt: null, usage: null, route: { ...s.route } };
@@ -75,6 +93,9 @@ function settle(s, time, usage, source) {
       if (u.reasoning !== null) { b.reasoningReports++; b.reasoning += u.reasoning; }
     }
   }
+  // Same guard as the books above: usage is credited once per settlement, so a
+  // replayed event that already settled cannot reach here a second time.
+  if (u) creditDay(s, time, route, u);
   s.open = null;
 }
 function applyChunk(open, chunk, time) {
@@ -207,7 +228,7 @@ export function reduceEvent(state, event) {
 const wireCache = new WeakMap();
 function buildView(s) {
   return { version: s.version, sessionId: s.sessionId, seq: s.seq, updatedAt: s.updatedAt,
-    totals: s.totals, models: s.models, turn: s.turn,
+    totals: s.totals, models: s.models, days: s.days, turn: s.turn,
     pending: s.open ? { turn: s.open.turn, step: s.open.step, start: s.open.start,
       reasoningFirst: s.open.reasoningFirst, reasoningLast: s.open.reasoningLast,
       lastContentAt: s.open.lastContentAt } : null,

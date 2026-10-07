@@ -55,7 +55,9 @@ export async function scanSessions(remote, { signal, limit = 30, onProgress = ()
     const candidate = rawCandidate?.val ?? rawCandidate;
     let value = null, error = null;
     if (row.origin === 'subagent') error = '直接子代理暂未纳入；避免重复计算继承前缀';
-    else if (candidate?.version === 1 && candidate.sessionId === row.sessionId && candidate.totals && Array.isArray(candidate.models) && Array.isArray(candidate.findings)) value = candidate;
+    // version 2 carries per-day usage (days); version 1 caches predate it and
+    // stay displayable through the client's updatedAt fallback.
+    else if ((candidate?.version === 2 || candidate?.version === 1) && candidate.sessionId === row.sessionId && candidate.totals && Array.isArray(candidate.models) && Array.isArray(candidate.findings)) value = candidate;
     else error = '尚无 Watcher 统计缓存；在加载插件后运行或打开此会话，再刷新统计';
     return { sessionId: row.sessionId, value, error, updatedAt: Number(row.updatedAt) || 0 };
   });
