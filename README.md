@@ -53,7 +53,7 @@ DeepSeek Harness Web 的只读插件。点会话标题栏里的眼睛，把 Sess
 固定到某个 GitHub 标签：
 
 ```sh
-dsh plugin --profile web add github:aa2246740/dsh-watcher#v0.7.0
+dsh plugin --profile web add github:aa2246740/dsh-watcher#v0.8.0
 ```
 
 已经 clone 过的目录也可以（开发/本地测试）：
@@ -75,7 +75,12 @@ dsh plugin --profile web remove dsh-watcher
 
 交互约定在 [DESIGN.md](./DESIGN.md)。MIT。
 
-## 本次更新（0.7.0）
+## 本次更新（0.8.0）
+
+- 日图按每次结算的本地日历日记 token，不再把整段会话堆到最后活跃日。旧的 version 1 缓存仍按原来的方式显示，会话重算后变成 version 2。
+- 装了 dsh-better-sidebar 时，右侧栏多一个 Watcher 页，内容是工作图。没装时，会话头按钮和设置页不变。侧栏不是依赖。
+
+## 0.7.0
 
 - 对齐官方 DeepSeek Harness **0.2.0-rc.2**（`dsh-v0.2.0-rc.2`，SHA `639ed015397290b3745d163aafe02ffee4aa3f84`）。`@deepseek-ai/dsh-*` 的 peer 是 `>=0.2.0-rc.1 <0.2.1`：接受 `0.2.0-rc.2` 和稳定版 `0.2.0`，拒绝 alpha，也拒绝 `0.1.7-rc.2`。
 - 图标仍是 `IconChevronRightOutlineRegular`、`IconRefreshOutlineRegular`、`IconCheckOutlineRegular`、`IconCopyOutlineRegular`。这四个名字在 `dsh-v0.2.0-rc.2` 的 primitives 里还在。带尺寸后缀的旧导出仍然没有。

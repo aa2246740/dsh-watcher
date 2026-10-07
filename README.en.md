@@ -53,7 +53,7 @@ Grouped view only stacks what it can prove. Two different bash calls stay apart.
 Pin to a GitHub tag:
 
 ```sh
-dsh plugin --profile web add github:aa2246740/dsh-watcher#v0.7.0
+dsh plugin --profile web add github:aa2246740/dsh-watcher#v0.8.0
 ```
 
 From a clone (development/local testing):
@@ -75,7 +75,12 @@ The settings summary and session HUD show **Estimated cost** (not “total value
 
 The interaction contract lives in [DESIGN.md](./DESIGN.md). MIT.
 
-## What's new in 0.7.0
+## What's new in 0.8.0
+
+- The daily chart books each token settlement on the local calendar day. A session total is no longer piled onto the last active day. Version 1 caches keep the old display until that session is refolded into version 2.
+- With dsh-better-sidebar installed, the right sidebar gains a Watcher page for the work picture. Without it, the header button and the settings section stay as they are. The sidebar package is not a dependency.
+
+## 0.7.0
 
 - Targets official DeepSeek Harness **0.2.0-rc.2** (`dsh-v0.2.0-rc.2`, SHA `639ed015397290b3745d163aafe02ffee4aa3f84`). `@deepseek-ai/dsh-*` peers are `>=0.2.0-rc.1 <0.2.1`: the range accepts `0.2.0-rc.2` and stable `0.2.0`, rejects alphas, and rejects `0.1.7-rc.2`.
 - Icons stay `IconChevronRightOutlineRegular`, `IconRefreshOutlineRegular`, `IconCheckOutlineRegular`, and `IconCopyOutlineRegular`. Those four names are still exported by primitives at `dsh-v0.2.0-rc.2`. The size-suffixed names are still absent.

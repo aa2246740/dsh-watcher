@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.8.0 — 2026-10-07
+
+- The daily token chart books each settlement on the host's local calendar day. A session's whole total is no longer piled onto `updatedAt`. Projection `stateVersion` is 2. Version 1 caches still render through the old fallback until that session is refolded.
+- An optional Better Sidebar page, `dsh-watcher:picture`, shows the work picture when `dsh-better-sidebar` is installed. The header button and the settings section stay as they are when it is not. The sidebar package is not a dependency.
+
 ## 0.7.0 — 2026-09-28
 
 - Target official DeepSeek Harness **0.2.0-rc.1** (`dsh-v0.2.0-rc.1`, `@deepseek-ai/dsh@0.2.0-rc.1`, commit `4878cdabd87d4041bdaff61d04c966883b9fd07a`). Dev pins are `0.2.0-rc.1`. `@deepseek-ai/dsh-*` peers are `>=0.2.0-rc.1 <0.2.1`, which accepts `0.2.0-rc.1` and stable `0.2.0`, rejects `0.2.0` alphas, and rejects `0.1.7-rc.2`. `@deepseek-ai/cordis` stays `~4.0.4`.
