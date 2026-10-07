@@ -122,6 +122,59 @@
   max-height: none;
 }
 
+/*
+ * Better Sidebar tab host: fills the sidebar column and scrolls internally.
+ * No portal, no fixed positioning, no resize edges — the host itself never
+ * scrolls; the rail viewport (and the inspector body, when open) do.
+ */
+.sidebarHost {
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  --watcher-panel-max-height: min(680px, calc(100vh - 24px));
+  --watcher-motion-fast: 140ms;
+  --watcher-motion-panel: 180ms;
+  --watcher-motion-inspector: 200ms;
+  --watcher-motion-content-out: 120ms;
+  --watcher-ease-out: cubic-bezier(.2, .8, .2, 1);
+  --watcher-ease-glide: cubic-bezier(.22, .61, .36, 1);
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--dsw-font-family);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.sidebarHost[data-watcher-sidebar='waiting'] {
+  align-items: center;
+  justify-content: center;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.sidebarHost .workPicture {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-height: none;
+}
+
+/* The docked inspector column reuses the overlay component: keep it inside
+   the sidebar column instead of its fixed overlay width. */
+.sidebarHost .inspector {
+  flex: 0 1 auto;
+  width: 100%;
+  min-height: 0;
+  max-height: 45%;
+}
+
+.sidebarHost .inspector > * {
+  width: 100%;
+  max-width: 100%;
+}
+
 .resizeEdgeRight,
 .resizeEdgeBottom,
 .resizeGrip {

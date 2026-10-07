@@ -38,12 +38,15 @@ import {
   mergeObservedPictures,
   type WorkGroup,
   type WorkItem,
+  type WorkPicture,
   type WorkPresentation,
   type WorkStatus,
   type WorkStep,
   type WorkTurn,
   type WatcherSnapshot,
 } from '../observation/fold.ts'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { InsightsView } from '../insights/projection.ts'
 import css from './Watcher.module.css'
 import { SessionInsights } from './Insights.tsx'
 import {
@@ -182,6 +185,26 @@ function dotState(status: WorkStatus): StateDotState | null {
   if (status === 'failure' || status === 'interrupted') return 'error'
   if (status === 'success') return 'done'
   return null
+}
+
+/** True when the work picture carries an alert the header trigger must echo. */
+function edgeAlertOf(picture: WorkPicture): boolean {
+  return picture.pendingCount > 0
+    || picture.now.status === 'failure'
+    || picture.now.status === 'interrupted'
+}
+
+/** One-word health summary for the header trigger's aria state. */
+function summaryStateOf(picture: WorkPicture): string {
+  return picture.pendingCount > 0
+    ? '等待确认'
+    : picture.running
+      ? '正在执行'
+      : picture.now.status === 'failure'
+        ? '执行失败'
+        : picture.now.status === 'interrupted'
+          ? '已中断'
+          : picture.nodes.length > 0 ? '就绪' : '待命'
 }
 
 function StatusMark({ status, className }: { status: WorkStatus; className?: string | undefined }) {
@@ -1134,35 +1157,10 @@ function ReadyWatcher({
     running: sessionSnapshot.running,
     hasMore: sessionSnapshot.hasMore,
   }), [chat, views, pending, sessionSnapshot.blank, sessionSnapshot.hasMore, sessionSnapshot.running])
-  const running = snapshot.running
   const wholeSessionStats = useProjection('sessionStats')
   const wholeSessionInsights = useProjection('watcherInsights')
-  const snapshotPicture = useMemo(() => foldSnapshot(snapshot, { running }), [snapshot, running])
-  const observedRef = useRef<{ sessionId: string; picture: typeof snapshotPicture } | null>(null)
-  const picture = useMemo(() => {
-    const previous = observedRef.current?.sessionId === sessionId
-      ? observedRef.current.picture
-      : null
-    const next = previous === null ? snapshotPicture : mergeObservedPictures(previous, snapshotPicture)
-    observedRef.current = { sessionId, picture: next }
-    return next
-  }, [sessionId, snapshotPicture])
-  const performanceByTurn = useMemo(
-    () => deriveTurnPerformance(snapshot.nodes, picture.turns),
-    [snapshot.nodes, picture.turns],
-  )
-  const lastGroup = picture.nodes.at(-1)
-  const lastGroupId = lastGroup?.id ?? null
-  const lastItem = lastGroup?.items.at(-1)
-  const latestActivityKey = lastItem === undefined
-    ? lastGroupId
-    : `${lastGroupId}:${lastItem.id}:${lastItem.seq}:${lastItem.status}:${lastItem.resultSeq ?? 'open'}:${lastItem.resultTime ?? 'open'}`
+  const { picture, performanceByTurn } = useObservedPicture(sessionId, snapshot)
   const [open, setOpen] = useState(false)
-  const [ui, setUi] = useState(() => ({ follow: true, unread: 0, selectedId: null as string | null }))
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
-  const [inspectorClosing, setInspectorClosing] = useState(false)
-  const inspectorExitTimer = useRef<number | null>(null)
-  const inspectorExitToLatest = useRef(false)
   const [panelPin, setPanelPin] = useState<{ top: number; right: number } | null>(null)
   const panelPinTimer = useRef<number | null>(null)
   /** Resize anchors the panel at its current top-left; null until first resized. */
@@ -1173,17 +1171,9 @@ function ReadyWatcher({
   const resizeStart = useRef<{ x: number; y: number; w: number; h: number } | null>(null)
   /** The natural size the panel opened at — the floor; resize can only grow. */
   const resizeMin = useRef<{ w: number; h: number } | null>(null)
-  const [observationMode, setObservationMode] = useState<ObservationMode>('itemized')
-  const [disclosure, setDisclosure] = useState(createDisclosureState)
-  const [historyLoad, setHistoryLoad] = useState<HistoryLoadState>({ kind: 'idle' })
-  const now = useLiveClock(open && picture.running)
-  const followRef = useRef(createFollow())
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
-  const railRef = useRef<HTMLDivElement>(null)
-  const programmaticScrollRef = useRef(false)
-  const historyAbortRef = useRef<AbortController | null>(null)
   const panelPosition = useAnchoredPosition({
     open,
     anchorRef: triggerRef,
@@ -1217,107 +1207,12 @@ function ReadyWatcher({
     }
   }, [open])
 
-  useLayoutEffect(() => {
-    historyAbortRef.current?.abort()
-    historyAbortRef.current = null
-    setHistoryLoad({ kind: 'idle' })
-    followRef.current.reset()
-    setUi(followRef.current.snapshot())
-    setSelectedItemId(null)
-    setDisclosure(resetDisclosureOverrides)
-  }, [sessionId])
-
   useEffect(() => () => {
-    historyAbortRef.current?.abort()
+    if (panelPinTimer.current !== null) window.clearTimeout(panelPinTimer.current)
   }, [])
 
-  useLayoutEffect(() => {
-    setUi(followRef.current.onPicture(picture))
-  }, [latestActivityKey])
-
-  useLayoutEffect(() => {
-    const rail = railRef.current
-    if (!rail || !open || !ui.follow) return
-    programmaticScrollRef.current = true
-    rail.scrollTop = rail.scrollHeight
-    const frame = requestAnimationFrame(() => {
-      programmaticScrollRef.current = false
-    })
-    return () => {
-      cancelAnimationFrame(frame)
-      programmaticScrollRef.current = false
-    }
-  }, [ui.follow, latestActivityKey, observationMode, open])
-
-  const selected = ui.selectedId === null ? undefined : picture.nodes.find(group => group.id === ui.selectedId)
-  const latestTurnNumber = picture.turns.at(-1)?.turn ?? null
-  const totalTurnCount = Math.max(picture.turnCount, wholeSessionStats?.turns ?? 0)
-  const totalStepCount = Math.max(picture.stepCount, wholeSessionStats?.steps ?? 0)
-  const historyProgress = totalStepCount > picture.stepCount
-    ? `${picture.stepCount}/${totalStepCount} 个步骤`
-    : totalTurnCount > picture.turnCount
-      ? `${picture.turnCount}/${totalTurnCount} 个对话轮次`
-      : `${picture.stepCount} 个步骤已载入`
-  const hasEdgeAlert = picture.pendingCount > 0
-    || picture.now.status === 'failure'
-    || picture.now.status === 'interrupted'
-  const summaryState = picture.pendingCount > 0
-    ? '等待确认'
-    : picture.running
-      ? '正在执行'
-      : picture.now.status === 'failure'
-        ? '执行失败'
-        : picture.now.status === 'interrupted'
-          ? '已中断'
-          : picture.nodes.length > 0 ? '就绪' : '待命'
-  const nowLabel = picture.now.label || (picture.nodes.length > 0 ? '执行路径已就绪' : '等待指令')
-
-  const selectItem = (group: WorkGroup, item: WorkItem) => {
-    clearInspectorExit()
-    pinPanelFrame()
-    setInspectorClosing(false)
-    setUi(followRef.current.onSelect(group.id))
-    setSelectedItemId(item.id)
-  }
-
-  /**
-   * "定位现场" must end at the failing work item, not just somewhere near the
-   * turn: opening the inspector on that exact item is the whole point of the
-   * affordance. A finding whose step can't be matched still lands on its turn.
-   */
-  const locateEvidence = (e: { turn: number; steps: number[]; seqs: number[] }) => {
-    pinForDisclosure()
-    setDisclosure(chooseDisclosureDepth('detail'))
-    const turn = picture.turns.find(t => t.turn === e.turn)
-    const group = turn?.groups.find(g => g.items.some(i =>
-      i.status === 'failure' && e.steps.includes(i.step ?? -1)))
-    const item = group?.items.find(i => i.status === 'failure' && e.steps.includes(i.step ?? -1))
-    if (turn && group && item) {
-      selectItem(group, item)
-      requestAnimationFrame(() => document.getElementById(`watcher-turn-${turn.turn}`)?.scrollIntoView({ block: 'nearest' }))
-    } else {
-      requestAnimationFrame(() => document.getElementById(`watcher-turn-${e.turn}`)?.scrollIntoView({ block: 'nearest' }))
-    }
-  }
-
-  const onRailScroll = () => {
-    if (programmaticScrollRef.current) return
-    const rail = railRef.current
-    if (rail === null) return
-    const atBottom = rail.scrollHeight - rail.scrollTop - rail.clientHeight < 24
-    setUi(followRef.current.onScroll({ atBottom }))
-  }
-
-  const backToLatest = () => {
-    programmaticScrollRef.current = true
-    setUi(followRef.current.backToLatest())
-  }
-
-  const clearInspectorExit = () => {
-    if (inspectorExitTimer.current === null) return
-    window.clearTimeout(inspectorExitTimer.current)
-    inspectorExitTimer.current = null
-  }
+  const hasEdgeAlert = edgeAlertOf(picture)
+  const summaryState = summaryStateOf(picture)
 
   const clearPanelPin = () => {
     if (panelPinTimer.current !== null) {
@@ -1409,92 +1304,6 @@ function ReadyWatcher({
     window.addEventListener('pointerup', up)
   }
 
-  /**
-   * Closing the inspector is one continuous motion: the column narrows while
-   * the detail content slides right and disappears under the work-path card.
-   * The collapse animation already ends at the closed width, so the unmount
-   * that finishes it cannot flash or jump.
-   * `toLatest` is for the "查看最新" affordance only; the plain back control
-   * just closes the detail and keeps the rail pinned where the user left it.
-   */
-  const finishInspectorExit = () => {
-    clearInspectorExit()
-    setUi(inspectorExitToLatest.current ? followRef.current.backToLatest() : followRef.current.clearSelection())
-    setSelectedItemId(null)
-    setInspectorClosing(false)
-  }
-
-  const closeInspector = (toLatest = false) => {
-    if (inspectorClosing) return
-    inspectorExitToLatest.current = toLatest
-    pinPanelFrame()
-    setInspectorClosing(true)
-    // The animation end is the primary signal; this keeps the control working
-    // when the animation never runs or its event is lost.
-    inspectorExitTimer.current = window.setTimeout(finishInspectorExit, INSPECTOR_EXIT_FALLBACK_MS)
-  }
-
-  useEffect(() => () => {
-    clearInspectorExit()
-    if (panelPinTimer.current !== null) window.clearTimeout(panelPinTimer.current)
-  }, [])
-
-  const pinForDisclosure = () => {
-    if (ui.follow) setUi(followRef.current.setFollow(false))
-  }
-
-  const chooseObservationMode = (mode: ObservationMode) => {
-    if (mode === observationMode) return
-    if (ui.follow) programmaticScrollRef.current = true
-    setObservationMode(mode)
-  }
-
-  const chooseDepth = (depth: DisclosureState['depth']) => {
-    if (depth === disclosure.depth) return
-    pinForDisclosure()
-    setDisclosure(chooseDisclosureDepth(depth))
-  }
-
-  const startHistoryLoad = () => {
-    if (historyLoad.kind === 'loading' || historyLoad.kind === 'complete') return
-    historyAbortRef.current?.abort()
-    const controller = new AbortController()
-    historyAbortRef.current = controller
-    setHistoryLoad({ kind: 'loading' })
-    void loadAllHistory(controller.signal).then((result) => {
-      if (historyAbortRef.current !== controller) return
-      if (result.kind === 'blocked') {
-        const message = result.reason === 'busy'
-          ? '主会话正在载入历史，请稍后重试'
-          : result.reason === 'page-limit'
-            ? '历史页数超出安全上限，请分次重试'
-            : '历史分页没有继续前进，请重试'
-        setHistoryLoad({ kind: 'error', message })
-      } else if (result.kind === 'complete') {
-        // Keep a short terminal state until React observes the final Session
-        // page. This prevents a stale `hasMore` render from starting the loop
-        // a second time after the official loader has already reached page 1.
-        setHistoryLoad({ kind: 'complete' })
-      } else {
-        setHistoryLoad({ kind: 'idle' })
-      }
-    }).catch((error: unknown) => {
-      if (historyAbortRef.current !== controller || controller.signal.aborted) return
-      setHistoryLoad({
-        kind: 'error',
-        message: error instanceof Error ? error.message : String(error),
-      })
-    }).finally(() => {
-      if (historyAbortRef.current === controller) historyAbortRef.current = null
-    })
-  }
-
-  // Full history is an explicit choice; the summary comes from the Host projection.
-  useEffect(() => {
-    if (historyLoad.kind !== 'complete' || snapshot.hasMore) return
-    setHistoryLoad({ kind: 'idle' })
-  }, [historyLoad.kind, snapshot.hasMore])
-
   return (
     <div ref={rootRef} className={css.root} data-dsh-watcher="header">
       <button
@@ -1533,267 +1342,17 @@ function ReadyWatcher({
             data-dsh-watcher-panel=""
             data-ud-motion="watcher-panel-enter"
           >
-            {selected === undefined
-              ? null
-              : (
-                <ExecutionInspector
-                  group={selected}
-                  selectedItemId={selectedItemId}
-                  live={picture.running && selected.id === lastGroupId}
-                  now={now}
-                  closing={inspectorClosing}
-                  onSelectItem={setSelectedItemId}
-                  onBack={() => closeInspector()}
-                  onExited={finishInspectorExit}
-                />
-              )}
-
-            <section className={css.workPicture} aria-label="Agent 工作路径" data-ud-check="watcher-work-picture" data-ud-role="panel">
-              <header className={css.pictureHeader}>
-                <div className={css.nowBlock} aria-live="polite">
-                  {picture.running || hasEdgeAlert || summaryState !== '就绪' ? (
-                    <div className={css.eyebrow} data-alert={hasEdgeAlert ? '' : undefined}>
-                      <span>{summaryState}</span>
-                    </div>
-                  ) : null}
-                  <div className={css.now} title={picture.running ? nowLabel : 'DSH-Watcher'}>
-                    {picture.running ? nowLabel : 'DSH-Watcher'}
-                  </div>
-                  <div className={css.summary}>
-                    <span>
-                      {snapshot.hasMore && totalTurnCount > picture.turnCount
-                        ? `已载入 ${picture.turnCount}/${totalTurnCount} 轮`
-                        : `${picture.turnCount} 轮`}
-                    </span>
-                    <span>
-                      {snapshot.hasMore && totalStepCount > picture.stepCount
-                        ? `${picture.stepCount}/${totalStepCount} 步`
-                        : `${picture.stepCount} 步`}
-                    </span>
-                    <span>{picture.actionCount} 次执行</span>
-                    {snapshot.hasMore || historyLoad.kind === 'loading' || historyLoad.kind === 'error' ? (
-                      <button
-                        type="button"
-                        className={css.loadAllInlineBtn}
-                        onClick={startHistoryLoad}
-                        disabled={historyLoad.kind === 'loading'}
-                      >
-                        {historyLoad.kind === 'loading' ? '正在补齐历史…' : historyLoad.kind === 'error' ? '重试载入' : '载入全部历史 →'}
-                      </button>
-                    ) : null}
-                    {historyLoad.kind === 'loading' || historyLoad.kind === 'error' ? (
-                      <span role="status">{historyLoad.kind === 'error' ? historyLoad.message : `已载入 ${historyProgress}`}</span>
-                    ) : null}
-                  </div>
-                </div>
-                <Pill
-                  className={css.follow}
-                  active={ui.follow}
-                  aria-pressed={ui.follow}
-                  aria-label={ui.follow ? '停止跟随最新工作' : '跟随最新工作'}
-                  onClick={() => {
-                    if (!ui.follow) programmaticScrollRef.current = true
-                    setUi(followRef.current.setFollow(!ui.follow))
-                  }}
-                >
-                  <IconRefreshOutlineRegular size={12} />
-                  {ui.follow ? '自动跟随' : '浏览历史'}
-                </Pill>
-              </header>
-
-              <SessionInsights value={wholeSessionInsights} now={now} running={picture.running} waiting={picture.pendingCount > 0} onEvidence={locateEvidence} />
-
-              <div className={css.viewToolbar} aria-label="路径视图设置">
-                <div className={css.viewControl}>
-                  <span className={css.viewToolbarLabel}>组织</span>
-                  <div className={css.viewMode} role="group" aria-label="路径组织方式">
-                    <button
-                      type="button"
-                      data-active={observationMode === 'itemized' ? '' : undefined}
-                      aria-pressed={observationMode === 'itemized'}
-                      title="按时间顺序展示每个步骤和每次执行"
-                      onClick={() => chooseObservationMode('itemized')}
-                    >
-                      逐项
-                    </button>
-                    <button
-                      type="button"
-                      data-active={observationMode === 'grouped' ? '' : undefined}
-                      aria-pressed={observationMode === 'grouped'}
-                      title="按同一目标或完全相同的指令归类，展开仍可查看原始执行"
-                      onClick={() => chooseObservationMode('grouped')}
-                    >
-                      归类
-                    </button>
-                  </div>
-                </div>
-                <div className={css.viewControl}>
-                  <span className={css.viewToolbarLabel}>层级</span>
-                  <div className={css.viewMode} role="group" aria-label="路径展开深度">
-                    <button
-                      type="button"
-                      data-active={disclosure.depth === 'overview' ? '' : undefined}
-                      aria-pressed={disclosure.depth === 'overview'}
-                      title="展开当前轮次，展示阶段概览；阶段内部保持收起"
-                      onClick={() => chooseDepth('overview')}
-                    >
-                      概览
-                    </button>
-                    <button
-                      type="button"
-                      data-active={disclosure.depth === 'detail' ? '' : undefined}
-                      aria-pressed={disclosure.depth === 'detail'}
-                      title="展开所有轮次、阶段、步骤、模型与推理记录"
-                      onClick={() => chooseDepth('detail')}
-                    >
-                      详情
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {!ui.follow && ui.unread > 0
-                ? (
-                  <button
-                    type="button"
-                    className={css.unread}
-                    onClick={selected === undefined ? backToLatest : () => closeInspector(true)}
-                  >
-                    <IconRefreshOutlineRegular size={12} />
-                    {ui.unread} 条新进展 · 查看最新
-                  </button>
-                )
-                : null}
-
-              {picture.nodes.length === 0
-                ? (
-                  <div className={css.empty}>
-                    <span className={css.emptyEye} aria-hidden="true"><IconLivingEye size={22} /></span>
-                    <strong>还没有工作记录</strong>
-                    <span>第一轮对话开始后，路径会从这里生长</span>
-                  </div>
-                )
-                : (
-                  <div ref={railRef} className={css.railViewport} onScroll={onRailScroll}>
-                    <div className={css.turns}>
-                      {picture.turns.map(turn => {
-                        const isLatestTurn = turn.turn === latestTurnNumber
-                        const turnState = overviewStateOf(turn.status, isLatestTurn)
-                        const automaticDefaultOpen = turnNeedsDefaultDisclosure(turnState, isLatestTurn)
-                        const turnOpen = turnDisclosureOpen(disclosure, turn.turn, automaticDefaultOpen)
-                        const turnTitle = turn.turn === 0 ? '会话准备' : `对话轮次 ${turn.turn}`
-                        const turnSummary = turnOverviewSummary(turn)
-                        const performance = performanceByTurn.get(turn.turn)
-                        const isLiveTurn = isLatestTurn && picture.running
-                        const duration = turnDuration(turn, isLiveTurn, now)
-                        const tokenSpeed = performance?.throughput.kind === 'measured'
-                          ? `${formatTokensPerSecond(performance.throughput.tokensPerSecond)} tok/s`
-                          : null
-                        const durationAria = duration === null
-                          ? ''
-                          : duration.kind === 'exact'
-                            ? `，总耗时 ${duration.value}`
-                            : `，已记录 ${duration.value}，开头未载入`
-                        const secondaryPerformance = [
-                          duration?.kind === 'partial' ? '开头未载入' : null,
-                          tokenSpeed,
-                        ].filter((value): value is string => value !== null).join(' · ')
-                        return (
-                          <section key={turn.turn} className={css.turn} aria-labelledby={`watcher-turn-${turn.turn}`}>
-                            <header className={css.turnHeader}>
-                              <h2 id={`watcher-turn-${turn.turn}`}>
-                                <button
-                                  type="button"
-                                  className={css.turnToggle}
-                                  aria-expanded={turnOpen}
-                                  aria-controls={`watcher-turn-body-${turn.turn}`}
-                                  aria-label={`${turnTitle}，${OVERVIEW_STATE_LABEL[turnState]}，${turnSummary}${durationAria}${tokenSpeed === null ? '' : `，生成速度 ${tokenSpeed}`}，${turnOpen ? '收起轮次' : '展开轮次'}`}
-                                  title={turnOpen ? '收起此轮次；新进展仍会继续更新' : '展开此轮次'}
-                                  onClick={() => {
-                                    pinForDisclosure()
-                                    setDisclosure(current => toggleTurnDisclosure(
-                                      current,
-                                      turn.turn,
-                                      automaticDefaultOpen,
-                                    ))
-                                  }}
-                                >
-                                  <IconChevronRightOutlineRegular size={13} className={css.turnChevron} />
-                                      <span className={css.turnCopy}>
-                                        <span className={css.turnTitleLine}>
-                                          <span className={css.turnTitle}>{turnTitle}</span>
-                                          {showOverviewTag(turnState)
-                                            ? <span className={css.overviewTag} data-state={turnState}>{OVERVIEW_STATE_LABEL[turnState]}</span>
-                                            : null}
-                                    </span>
-                                    <span className={css.turnSummary}>{turnSummary}</span>
-                                  </span>
-                                  <span className={css.turnPerformance}>
-                                    <span className={css.turnDuration}>
-                                      {duration === null
-                                        ? OVERVIEW_STATE_LABEL[turnState]
-                                        : duration.kind === 'exact'
-                                          ? `总 ${duration.value}`
-                                          : `已记录 ${duration.value}`}
-                                    </span>
-                                    {secondaryPerformance === '' ? null : <span className={css.turnSpeed}>{secondaryPerformance}</span>}
-                                  </span>
-                                </button>
-                              </h2>
-                            </header>
-                            <div id={`watcher-turn-body-${turn.turn}`} className={css.turnBody} hidden={!turnOpen}>
-                              <div className={css.groupRail}>
-                                <span className={css.railLine} aria-hidden="true" />
-                                {turn.groups.map(group => {
-                                  const isNow = group.id === lastGroupId
-                                  const selectedGroup = ui.selectedId === group.id
-                                  const phaseOpen = layerDisclosureOpen(disclosure, 'phase', group.id)
-                                  return (
-                                    <PhaseOverview
-                                      key={group.id}
-                                      group={group}
-                                      isNow={isNow}
-                                      running={picture.running}
-                                      now={now}
-                                      selectedGroup={selectedGroup}
-                                      selectedItemId={selectedItemId}
-                                      observationMode={observationMode}
-                                      open={phaseOpen}
-                                      disclosure={disclosure}
-                                      onToggle={() => {
-                                        pinForDisclosure()
-                                        setDisclosure(current => toggleLayerDisclosure(current, 'phase', group.id))
-                                      }}
-                                      onToggleLayer={(layer, key) => {
-                                        pinForDisclosure()
-                                        setDisclosure(current => toggleLayerDisclosure(current, layer, key))
-                                      }}
-                                      onToggleReasoning={(key, modelKey) => {
-                                        pinForDisclosure()
-                                        setDisclosure(current => {
-                                          const reasoningOpen = layerDisclosureOpen(current, 'reasoning', key)
-                                          const withOpenParent = reasoningOpen
-                                            ? current
-                                            : setLayerDisclosure(current, 'model', modelKey, true)
-                                          // Opening a nested reasoning record is explicit reading intent.
-                                          // Keep its parent open when the live model settles and its
-                                          // default changes after a depth switch or live update.
-                                          return toggleLayerDisclosure(withOpenParent, 'reasoning', key)
-                                        })
-                                      }}
-                                      onSelectItem={item => selectItem(group, item)}
-                                    />
-                                  )
-                                })}
-                              </div>
-                            </div>
-                          </section>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-            </section>
+            <WorkPicturePanel
+              sessionId={sessionId}
+              picture={picture}
+              performanceByTurn={performanceByTurn}
+              hasMore={snapshot.hasMore}
+              stats={wholeSessionStats}
+              insights={wholeSessionInsights}
+              loadAllHistory={loadAllHistory}
+              live={open}
+              onInspectorFrameChange={pinPanelFrame}
+            />
             <div className={css.resizeEdgeRight} aria-hidden="true" onPointerDown={e => onResizeStart(e, 'x')} />
             <div className={css.resizeEdgeBottom} aria-hidden="true" onPointerDown={e => onResizeStart(e, 'y')} />
             <div className={css.resizeGrip} aria-hidden="true" title="拖动调整大小" onPointerDown={e => onResizeStart(e, 'both')} />
@@ -1802,5 +1361,543 @@ function ReadyWatcher({
         )
         : null}
     </div>
+  )
+}
+
+/**
+ * Folds one Session snapshot into the work picture, merging observations that
+ * outlive the loaded window. Shared by the session-header overlay and the
+ * Better Sidebar tab so both surfaces read the same projection.
+ */
+export function useObservedPicture(sessionId: string, snapshot: WatcherSnapshot): {
+  picture: WorkPicture
+  performanceByTurn: ReadonlyMap<number, TurnPerformance>
+} {
+  const running = snapshot.running
+  const snapshotPicture = useMemo(() => foldSnapshot(snapshot, { running }), [snapshot, running])
+  const observedRef = useRef<{ sessionId: string; picture: WorkPicture } | null>(null)
+  const picture = useMemo(() => {
+    const previous = observedRef.current?.sessionId === sessionId
+      ? observedRef.current.picture
+      : null
+    const next = previous === null ? snapshotPicture : mergeObservedPictures(previous, snapshotPicture)
+    observedRef.current = { sessionId, picture: next }
+    return next
+  }, [sessionId, snapshotPicture])
+  const performanceByTurn = useMemo(
+    () => deriveTurnPerformance(snapshot.nodes, picture.turns),
+    [snapshot.nodes, picture.turns],
+  )
+  return { picture, performanceByTurn }
+}
+
+export interface WorkPicturePanelProps {
+  /** Owning Session identity; changing it resets follow, selection, and history state. */
+  sessionId: SessionId
+  /** Folded work picture from {@link useObservedPicture}. */
+  picture: WorkPicture
+  performanceByTurn: ReadonlyMap<number, TurnPerformance>
+  /** Whether older history pages remain on the Session. */
+  hasMore: boolean
+  /** Whole-session projection totals, when the Host projection is available. */
+  stats: { turns: number; steps: number } | undefined
+  /** Cost/performance HUD input; the header overlay always renders it. */
+  insights: InsightsView | undefined
+  /** Never mount the cost/performance HUD (the sidebar tab omits it). */
+  hideInsights?: boolean
+  /** Explicit whole-history loader; absent when no Session face is available. */
+  loadAllHistory?: (signal: AbortSignal) => Promise<CompleteHistoryResult>
+  /** Gates the live clock: the overlay's open state, or the sidebar tab's visibility. */
+  live: boolean
+  /** Overlay-only: freeze the floating panel frame across inspector transitions. */
+  onInspectorFrameChange?: () => void
+  /** DOM id prefix for turn landmarks; coexisting surfaces must not share ids. */
+  domIdPrefix?: string
+}
+
+/**
+ * The work picture itself: the docked inspector column plus the turns rail.
+ * Extracted from the session-header overlay so the Better Sidebar tab can
+ * render the same picture without the portal, the trigger, or the drag frame.
+ * Owns every picture-local concern (follow, disclosure, observation mode,
+ * history load, inspector lifecycle); positioning stays with the host.
+ */
+export function WorkPicturePanel({
+  sessionId,
+  picture,
+  performanceByTurn,
+  hasMore,
+  stats,
+  insights,
+  hideInsights,
+  loadAllHistory,
+  live,
+  onInspectorFrameChange,
+  domIdPrefix,
+}: WorkPicturePanelProps) {
+  const [ui, setUi] = useState(() => ({ follow: true, unread: 0, selectedId: null as string | null }))
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
+  const [inspectorClosing, setInspectorClosing] = useState(false)
+  const inspectorExitTimer = useRef<number | null>(null)
+  const inspectorExitToLatest = useRef(false)
+  const [observationMode, setObservationMode] = useState<ObservationMode>('itemized')
+  const [disclosure, setDisclosure] = useState(createDisclosureState)
+  const [historyLoad, setHistoryLoad] = useState<HistoryLoadState>({ kind: 'idle' })
+  const now = useLiveClock(live && picture.running)
+  const followRef = useRef(createFollow())
+  const railRef = useRef<HTMLDivElement>(null)
+  const programmaticScrollRef = useRef(false)
+  const historyAbortRef = useRef<AbortController | null>(null)
+  /** Coexisting surfaces (header overlay + sidebar tab) must not share DOM ids. */
+  const domPrefix = domIdPrefix ?? 'watcher-turn'
+
+  const selected = ui.selectedId === null ? undefined : picture.nodes.find(group => group.id === ui.selectedId)
+  const lastGroup = picture.nodes.at(-1)
+  const lastGroupId = lastGroup?.id ?? null
+  const lastItem = lastGroup?.items.at(-1)
+  const latestActivityKey = lastItem === undefined
+    ? lastGroupId
+    : `${lastGroupId}:${lastItem.id}:${lastItem.seq}:${lastItem.status}:${lastItem.resultSeq ?? 'open'}:${lastItem.resultTime ?? 'open'}`
+  const latestTurnNumber = picture.turns.at(-1)?.turn ?? null
+  const totalTurnCount = Math.max(picture.turnCount, stats?.turns ?? 0)
+  const totalStepCount = Math.max(picture.stepCount, stats?.steps ?? 0)
+  const historyProgress = totalStepCount > picture.stepCount
+    ? `${picture.stepCount}/${totalStepCount} 个步骤`
+    : totalTurnCount > picture.turnCount
+      ? `${picture.turnCount}/${totalTurnCount} 个对话轮次`
+      : `${picture.stepCount} 个步骤已载入`
+  const hasEdgeAlert = edgeAlertOf(picture)
+  const summaryState = summaryStateOf(picture)
+  const nowLabel = picture.now.label || (picture.nodes.length > 0 ? '执行路径已就绪' : '等待指令')
+
+  useLayoutEffect(() => {
+    historyAbortRef.current?.abort()
+    historyAbortRef.current = null
+    setHistoryLoad({ kind: 'idle' })
+    followRef.current.reset()
+    setUi(followRef.current.snapshot())
+    setSelectedItemId(null)
+    setDisclosure(resetDisclosureOverrides)
+  }, [sessionId])
+
+  useEffect(() => () => {
+    historyAbortRef.current?.abort()
+    clearInspectorExit()
+  }, [])
+
+  useLayoutEffect(() => {
+    setUi(followRef.current.onPicture(picture))
+  }, [latestActivityKey])
+
+  useLayoutEffect(() => {
+    const rail = railRef.current
+    if (!rail || !live || !ui.follow) return
+    programmaticScrollRef.current = true
+    rail.scrollTop = rail.scrollHeight
+    const frame = requestAnimationFrame(() => {
+      programmaticScrollRef.current = false
+    })
+    return () => {
+      cancelAnimationFrame(frame)
+      programmaticScrollRef.current = false
+    }
+  }, [ui.follow, latestActivityKey, observationMode, live])
+
+  const selectItem = (group: WorkGroup, item: WorkItem) => {
+    clearInspectorExit()
+    onInspectorFrameChange?.()
+    setInspectorClosing(false)
+    setUi(followRef.current.onSelect(group.id))
+    setSelectedItemId(item.id)
+  }
+
+  /**
+   * "定位现场" must end at the failing work item, not just somewhere near the
+   * turn: opening the inspector on that exact item is the whole point of the
+   * affordance. A finding whose step can't be matched still lands on its turn.
+   */
+  const locateEvidence = (e: { turn: number; steps: number[]; seqs: number[] }) => {
+    pinForDisclosure()
+    setDisclosure(chooseDisclosureDepth('detail'))
+    const turn = picture.turns.find(t => t.turn === e.turn)
+    const group = turn?.groups.find(g => g.items.some(i =>
+      i.status === 'failure' && e.steps.includes(i.step ?? -1)))
+    const item = group?.items.find(i => i.status === 'failure' && e.steps.includes(i.step ?? -1))
+    if (turn && group && item) {
+      selectItem(group, item)
+      requestAnimationFrame(() => document.getElementById(`${domPrefix}-${turn.turn}`)?.scrollIntoView({ block: 'nearest' }))
+    } else {
+      requestAnimationFrame(() => document.getElementById(`${domPrefix}-${e.turn}`)?.scrollIntoView({ block: 'nearest' }))
+    }
+  }
+
+  const onRailScroll = () => {
+    if (programmaticScrollRef.current) return
+    const rail = railRef.current
+    if (rail === null) return
+    const atBottom = rail.scrollHeight - rail.scrollTop - rail.clientHeight < 24
+    setUi(followRef.current.onScroll({ atBottom }))
+  }
+
+  const backToLatest = () => {
+    programmaticScrollRef.current = true
+    setUi(followRef.current.backToLatest())
+  }
+
+  const clearInspectorExit = () => {
+    if (inspectorExitTimer.current === null) return
+    window.clearTimeout(inspectorExitTimer.current)
+    inspectorExitTimer.current = null
+  }
+
+  /**
+   * Closing the inspector is one continuous motion: the column narrows while
+   * the detail content slides right and disappears under the work-path card.
+   * The collapse animation already ends at the closed width, so the unmount
+   * that finishes it cannot flash or jump.
+   * `toLatest` is for the "查看最新" affordance only; the plain back control
+   * just closes the detail and keeps the rail pinned where the user left it.
+   */
+  const finishInspectorExit = () => {
+    setUi(inspectorExitToLatest.current ? followRef.current.backToLatest() : followRef.current.clearSelection())
+    setSelectedItemId(null)
+    setInspectorClosing(false)
+  }
+
+  const closeInspector = (toLatest = false) => {
+    if (inspectorClosing) return
+    inspectorExitToLatest.current = toLatest
+    onInspectorFrameChange?.()
+    setInspectorClosing(true)
+    // The animation end is the primary signal; this keeps the control working
+    // when the animation never runs or its event is lost.
+    inspectorExitTimer.current = window.setTimeout(finishInspectorExit, INSPECTOR_EXIT_FALLBACK_MS)
+  }
+
+  const pinForDisclosure = () => {
+    if (ui.follow) setUi(followRef.current.setFollow(false))
+  }
+
+  const chooseObservationMode = (mode: ObservationMode) => {
+    if (mode === observationMode) return
+    if (ui.follow) programmaticScrollRef.current = true
+    setObservationMode(mode)
+  }
+
+  const chooseDepth = (depth: DisclosureState['depth']) => {
+    if (depth === disclosure.depth) return
+    pinForDisclosure()
+    setDisclosure(chooseDisclosureDepth(depth))
+  }
+
+  const startHistoryLoad = () => {
+    if (historyLoad.kind === 'loading' || historyLoad.kind === 'complete') return
+    if (loadAllHistory === undefined) return
+    historyAbortRef.current?.abort()
+    const controller = new AbortController()
+    historyAbortRef.current = controller
+    setHistoryLoad({ kind: 'loading' })
+    void loadAllHistory(controller.signal).then((result) => {
+      if (historyAbortRef.current !== controller) return
+      if (result.kind === 'blocked') {
+        const message = result.reason === 'busy'
+          ? '主会话正在载入历史，请稍后重试'
+          : result.reason === 'page-limit'
+            ? '历史页数超出安全上限，请分次重试'
+            : '历史分页没有继续前进，请重试'
+        setHistoryLoad({ kind: 'error', message })
+      } else if (result.kind === 'complete') {
+        // Keep a short terminal state until React observes the final Session
+        // page. This prevents a stale `hasMore` render from starting the loop
+        // a second time after the official loader has already reached page 1.
+        setHistoryLoad({ kind: 'complete' })
+      } else {
+        setHistoryLoad({ kind: 'idle' })
+      }
+    }).catch((error: unknown) => {
+      if (historyAbortRef.current !== controller || controller.signal.aborted) return
+      setHistoryLoad({
+        kind: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      })
+    }).finally(() => {
+      if (historyAbortRef.current === controller) historyAbortRef.current = null
+    })
+  }
+
+  // Full history is an explicit choice; the summary comes from the Host projection.
+  useEffect(() => {
+    if (historyLoad.kind !== 'complete' || hasMore) return
+    setHistoryLoad({ kind: 'idle' })
+  }, [historyLoad.kind, hasMore])
+
+  return (
+    <>
+      {selected === undefined
+        ? null
+        : (
+          <ExecutionInspector
+            group={selected}
+            selectedItemId={selectedItemId}
+            live={picture.running && selected.id === lastGroupId}
+            now={now}
+            closing={inspectorClosing}
+            onSelectItem={setSelectedItemId}
+            onBack={() => closeInspector()}
+            onExited={finishInspectorExit}
+          />
+        )}
+
+      <section className={css.workPicture} aria-label="Agent 工作路径" data-ud-check="watcher-work-picture" data-ud-role="panel">
+        <header className={css.pictureHeader}>
+          <div className={css.nowBlock} aria-live="polite">
+            {picture.running || hasEdgeAlert || summaryState !== '就绪' ? (
+              <div className={css.eyebrow} data-alert={hasEdgeAlert ? '' : undefined}>
+                <span>{summaryState}</span>
+              </div>
+            ) : null}
+            <div className={css.now} title={picture.running ? nowLabel : 'DSH-Watcher'}>
+              {picture.running ? nowLabel : 'DSH-Watcher'}
+            </div>
+            <div className={css.summary}>
+              <span>
+                {hasMore && totalTurnCount > picture.turnCount
+                  ? `已载入 ${picture.turnCount}/${totalTurnCount} 轮`
+                  : `${picture.turnCount} 轮`}
+              </span>
+              <span>
+                {hasMore && totalStepCount > picture.stepCount
+                  ? `${picture.stepCount}/${totalStepCount} 步`
+                  : `${picture.stepCount} 步`}
+              </span>
+              <span>{picture.actionCount} 次执行</span>
+              {hasMore || historyLoad.kind === 'loading' || historyLoad.kind === 'error' ? (
+                <button
+                  type="button"
+                  className={css.loadAllInlineBtn}
+                  onClick={startHistoryLoad}
+                  disabled={historyLoad.kind === 'loading'}
+                >
+                  {historyLoad.kind === 'loading' ? '正在补齐历史…' : historyLoad.kind === 'error' ? '重试载入' : '载入全部历史 →'}
+                </button>
+              ) : null}
+              {historyLoad.kind === 'loading' || historyLoad.kind === 'error' ? (
+                <span role="status">{historyLoad.kind === 'error' ? historyLoad.message : `已载入 ${historyProgress}`}</span>
+              ) : null}
+            </div>
+          </div>
+          <Pill
+            className={css.follow}
+            active={ui.follow}
+            aria-pressed={ui.follow}
+            aria-label={ui.follow ? '停止跟随最新工作' : '跟随最新工作'}
+            onClick={() => {
+              if (!ui.follow) programmaticScrollRef.current = true
+              setUi(followRef.current.setFollow(!ui.follow))
+            }}
+          >
+            <IconRefreshOutlineRegular size={12} />
+            {ui.follow ? '自动跟随' : '浏览历史'}
+          </Pill>
+        </header>
+
+        {hideInsights === true
+          ? null
+          : (
+            <SessionInsights value={insights} now={now} running={picture.running} waiting={picture.pendingCount > 0} onEvidence={locateEvidence} />
+          )}
+
+        <div className={css.viewToolbar} aria-label="路径视图设置">
+          <div className={css.viewControl}>
+            <span className={css.viewToolbarLabel}>组织</span>
+            <div className={css.viewMode} role="group" aria-label="路径组织方式">
+              <button
+                type="button"
+                data-active={observationMode === 'itemized' ? '' : undefined}
+                aria-pressed={observationMode === 'itemized'}
+                title="按时间顺序展示每个步骤和每次执行"
+                onClick={() => chooseObservationMode('itemized')}
+              >
+                逐项
+              </button>
+              <button
+                type="button"
+                data-active={observationMode === 'grouped' ? '' : undefined}
+                aria-pressed={observationMode === 'grouped'}
+                title="按同一目标或完全相同的指令归类，展开仍可查看原始执行"
+                onClick={() => chooseObservationMode('grouped')}
+              >
+                归类
+              </button>
+            </div>
+          </div>
+          <div className={css.viewControl}>
+            <span className={css.viewToolbarLabel}>层级</span>
+            <div className={css.viewMode} role="group" aria-label="路径展开深度">
+              <button
+                type="button"
+                data-active={disclosure.depth === 'overview' ? '' : undefined}
+                aria-pressed={disclosure.depth === 'overview'}
+                title="展开当前轮次，展示阶段概览；阶段内部保持收起"
+                onClick={() => chooseDepth('overview')}
+              >
+                概览
+              </button>
+              <button
+                type="button"
+                data-active={disclosure.depth === 'detail' ? '' : undefined}
+                aria-pressed={disclosure.depth === 'detail'}
+                title="展开所有轮次、阶段、步骤、模型与推理记录"
+                onClick={() => chooseDepth('detail')}
+              >
+                详情
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {!ui.follow && ui.unread > 0
+          ? (
+            <button
+              type="button"
+              className={css.unread}
+              onClick={selected === undefined ? backToLatest : () => closeInspector(true)}
+            >
+              <IconRefreshOutlineRegular size={12} />
+              {ui.unread} 条新进展 · 查看最新
+            </button>
+          )
+          : null}
+
+        {picture.nodes.length === 0
+          ? (
+            <div className={css.empty}>
+              <span className={css.emptyEye} aria-hidden="true"><IconLivingEye size={22} /></span>
+              <strong>还没有工作记录</strong>
+              <span>第一轮对话开始后，路径会从这里生长</span>
+            </div>
+          )
+          : (
+            <div ref={railRef} className={css.railViewport} onScroll={onRailScroll}>
+              <div className={css.turns}>
+                {picture.turns.map(turn => {
+                  const isLatestTurn = turn.turn === latestTurnNumber
+                  const turnState = overviewStateOf(turn.status, isLatestTurn)
+                  const automaticDefaultOpen = turnNeedsDefaultDisclosure(turnState, isLatestTurn)
+                  const turnOpen = turnDisclosureOpen(disclosure, turn.turn, automaticDefaultOpen)
+                  const turnTitle = turn.turn === 0 ? '会话准备' : `对话轮次 ${turn.turn}`
+                  const turnSummary = turnOverviewSummary(turn)
+                  const performance = performanceByTurn.get(turn.turn)
+                  const isLiveTurn = isLatestTurn && picture.running
+                  const duration = turnDuration(turn, isLiveTurn, now)
+                  const tokenSpeed = performance?.throughput.kind === 'measured'
+                    ? `${formatTokensPerSecond(performance.throughput.tokensPerSecond)} tok/s`
+                    : null
+                  const durationAria = duration === null
+                    ? ''
+                    : duration.kind === 'exact'
+                      ? `，总耗时 ${duration.value}`
+                      : `，已记录 ${duration.value}，开头未载入`
+                  const secondaryPerformance = [
+                    duration?.kind === 'partial' ? '开头未载入' : null,
+                    tokenSpeed,
+                  ].filter((value): value is string => value !== null).join(' · ')
+                  return (
+                    <section key={turn.turn} className={css.turn} aria-labelledby={`${domPrefix}-${turn.turn}`}>
+                      <header className={css.turnHeader}>
+                        <h2 id={`${domPrefix}-${turn.turn}`}>
+                          <button
+                            type="button"
+                            className={css.turnToggle}
+                            aria-expanded={turnOpen}
+                            aria-controls={`${domPrefix}-body-${turn.turn}`}
+                            aria-label={`${turnTitle}，${OVERVIEW_STATE_LABEL[turnState]}，${turnSummary}${durationAria}${tokenSpeed === null ? '' : `，生成速度 ${tokenSpeed}`}，${turnOpen ? '收起轮次' : '展开轮次'}`}
+                            title={turnOpen ? '收起此轮次；新进展仍会继续更新' : '展开此轮次'}
+                            onClick={() => {
+                              pinForDisclosure()
+                              setDisclosure(current => toggleTurnDisclosure(
+                                current,
+                                turn.turn,
+                                automaticDefaultOpen,
+                              ))
+                            }}
+                          >
+                            <IconChevronRightOutlineRegular size={13} className={css.turnChevron} />
+                                <span className={css.turnCopy}>
+                                  <span className={css.turnTitleLine}>
+                                    <span className={css.turnTitle}>{turnTitle}</span>
+                                    {showOverviewTag(turnState)
+                                      ? <span className={css.overviewTag} data-state={turnState}>{OVERVIEW_STATE_LABEL[turnState]}</span>
+                                      : null}
+                              </span>
+                              <span className={css.turnSummary}>{turnSummary}</span>
+                            </span>
+                            <span className={css.turnPerformance}>
+                              <span className={css.turnDuration}>
+                                {duration === null
+                                  ? OVERVIEW_STATE_LABEL[turnState]
+                                  : duration.kind === 'exact'
+                                    ? `总 ${duration.value}`
+                                    : `已记录 ${duration.value}`}
+                              </span>
+                              {secondaryPerformance === '' ? null : <span className={css.turnSpeed}>{secondaryPerformance}</span>}
+                            </span>
+                          </button>
+                        </h2>
+                      </header>
+                      <div id={`${domPrefix}-body-${turn.turn}`} className={css.turnBody} hidden={!turnOpen}>
+                        <div className={css.groupRail}>
+                          <span className={css.railLine} aria-hidden="true" />
+                          {turn.groups.map(group => {
+                            const isNow = group.id === lastGroupId
+                            const selectedGroup = ui.selectedId === group.id
+                            const phaseOpen = layerDisclosureOpen(disclosure, 'phase', group.id)
+                            return (
+                              <PhaseOverview
+                                key={group.id}
+                                group={group}
+                                isNow={isNow}
+                                running={picture.running}
+                                now={now}
+                                selectedGroup={selectedGroup}
+                                selectedItemId={selectedItemId}
+                                observationMode={observationMode}
+                                open={phaseOpen}
+                                disclosure={disclosure}
+                                onToggle={() => {
+                                  pinForDisclosure()
+                                  setDisclosure(current => toggleLayerDisclosure(current, 'phase', group.id))
+                                }}
+                                onToggleLayer={(layer, key) => {
+                                  pinForDisclosure()
+                                  setDisclosure(current => toggleLayerDisclosure(current, layer, key))
+                                }}
+                                onToggleReasoning={(key, modelKey) => {
+                                  pinForDisclosure()
+                                  setDisclosure(current => {
+                                    const reasoningOpen = layerDisclosureOpen(current, 'reasoning', key)
+                                    const withOpenParent = reasoningOpen
+                                      ? current
+                                      : setLayerDisclosure(current, 'model', modelKey, true)
+                                    // Opening a nested reasoning record is explicit reading intent.
+                                    // Keep its parent open when the live model settles and its
+                                    // default changes after a depth switch or live update.
+                                    return toggleLayerDisclosure(withOpenParent, 'reasoning', key)
+                                  })
+                                }}
+                                onSelectItem={item => selectItem(group, item)}
+                              />
+                            )
+                          })}
+                        </div>
+                      </div>
+                    </section>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+      </section>
+    </>
   )
 }
