@@ -4,9 +4,10 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import { loadCompleteHistory } from '../hub/history.ts'
+import { createCompleteHistoryLoader, type WatcherHistorySession } from './history-loader.ts'
 import { Watcher, type WatcherInjected } from './Watcher.tsx'
 import { registerModelTraceDefinition } from './model-trace-definition.ts'
+import { betterSidebarServiceOf, watcherSidebarDescriptor } from './SidebarTab.tsx'
 import { InsightsSettings } from './Insights.tsx'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
@@ -34,28 +35,22 @@ export function apply(ctx: ClientContext) {
     inject: (sessionId: SessionId): WatcherInjected => {
       // Workspace Host provides ISessions.binding(); keep runtime behavior.
       const session = (ctx.sessions as any).binding?.(sessionId)?.session as
-        | { loadOlder: () => Promise<void>; getSnapshot: () => { hasMore: boolean; loadingOlder: boolean } }
+        | WatcherHistorySession
         | undefined
       if (session === undefined) throw new Error(`dsh-watcher: session "${sessionId}" is unavailable`)
       return {
-        loadAllHistory: signal => loadCompleteHistory({
-          signal,
-          loadOlder: () => session.loadOlder(),
-          read: () => {
-            const sessionSnapshot = session.getSnapshot()
-            const conversation = ctx.uiConversation.binding(sessionId).snapshot.getSnapshot()
-            const chat = conversation.views.get('chat')
-            if (chat === undefined) throw new Error('dsh-watcher: Chat conversation target is unavailable')
-            const firstNode = chat.legacy.nodes[0]
-            const firstTurn = chat.timeline.turnOrder[0]
-            return {
-              hasMore: sessionSnapshot.hasMore,
-              loadingOlder: sessionSnapshot.loadingOlder,
-              headKey: `${firstTurn ?? 'none'}:${firstNode?.seq ?? 'none'}:${chat.legacy.nodes.length}`,
-            }
-          },
-        }),
+        loadAllHistory: signal => createCompleteHistoryLoader(ctx, sessionId, session)(signal),
       }
     },
   }, Watcher))
+  // Optional Better Sidebar tab. `dsh-better-sidebar` is an optional runtime
+  // peer: when it is absent the inject never fires and nothing happens. The
+  // effect hands registerTab's disposer to cordis, so hot reload unregisters
+  // the tab before the plugin re-applies — no duplicate registrations.
+  ctx.inject(['betterSidebar'], c => {
+    const betterSidebar = betterSidebarServiceOf(c)
+    const { registerTab } = betterSidebar ?? {}
+    if (typeof registerTab !== 'function') return
+    c.effect(() => registerTab(watcherSidebarDescriptor()))
+  })
 }
