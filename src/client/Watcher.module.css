@@ -979,8 +979,181 @@
   white-space: nowrap;
 }
 
-.modelStageBody {
-  padding: 2px 10px 10px 20px;
+.modelStageHead {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.modelStageHead .modelStageToggle {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+}
+
+.requestChip {
+  flex: none;
+  align-self: center;
+  margin-right: 8px;
+  padding: 1px 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+button.requestChip:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.requestChip[data-live] {
+  cursor: default;
+  color: var(--dsw-static-deepseek-450);
+  border-color: var(--dsw-alias-button-ghost-active-border);
+}
+
+/* 请求透视面板：复用 inspector 外壳 */
+.reqSection {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+
+.reqSection:last-child {
+  border-bottom: 0;
+}
+
+.reqSection .sectionHeading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.reqSection .sectionHeading h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.reqSection .sectionHeading span {
+  font-size: 10px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.reqMetrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 6px 12px;
+  margin: 0;
+}
+
+.reqMetric dt {
+  font-size: 10px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.reqMetric dd {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-primary);
+}
+
+.reqBar {
+  display: flex;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--dsw-alias-interactive-fill);
+}
+
+.reqBar i {
+  display: block;
+  min-width: 2px;
+}
+
+.reqLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 6px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.reqLegendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.reqLegendItem i {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.reqDeltas {
+  display: grid;
+  gap: 3px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.reqDelta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.reqDelta > i {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.reqDeltaLabel {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.reqDeltaValue {
+  margin-left: auto;
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+}
+
+.reqDeltaValue[data-negative] {
+  color: var(--dsw-alias-state-success-primary, #22c55e);
+}
+
+.reqDelta[data-total] {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--dsw-alias-border-l2);
+}
+
+.reqNote {
+  margin: 6px 0 0;
+  padding: 5px 8px;
+  border-radius: 5px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.22);
+  font-size: 11px;
+  line-height: 17px;
+  color: var(--dsw-alias-label-secondary);
 }
 
 .modelStageBar {
