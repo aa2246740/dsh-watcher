@@ -208,6 +208,168 @@
   padding: 10px 14px 10px;
 }
 
+/* 上下文水面行 */
+.ctxRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 14px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-2);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.ctxLabel {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  font-weight: 600;
+}
+
+.ctxGauge {
+  flex: none;
+  width: 64px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--dsw-alias-interactive-fill);
+  overflow: hidden;
+}
+
+.ctxGauge i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--dsw-static-deepseek-450, #5686fe);
+  transition: width 160ms ease-out;
+}
+
+.ctxGauge i[data-hot] {
+  background: #e5484d;
+}
+
+.ctxNums {
+  flex: none;
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+}
+
+.ctxNums em {
+  font-style: normal;
+  font-weight: 400;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.compBarMini {
+  flex: 1 1 auto;
+  min-width: 40px;
+  max-width: 120px;
+  height: 5px;
+  display: inline-flex;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--dsw-alias-interactive-fill);
+}
+
+.compBarMini i {
+  display: block;
+  min-width: 2px;
+}
+
+.ctxCache {
+  flex: none;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--dsw-alias-interactive-fill);
+  color: var(--dsw-alias-label-primary);
+  line-height: 18px;
+}
+
+.ctxNext {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* 提示词构成块 */
+.compBlock {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 7px;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.compHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.compTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.compNote {
+  font-size: 10px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.compBar {
+  display: flex;
+  height: 8px;
+  margin: 7px 0 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--dsw-alias-interactive-fill);
+}
+
+.compBar i {
+  display: block;
+  min-width: 2px;
+}
+
+.compLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.compItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.compItem i {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.compItem strong {
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+}
+
+.compHint {
+  margin-top: 7px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.22);
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+}
+
 /* 异常提醒卡片 */
 .alertSection {
   display: flex;

@@ -80,7 +80,78 @@ const settleAt = (seq, time, turnNo = 1, stepNo = 1, model = 'a') => [
   event('assistant/message', seq + 2, time + 2, { turn: turnNo, step: stepNo, usage, message: { source: { kind: 'model', provider: 'p', model }, role: 'assistant', content: [] } }),
   event('turn/end', seq + 3, time + 3, { turn: turnNo }),
 ];
-test('viewOf publishes per-day usage alongside totals',()=>{const s=fold(fixture([complete()]));assert.ok(Array.isArray(s.days));assert.deepEqual(viewOf(s).days,s.days);assert.equal(viewOf(s).version,2);});
+test('viewOf publishes per-day usage alongside totals',()=>{const s=fold(fixture([complete()]));assert.ok(Array.isArray(s.days));assert.deepEqual(viewOf(s).days,s.days);assert.equal(viewOf(s).version,3);});
+test('surface attributes system, memory, conversation and tool prices',()=>{
+  const s=fold([
+    event('request/header',0,0,{header:{config:{provider:'p',model:'a'},tools:[{name:'bash'}]}}),
+    event('system/message',1,1,{turn:1,step:1,message:{role:'system',content:[{type:'text',text:'you are helpful'.repeat(40)}]}}),
+    event('turn/start',2,2,{turn:1}),
+    event('user/message',3,3,{turn:1,step:1,message:{role:'user',source:{kind:'user'},content:[{type:'text',text:'hello'}]}}),
+    event('user/message',4,4,{turn:1,step:1,message:{role:'user',source:{kind:'agent.inject',form:'instructions'},content:[{type:'text',text:'AGENTS.md'.repeat(60)}]}}),
+    event('step/start',5,10,{turn:1,step:1}),
+    complete(6),
+  ]);
+  const v=viewOf(s);
+  assert.ok(v.context.surface.system>0);
+  assert.ok(v.context.surface.memory>0);
+  assert.ok(v.context.surface.conversation>0);
+  assert.ok(v.context.surface.tools>0);
+  assert.equal(v.context.surface.files,0);
+  assert.equal(v.context.surface.total,v.context.projected);
+  assert.equal(v.context.surface.partial,false);
+});
+test('file attachment user messages price into the files bucket',()=>{
+  const s=fold(fixture([
+    event('user/message',3,3,{turn:1,step:1,message:{role:'user',source:{kind:'user'},content:[{type:'file',attachment:{path:'a.ts',text:'x'.repeat(400)}}]}}),
+    complete(4),
+  ]));
+  assert.ok(viewOf(s).context.surface.files>0);
+  assert.equal(viewOf(s).context.surface.conversation,0);
+});
+test('surface replacement removes shadowed nodes from buckets',()=>{
+  const rows=[
+    event('turn/start',1,1,{turn:1}),
+    event('user/message',2,2,{turn:1,step:1,message:{role:'user',source:{kind:'user'},content:[{type:'text',text:'x'.repeat(400)}]}}),
+    event('step/start',3,10,{turn:1,step:1}),
+    {type:'assistant/message',seq:4,time:100,surfaceOp:{op:'replace',startSeq:2,endSeq:2},data:{turn:1,step:1,usage,message:{source:{kind:'model',provider:'p',model:'a'},role:'assistant',content:[{type:'text',text:'done'}]}}},
+  ];
+  const v=viewOf(fold(rows));
+  const done=Math.ceil(JSON.stringify([{type:'text',text:'done'}]).length/4)+4;
+  assert.equal(v.context.surface.conversation,done);
+  // The settled request still prices the prompt as dispatched: its own
+  // replace+append lands in the NEXT request's delta, not this row's surface.
+  assert.equal(v.requests[0].surface.conversation,Math.ceil(JSON.stringify([{type:'text',text:'x'.repeat(400)}]).length/4)+4);
+});
+test('settled requests are recorded with usage and timing',()=>{
+  const s=fold(fixture([complete(3)]));
+  const v=viewOf(s);
+  assert.equal(v.requests.length,1);
+  const r=v.requests[0];
+  assert.deepEqual({turn:r.turn,step:r.step}, {turn:1,step:1});
+  assert.equal(r.usage.tokens,35);
+  assert.equal(r.usage.cacheRead,20);
+  assert.equal(r.modelMs,90);
+  assert.ok(r.surface.total>=0);
+});
+test('unreported cache buckets stay unknown instead of a precise zero',()=>{
+  const s=fold(fixture([complete(3,{inputTokens:10,outputTokens:5,totalTokens:15})]));
+  const r=viewOf(s).requests[0];
+  assert.equal(r.usage.cacheReported,false);
+  assert.equal(r.usage.cacheRead,0);
+  assert.equal(viewOf(s).totals.cacheReports,0);
+  const s2=fold(fixture([complete(3,{inputTokens:10,outputTokens:5,cacheWriteTokens:7,totalTokens:22})]));
+  assert.equal(viewOf(s2).requests[0].usage.cacheReported,true);
+  assert.equal(viewOf(s2).totals.cacheReports,1);
+});
+test('request/context publishes the advertised window',()=>{
+  const s=fold([event('request/context',0,0,{provider:'p',model:'a',contextWindow:200000})]);
+  assert.equal(viewOf(s).context.window,200000);
+});
+test('skipped surface events mark the estimate partial',()=>{
+  const s=fold([event('user/message',2,2,{turn:1,step:1,message:{role:'user',source:{kind:'user'},content:[{type:'text',text:'x'}]}})],initialState({id:'fork'},4));
+  assert.equal(viewOf(s).context.surface.partial,true);
+  assert.equal(viewOf(s).context.surface.conversation,0);
+});
 test('two settlements 36 hours apart land on two distinct local days',()=>{
   const hour = 3600000;
   const t1 = 0;

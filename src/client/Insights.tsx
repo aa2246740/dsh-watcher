@@ -55,6 +55,31 @@ function usePricingTable() {
 
 const fmt = (n: number) => new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 0 }).format(n)
 
+type SurfaceTotals = { system: number; tools: number; memory: number; files: number; results: number; conversation: number; total: number }
+
+const SURFACE_BUCKETS: ReadonlyArray<{ key: keyof Omit<SurfaceTotals, 'total'>; label: string; color: string }> = [
+  { key: 'system', label: '系统', color: '#8b5cf6' },
+  { key: 'tools', label: '工具', color: '#0ea5e9' },
+  { key: 'memory', label: '记忆', color: '#f59e0b' },
+  { key: 'files', label: '文件', color: '#22c55e' },
+  { key: 'results', label: '工具结果', color: '#ec4899' },
+  { key: 'conversation', label: '对话', color: '#6366f1' },
+]
+
+function SurfaceBar({ surface, mini }: { surface: SurfaceTotals; mini?: boolean }) {
+  return (
+    <span className={mini ? css.compBarMini : css.compBar} role="img" aria-label="提示词构成">
+      {SURFACE_BUCKETS.filter(b => surface[b.key] > 0).map(b => (
+        <i
+          key={b.key}
+          style={{ flexGrow: surface[b.key], background: b.color }}
+          title={`${b.label} ~${fmtCompact(surface[b.key])}`}
+        />
+      ))}
+    </span>
+  )
+}
+
 const fmtCompact = (n: number) => {
   if (!Number.isFinite(n) || n <= 0) return '0'
   if (n >= 1e8) return `${(n / 1e8).toFixed(1)} 亿`
@@ -282,6 +307,8 @@ export function SessionInsights({ value, now, running, waiting, onEvidence }: {
   const currentRoute = value.turn?.route ?? (value.models && value.models.length > 0 ? value.models[0] : undefined)
   const totalIn = (stats.input ?? 0) + (stats.cacheRead ?? 0)
   const cachePct = totalIn > 0 ? Math.round(((stats.cacheRead ?? 0) / totalIn) * 100) : 0
+  // 厂商从未上报缓存桶时命中率不可知，显示未知而不是精确的 0%。
+  const cacheKnown = (stats.cacheReports ?? 0) > 0
   const estimate = estimateFromInsights(value, stats, scope, selectedModel, currentRoute, pricing)
   const costText = formatEstimate(estimate, locale)
   const costNote = formatEstimateNote(estimate, locale)
@@ -295,6 +322,20 @@ export function SessionInsights({ value, now, running, waiting, onEvidence }: {
       return !c
     })
   }
+
+  const ctx = value.context ?? undefined
+  const surface = ctx?.surface
+  const ctxPct = ctx?.window ? Math.min(100, Math.round((ctx.projected / ctx.window) * 100)) : null
+  const surfaceTotal = Math.max(1, surface?.total ?? 0)
+  const compHint = (() => {
+    if (surface === undefined) return null
+    if (surface.partial) return '部分历史未载入，构成只统计已加载的提示词'
+    const share = (k: keyof Omit<SurfaceTotals, 'total'>) => surface[k] / surfaceTotal
+    if (share('memory') > 0.25 && surface.memory > 20000) return `记忆类内容占 ${Math.round(share('memory') * 100)}% — MEMORY.md / AGENTS.md 偏大，可考虑精简`
+    if (share('tools') > 0.3 && surface.tools > 20000) return `工具清单占 ${Math.round(share('tools') * 100)}% — 启用插件/工具较多时会推高每发成本`
+    if (share('results') > 0.4 && surface.results > 30000) return `工具结果占 ${Math.round(share('results') * 100)}% — 长输出可落盘后再引用`
+    return null
+  })()
 
   return (
     <section className={css.hudBox} aria-label="耗时分布与运行健康度" data-collapsed={collapsed ? '' : undefined}>
@@ -321,7 +362,7 @@ export function SessionInsights({ value, now, running, waiting, onEvidence }: {
         </div>
         <div className={css.hudTopRight}>
           <span className={css.tokenStat}>
-            <strong>{fmt(stats.tokens ?? 0)}</strong> Token ({cachePct}% 命中)
+            <strong>{fmt(stats.tokens ?? 0)}</strong> Token ({cacheKnown ? `${cachePct}% 命中` : '缓存未上报'})
           </span>
           <span className={css.costStat} title={costTitle} aria-label={`${copy.estimatedCost}: ${costText}`}>
             {copy.estimatedCost} <strong>{costText}</strong>
@@ -344,6 +385,21 @@ export function SessionInsights({ value, now, running, waiting, onEvidence }: {
           </button>
         </div>
       </div>
+      {collapsed || ctx === undefined || surface === undefined ? null : (
+        <div className={css.ctxRow} title="上下文水面：当前提示词大小与窗口占比。● 为厂商/日志精确值，○ 为按内容长度估算">
+          <span className={css.ctxLabel}>水面</span>
+          <span className={css.ctxGauge} aria-hidden="true">
+            <i style={{ width: `${ctxPct ?? 0}%` }} data-hot={ctxPct !== null && ctxPct >= 85 ? '' : undefined} />
+          </span>
+          <span className={css.ctxNums}>
+            {ctxPct === null ? '—' : `${ctxPct}%`}
+            <em> · {fmtCompact(ctx.projected)}{ctx.window ? ` / ${fmtCompact(ctx.window)}` : ''}</em>
+          </span>
+          <SurfaceBar surface={surface} mini />
+          {totalIn > 0 ? <span className={css.ctxCache} title={cacheKnown ? undefined : '厂商未上报缓存桶，命中率不可知'}>{cacheKnown ? `${cachePct}% 缓存●` : '缓存 —'}</span> : null}
+          <span className={css.ctxNext}>下一发 ~{fmtCompact(ctx.projected)} ○</span>
+        </div>
+      )}
       {!collapsed && scope === 'session' && isMultiModel ? (
         <div className={css.modelTabBar} role="tablist" aria-label="多模型切换">
           <button type="button" className={css.modelTabBtn} data-active={modelFilter === 'all' ? '' : undefined}
@@ -357,6 +413,28 @@ export function SessionInsights({ value, now, running, waiting, onEvidence }: {
       {collapsed ? null : (
       <div className={css.hudBody}>
         <TimingPanel stats={stats} scope={scope} />
+        {ctx === undefined || surface === undefined ? null : (
+          <div className={css.compBlock}>
+            <div className={css.compHead}>
+              <span className={css.compTitle}>提示词里装着什么</span>
+              <span className={css.compNote}>~按内容长度估算{surface.partial ? ' · 部分历史未载入' : ''}</span>
+            </div>
+            <SurfaceBar surface={surface} />
+            <div className={css.compLegend}>
+              {SURFACE_BUCKETS.map(b => {
+                const v = surface[b.key]
+                if (v <= 0) return null
+                return (
+                  <span key={b.key} className={css.compItem}>
+                    <i style={{ background: b.color }} aria-hidden="true" />
+                    {b.label} <strong>{fmtCompact(v)}</strong> {Math.round((v / surfaceTotal) * 100)}%
+                  </span>
+                )
+              })}
+            </div>
+            {compHint === null ? null : <div className={css.compHint}>{compHint}</div>}
+          </div>
+        )}
         {alerts.length > 0 ? (
           <div className={css.alertSection} aria-live="polite">
             {alerts.map((a: Evidence & { id: string; title: string; detail: string; kind?: string }) => {

@@ -556,7 +556,185 @@ function ExecutionInspector({
   )
 }
 
-/** The pupil scans only while live; the complete eye remains a useful static glyph. */
+type InsightRequest = InsightsView['requests'][number]
+type SurfaceKey = 'system' | 'tools' | 'memory' | 'files' | 'results' | 'conversation'
+
+const SURFACE_BUCKETS: ReadonlyArray<{ key: SurfaceKey; label: string; color: string }> = [
+  { key: 'system', label: '系统', color: '#8b5cf6' },
+  { key: 'tools', label: '工具', color: '#0ea5e9' },
+  { key: 'memory', label: '记忆', color: '#f59e0b' },
+  { key: 'files', label: '文件', color: '#22c55e' },
+  { key: 'results', label: '工具结果', color: '#ec4899' },
+  { key: 'conversation', label: '对话', color: '#6366f1' },
+]
+
+const fmtK = (n: number) => {
+  if (!Number.isFinite(n)) return '0'
+  const abs = Math.abs(n)
+  if (abs >= 10000) return `${(n / 1000).toFixed(0)}K`
+  if (abs >= 1000) return `${(n / 1000).toFixed(1)}K`
+  return String(Math.round(n))
+}
+
+const fmtSignedK = (n: number) => `${n < 0 ? '−' : '+'}${fmtK(Math.abs(n))}`
+
+/**
+ * Per-request detail column: the settled usage ledger plus the estimated
+ * prompt composition/delta the engine snapshots at each settlement.
+ * Shares the docked inspector frame so it swaps in place of ExecutionInspector.
+ */
+function RequestInspector({
+  request,
+  trace,
+  now,
+  closing,
+  onBack,
+  onExited,
+}: {
+  request: InsightRequest
+  /** Step 的模型阶段 trace：输出/未归因耗时只有 trace 里有，用量账本没有。 */
+  trace: ModelStepTrace | null
+  now: number
+  closing: boolean
+  onBack: () => void
+  onExited: () => void
+}) {
+  const u = request.usage
+  const stageMetrics = trace === null ? null : modelStageMetrics(trace, now)
+  const prompt = u === null ? 0 : u.input + u.cacheRead + u.cacheWrite
+  const cachePct = u !== null && prompt > 0 ? Math.round((u.cacheRead / prompt) * 100) : null
+  const surfaceTotal = Math.max(1, request.surface.total)
+  const deltaRows = SURFACE_BUCKETS
+    .map(b => ({ ...b, value: request.delta[b.key] }))
+    .filter(row => row.value !== 0)
+    .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+  const routeText = `${request.route?.provider ?? '未标注提供方'}/${request.route?.model ?? '未标注模型'}`
+  return (
+    <aside
+      className={css.inspector}
+      aria-label={`对话轮次 ${request.turn || '—'} 步骤 ${request.step || '—'} 的请求用量`}
+      data-ud-check="watcher-inspector"
+      data-ud-role="panel"
+      data-closing={closing ? '' : undefined}
+      onAnimationEnd={closing
+        ? event => {
+          if (event.target === event.currentTarget) onExited()
+        }
+        : undefined}
+    >
+      <header className={css.inspectorHeader}>
+        <button
+          type="button"
+          className={css.inspectorBack}
+          onClick={onBack}
+          aria-label="返回工作路径"
+          title="返回工作路径"
+        >
+          <IconChevronRightOutlineRegular size={13} aria-hidden="true" />
+          工作路径
+        </button>
+        <h2 className={css.inspectorTitle}>请求透视</h2>
+        <p className={css.inspectorSummary}>
+          对话轮次 {request.turn || '—'} · 步骤 {request.step || '—'} · {routeText}
+        </p>
+      </header>
+
+      <div className={css.inspectorBody}>
+        <section className={css.reqSection} aria-label="这一发用量">
+          <div className={css.sectionHeading}>
+            <h3>这一发用量</h3>
+            <span>{u === null ? '未上报' : '● 厂商上报'}</span>
+          </div>
+          {u === null ? (
+            <p className={css.reqNote}>这一发没有上报用量（可能被取消或失败）。</p>
+          ) : (
+            <>
+              <dl className={css.reqMetrics}>
+                <div className={css.reqMetric}><dt>输入</dt><dd>{u.input.toLocaleString('zh-CN')}</dd></div>
+                <div className={css.reqMetric}><dt>缓存命中</dt><dd>{u.cacheReported === false ? '未上报' : <>{u.cacheRead.toLocaleString('zh-CN')}{cachePct === null ? '' : ` · ${cachePct}%`}</>}</dd></div>
+                <div className={css.reqMetric}><dt>缓存写入</dt><dd>{u.cacheWrite.toLocaleString('zh-CN')}</dd></div>
+                <div className={css.reqMetric}><dt>输出</dt><dd>{u.output.toLocaleString('zh-CN')}</dd></div>
+                {u.reasoning === null ? null : <div className={css.reqMetric}><dt>推理</dt><dd>{u.reasoning.toLocaleString('zh-CN')}</dd></div>}
+              </dl>
+              {u.cacheReported !== false && cachePct !== null && cachePct < 60 && prompt > 0 ? (
+                <p className={css.reqNote}>缓存命中偏低 — 前缀可能被注入、文件变更或压缩打断。</p>
+              ) : null}
+            </>
+          )}
+        </section>
+
+        <section className={css.reqSection} aria-label="这发装了什么">
+          <div className={css.sectionHeading}>
+            <h3>这发装了什么</h3>
+            <span>~按内容长度估算</span>
+          </div>
+          <div className={css.reqBar} role="img" aria-label="提示词构成">
+            {SURFACE_BUCKETS.filter(b => request.surface[b.key] > 0).map(b => (
+              <i
+                key={b.key}
+                style={{ flexGrow: request.surface[b.key], background: b.color }}
+                title={`${b.label} ~${fmtK(request.surface[b.key])}`}
+              />
+            ))}
+          </div>
+          <div className={css.reqLegend}>
+            {SURFACE_BUCKETS.map(b => {
+              const value = request.surface[b.key]
+              if (value <= 0) return null
+              return (
+                <span key={b.key} className={css.reqLegendItem}>
+                  <i style={{ background: b.color }} aria-hidden="true" />
+                  {b.label} {Math.round((value / surfaceTotal) * 100)}%
+                </span>
+              )
+            })}
+          </div>
+        </section>
+
+        <section className={css.reqSection} aria-label="这发新增">
+          <div className={css.sectionHeading}>
+            <h3>这发新增</h3>
+            <span>相对上一发 · ~估算</span>
+          </div>
+          {deltaRows.length === 0 ? (
+            <p className={css.reqNote}>与上一发相比提示词没有变化。</p>
+          ) : (
+            <div className={css.reqDeltas}>
+              {deltaRows.map(row => (
+                <div key={row.key} className={css.reqDelta}>
+                  <i style={{ background: row.color }} aria-hidden="true" />
+                  <span className={css.reqDeltaLabel}>{row.label}</span>
+                  <span className={css.reqDeltaValue} data-negative={row.value < 0 ? '' : undefined}>{fmtSignedK(row.value)}</span>
+                </div>
+              ))}
+              <div className={css.reqDelta} data-total="">
+                <span className={css.reqDeltaLabel}>合计</span>
+                <span className={css.reqDeltaValue} data-negative={request.delta.total < 0 ? '' : undefined}>{fmtSignedK(request.delta.total)}</span>
+              </div>
+            </div>
+          )}
+        </section>
+
+        <section className={css.reqSection} aria-label="耗时">
+          <div className={css.sectionHeading}>
+            <h3>耗时</h3>
+            <span>● 日志计时</span>
+          </div>
+          <dl className={css.reqMetrics}>
+            <div className={css.reqMetric}><dt>首个响应</dt><dd>{formatDuration(request.firstMs) ?? '未记录'}</dd></div>
+            <div className={css.reqMetric}><dt>可见推理</dt><dd>{formatDuration(request.reasoningMs) ?? '未记录'}</dd></div>
+            <div className={css.reqMetric}><dt>输出 / 工具意图</dt><dd>{stageMetrics === null ? '未记录' : formatDuration(stageMetrics.outputMs) ?? '时间戳不可用'}</dd></div>
+            {stageMetrics !== null && stageMetrics.unattributedMs !== null && stageMetrics.unattributedMs > 0
+              ? <div className={css.reqMetric}><dt>重试 / 未归因</dt><dd>{formatDuration(stageMetrics.unattributedMs)}</dd></div>
+              : null}
+            <div className={css.reqMetric}><dt>模型总耗时</dt><dd>{formatDuration(request.modelMs) ?? '未记录'}</dd></div>
+          </dl>
+        </section>
+      </div>
+      <footer className={css.inspectorFooter}>只读观察 · 不会改变 Agent</footer>
+    </aside>
+  )
+}
 function IconLivingEye({ size = 17 }: { size?: number }) {
   return (
     <svg
@@ -637,29 +815,29 @@ function reasoningAttemptState(attempt: ModelAttempt): string {
   return '已完成'
 }
 
-type ModelStageSegment = {
-  key: 'wait' | 'reasoning' | 'output' | 'unattributed'
-  label: string
-  durationMs: number | null
-  unavailableLabel: string
-}
-
 function ModelStage({
   trace,
   stepId,
   now,
   open,
   disclosure,
+  request,
+  pendingEstimate,
   onToggle,
   onToggleReasoning,
+  onOpenRequest,
 }: {
   trace: ModelStepTrace
   stepId: string
   now: number
   open: boolean
   disclosure: DisclosureState
+  request?: InsightRequest
+  /** In-flight next-request estimate (tokens), shown while this step's usage is unsettled. */
+  pendingEstimate?: number | null
   onToggle: () => void
   onToggleReasoning: (key: string) => void
+  onOpenRequest?: (request: InsightRequest) => void
 }) {
   const metrics = modelStageMetrics(trace, now)
   const hasReasoning = hasReasoningEvidence(trace)
@@ -674,85 +852,67 @@ function ModelStage({
     trace.reasoningTokens === null ? null : `${trace.reasoningTokens.toLocaleString('zh-CN')} 推理 token`,
     metrics.live ? '进行中' : null,
   ].filter((value): value is string => value !== null).join(' · ')
-  const segments: ModelStageSegment[] = [
-    {
-      key: 'wait',
-      label: '首响应等待',
-      durationMs: metrics.firstResponseMs,
-      unavailableLabel: '时间戳不可用',
-    },
-    {
-      key: 'reasoning',
-      label: '可见推理',
-      durationMs: metrics.visibleReasoningMs,
-      unavailableLabel: hasReasoning ? '分段耗时不可用' : '未记录',
-    },
-    {
-      key: 'output',
-      label: '输出 / 工具意图',
-      durationMs: metrics.outputMs,
-      unavailableLabel: '时间戳不可用',
-    },
-    ...metrics.unattributedMs !== null && metrics.unattributedMs > 0
-      ? [{
-          key: 'unattributed' as const,
-          label: '重试 / 未归因',
-          durationMs: metrics.unattributedMs,
-          unavailableLabel: '不可用',
-        }]
-      : [],
-  ]
-  const measuredSegments = segments.filter((segment): segment is ModelStageSegment & { durationMs: number } => (
-    segment.durationMs !== null && segment.durationMs > 0
-  ))
   const bodyId = `watcher-model-stage-${stepId}`
+
+  const requestChip = (() => {
+    if (request !== undefined) {
+      const u = request.usage
+      if (u === null) return null
+      const prompt = u.input + u.cacheRead + u.cacheWrite
+      const cacheUnknown = u.cacheReported === false
+      const pct = cacheUnknown || prompt <= 0 ? null : Math.round((u.cacheRead / prompt) * 100)
+      const delta = request.delta.total
+      const label = `${fmtK(prompt)} · ${pct === null ? '—' : `${pct}%`} · ${fmtSignedK(delta)}`
+      return (
+        <button
+          type="button"
+          className={css.requestChip}
+          title={`请求用量 ${prompt.toLocaleString('zh-CN')} token（● 厂商上报）· 缓存命中 ${cacheUnknown ? '未上报' : `${pct ?? '—'}%`} · 提示词较上一发 ${fmtSignedK(delta)}（~估算）`}
+          onClick={event => {
+            event.stopPropagation()
+            onOpenRequest?.(request)
+          }}
+        >
+          {label}
+        </button>
+      )
+    }
+    if (pendingEstimate !== null && pendingEstimate !== undefined && pendingEstimate > 0) {
+      return (
+        <span
+          className={css.requestChip}
+          data-live=""
+          title="本发请求正在进行；精确用量在模型结算后显示，当前为下一发提示词估算 ○"
+        >
+          ~{fmtK(pendingEstimate)} ○
+        </span>
+      )
+    }
+    return null
+  })()
 
   return (
     <section className={css.modelStage} data-live={metrics.live ? '' : undefined}>
-      <button
-        type="button"
-        className={css.modelStageToggle}
-        aria-expanded={open}
-        aria-controls={bodyId}
-        title="模型阶段只使用 DSH 会话中供应商公开写入的事件"
-        onClick={onToggle}
-      >
-        <IconChevronRightOutlineRegular size={11} className={css.modelStageChevron} />
-        <span className={css.modelStageGlyph} aria-hidden="true" />
-        <span className={css.modelStageCopy}>
-          <span className={css.modelStageTitle}>模型阶段</span>
-          <span className={css.modelStageSummary}>{summary}</span>
-        </span>
-      </button>
+      <div className={css.modelStageHead}>
+        <button
+          type="button"
+          className={css.modelStageToggle}
+          aria-expanded={open}
+          aria-controls={bodyId}
+          title="模型阶段只使用 DSH 会话中供应商公开写入的事件"
+          onClick={onToggle}
+        >
+          <IconChevronRightOutlineRegular size={11} className={css.modelStageChevron} />
+          <span className={css.modelStageGlyph} aria-hidden="true" />
+          <span className={css.modelStageCopy}>
+            <span className={css.modelStageTitle}>模型阶段</span>
+            <span className={css.modelStageSummary}>{summary}</span>
+          </span>
+        </button>
+        {requestChip}
+      </div>
 
       <div id={bodyId} className={css.modelStageBody} hidden={!open}>
-        {measuredSegments.length === 0
-          ? null
-          : (
-            <div className={css.modelStageBar} aria-label="模型阶段耗时比例">
-              {measuredSegments.map(segment => (
-                <span
-                  key={segment.key}
-                  data-segment={segment.key}
-                  style={{ flexGrow: Math.max(segment.durationMs, 1) }}
-                  title={`${segment.label} ${formatDuration(segment.durationMs) ?? ''}`}
-                />
-              ))}
-            </div>
-          )}
-
-        <dl className={css.modelStageLedger}>
-          {segments.map(segment => (
-            <div key={segment.key} className={css.modelStageMetric}>
-              <dt>
-                <span className={css.modelStageSwatch} data-segment={segment.key} aria-hidden="true" />
-                {segment.label}
-              </dt>
-              <dd>{formatDuration(segment.durationMs) ?? segment.unavailableLabel}</dd>
-            </div>
-          ))}
-        </dl>
-
         {reasoningAttempts.length === 0
           ? <p className={css.modelStageNote}>本 Step 没有供应商可见推理记录</p>
           : (
@@ -858,10 +1018,13 @@ function PhaseOverview({
   observationMode,
   open,
   disclosure,
+  requestForStep,
+  pendingForStep,
   onToggle,
   onToggleLayer,
   onToggleReasoning,
   onSelectItem,
+  onOpenRequest,
 }: {
   group: WorkGroup
   isNow: boolean
@@ -872,10 +1035,14 @@ function PhaseOverview({
   observationMode: ObservationMode
   open: boolean
   disclosure: DisclosureState
+  requestForStep: (turn: number, step: number) => InsightRequest | undefined
+  /** In-flight estimate for a step whose request has not settled yet. */
+  pendingForStep: (turn: number, step: number) => number | null
   onToggle: () => void
   onToggleLayer: (layer: DisclosureLayer, key: string) => void
   onToggleReasoning: (key: string, modelKey: string) => void
   onSelectItem: (item: WorkItem) => void
+  onOpenRequest: (request: InsightRequest) => void
 }) {
   const phaseState = overviewStateOf(group.status, isNow)
   const phaseDuration = formatDuration(groupElapsedMs(group, isNow && running, now))
@@ -972,8 +1139,11 @@ function PhaseOverview({
                               now={now}
                               open={modelOpen}
                               disclosure={disclosure}
+                              request={requestForStep(step.turn, step.step)}
+                              pendingEstimate={pendingForStep(step.turn, step.step)}
                               onToggle={() => onToggleLayer('model', step.id)}
                               onToggleReasoning={key => onToggleReasoning(key, step.id)}
+                              onOpenRequest={onOpenRequest}
                             />
                           )
                         }
@@ -1034,8 +1204,11 @@ function PhaseOverview({
                               now={now}
                               open={modelOpen}
                               disclosure={disclosure}
+                              request={requestForStep(step.turn, step.step)}
+                              pendingEstimate={pendingForStep(step.turn, step.step)}
                               onToggle={() => onToggleLayer('model', step.id)}
                               onToggleReasoning={key => onToggleReasoning(key, step.id)}
+                              onOpenRequest={onOpenRequest}
                             />
                           </div>
                         )
@@ -1437,6 +1610,7 @@ export function WorkPicturePanel({
 }: WorkPicturePanelProps) {
   const [ui, setUi] = useState(() => ({ follow: true, unread: 0, selectedId: null as string | null }))
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
+  const [selectedRequestKey, setSelectedRequestKey] = useState<string | null>(null)
   const [inspectorClosing, setInspectorClosing] = useState(false)
   const inspectorExitTimer = useRef<number | null>(null)
   const inspectorExitToLatest = useRef(false)
@@ -1470,6 +1644,28 @@ export function WorkPicturePanel({
   const summaryState = summaryStateOf(picture)
   const nowLabel = picture.now.label || (picture.nodes.length > 0 ? '执行路径已就绪' : '等待指令')
 
+  const requestByStep = useMemo(
+    () => new Map((insights?.requests ?? []).map(row => [`${row.turn}:${row.step}`, row])),
+    [insights?.requests],
+  )
+  const pendingRequest = insights?.pending ?? null
+  const projectedTokens = insights?.context?.projected ?? null
+  const requestForStep = (turn: number, step: number) => requestByStep.get(`${turn}:${step}`)
+  const pendingForStep = (turn: number, step: number) =>
+    pendingRequest !== null && pendingRequest.turn === turn && pendingRequest.step === step
+      ? projectedTokens
+      : null
+  const selectedRequest = selectedRequestKey === null ? undefined : requestByStep.get(selectedRequestKey)
+  const traceByStep = useMemo(() => {
+    const map = new Map<string, ModelStepTrace>()
+    for (const turn of picture.turns)
+      for (const group of turn.groups)
+        for (const step of group.steps)
+          if (step.model !== null) map.set(`${step.turn}:${step.step}`, step.model)
+    return map
+  }, [picture.turns])
+  const selectedTrace = selectedRequestKey === null ? null : traceByStep.get(selectedRequestKey) ?? null
+
   useLayoutEffect(() => {
     historyAbortRef.current?.abort()
     historyAbortRef.current = null
@@ -1477,6 +1673,7 @@ export function WorkPicturePanel({
     followRef.current.reset()
     setUi(followRef.current.snapshot())
     setSelectedItemId(null)
+    setSelectedRequestKey(null)
     setDisclosure(resetDisclosureOverrides)
   }, [sessionId])
 
@@ -1509,6 +1706,16 @@ export function WorkPicturePanel({
     setInspectorClosing(false)
     setUi(followRef.current.onSelect(group.id))
     setSelectedItemId(item.id)
+    setSelectedRequestKey(null)
+  }
+
+  const selectRequest = (request: InsightRequest) => {
+    clearInspectorExit()
+    onInspectorFrameChange?.()
+    setInspectorClosing(false)
+    setUi(followRef.current.clearSelection())
+    setSelectedItemId(null)
+    setSelectedRequestKey(`${request.turn}:${request.step}`)
   }
 
   /**
@@ -1561,6 +1768,7 @@ export function WorkPicturePanel({
   const finishInspectorExit = () => {
     setUi(inspectorExitToLatest.current ? followRef.current.backToLatest() : followRef.current.clearSelection())
     setSelectedItemId(null)
+    setSelectedRequestKey(null)
     setInspectorClosing(false)
   }
 
@@ -1634,7 +1842,18 @@ export function WorkPicturePanel({
   return (
     <>
       {selected === undefined
-        ? null
+        ? selectedRequest === undefined
+          ? null
+          : (
+            <RequestInspector
+              request={selectedRequest}
+              trace={selectedTrace}
+              now={now}
+              closing={inspectorClosing}
+              onBack={() => closeInspector()}
+              onExited={finishInspectorExit}
+            />
+          )
         : (
           <ExecutionInspector
             group={selected}
@@ -1864,6 +2083,8 @@ export function WorkPicturePanel({
                                 observationMode={observationMode}
                                 open={phaseOpen}
                                 disclosure={disclosure}
+                                requestForStep={requestForStep}
+                                pendingForStep={pendingForStep}
                                 onToggle={() => {
                                   pinForDisclosure()
                                   setDisclosure(current => toggleLayerDisclosure(current, 'phase', group.id))
@@ -1886,6 +2107,7 @@ export function WorkPicturePanel({
                                   })
                                 }}
                                 onSelectItem={item => selectItem(group, item)}
+                                onOpenRequest={selectRequest}
                               />
                             )
                           })}
