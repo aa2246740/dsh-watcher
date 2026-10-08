@@ -307,6 +307,8 @@ export function SessionInsights({ value, now, running, waiting, onEvidence }: {
   const currentRoute = value.turn?.route ?? (value.models && value.models.length > 0 ? value.models[0] : undefined)
   const totalIn = (stats.input ?? 0) + (stats.cacheRead ?? 0)
   const cachePct = totalIn > 0 ? Math.round(((stats.cacheRead ?? 0) / totalIn) * 100) : 0
+  // 厂商从未上报缓存桶时命中率不可知，显示未知而不是精确的 0%。
+  const cacheKnown = (stats.cacheReports ?? 0) > 0
   const estimate = estimateFromInsights(value, stats, scope, selectedModel, currentRoute, pricing)
   const costText = formatEstimate(estimate, locale)
   const costNote = formatEstimateNote(estimate, locale)
@@ -360,7 +362,7 @@ export function SessionInsights({ value, now, running, waiting, onEvidence }: {
         </div>
         <div className={css.hudTopRight}>
           <span className={css.tokenStat}>
-            <strong>{fmt(stats.tokens ?? 0)}</strong> Token ({cachePct}% 命中)
+            <strong>{fmt(stats.tokens ?? 0)}</strong> Token ({cacheKnown ? `${cachePct}% 命中` : '缓存未上报'})
           </span>
           <span className={css.costStat} title={costTitle} aria-label={`${copy.estimatedCost}: ${costText}`}>
             {copy.estimatedCost} <strong>{costText}</strong>
@@ -394,7 +396,7 @@ export function SessionInsights({ value, now, running, waiting, onEvidence }: {
             <em> · {fmtCompact(ctx.projected)}{ctx.window ? ` / ${fmtCompact(ctx.window)}` : ''}</em>
           </span>
           <SurfaceBar surface={surface} mini />
-          {totalIn > 0 ? <span className={css.ctxCache}>{cachePct}% 缓存●</span> : null}
+          {totalIn > 0 ? <span className={css.ctxCache} title={cacheKnown ? undefined : '厂商未上报缓存桶，命中率不可知'}>{cacheKnown ? `${cachePct}% 缓存●` : '缓存 —'}</span> : null}
           <span className={css.ctxNext}>下一发 ~{fmtCompact(ctx.projected)} ○</span>
         </div>
       )}

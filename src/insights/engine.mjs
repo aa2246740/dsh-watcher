@@ -9,7 +9,7 @@ const count = v => Number.isSafeInteger(v) && v >= 0;
 const elapsed = (start, end) => start === null ? 0 : Math.max(0, end - start);
 export function emptyStats() {
   return { calls: 0, reported: 0, exactTotals: 0, tokens: 0, input: 0, output: 0,
-    cacheRead: 0, cacheWrite: 0, reasoning: 0, reasoningReports: 0,
+    cacheRead: 0, cacheWrite: 0, cacheReports: 0, reasoning: 0, reasoningReports: 0,
     modelMs: 0, timedCalls: 0, firstMs: 0, firstSamples: 0, reasoningMs: 0,
     tools: 0, toolErrors: 0, toolMs: 0, bashMs: 0, retries: 0 };
 }
@@ -32,6 +32,7 @@ function normalizeUsage(value) {
   if (!Number.isSafeInteger(minimum) || (value.totalTokens !== undefined && value.totalTokens < minimum)) return null;
   return { input: value.inputTokens, output: value.outputTokens, cacheRead: value.cacheReadTokens ?? 0,
     cacheWrite: value.cacheWriteTokens ?? 0, reasoning: value.reasoningTokens ?? null,
+    cacheReported: value.cacheReadTokens !== undefined || value.cacheWriteTokens !== undefined,
     tokens: value.totalTokens ?? minimum, exact: value.totalTokens !== undefined };
 }
 function canonical(v) {
@@ -163,6 +164,9 @@ function settle(s, time, usage, source, surfaceSnapshot = null) {
     if (u) {
       b.reported++; b.exactTotals += Number(u.exact); b.tokens += u.tokens;
       for (const k of ['input', 'output', 'cacheRead', 'cacheWrite']) b[k] += u[k];
+      // Providers that omit cache buckets stay "unknown" instead of counting as a
+      // precise 0% hit; older checkpointed stats may lack the counter entirely.
+      if (u.cacheReported) b.cacheReports = (b.cacheReports ?? 0) + 1;
       if (u.reasoning !== null) { b.reasoningReports++; b.reasoning += u.reasoning; }
     }
   }

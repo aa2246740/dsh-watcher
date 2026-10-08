@@ -8,7 +8,7 @@ const number = z.number().finite().nonnegative()
 const signed = z.number().finite()
 const nullableTime = z.number().finite().nullable()
 const stats = z.object({ calls:number,reported:number,exactTotals:number,tokens:number,input:number,output:number,
-  cacheRead:number,cacheWrite:number,reasoning:number,reasoningReports:number,modelMs:number,timedCalls:number,
+  cacheRead:number,cacheWrite:number,cacheReports:number.optional(),reasoning:number,reasoningReports:number,modelMs:number,timedCalls:number,
   firstMs:number,firstSamples:number,reasoningMs:number,tools:number,toolErrors:number,toolMs:number,bashMs:number.optional(),retries:number })
 const route = z.object({provider:z.string(),model:z.string(),effort:z.string().nullable().optional()})
 const finding = z.object({id:z.string(),kind:z.string(),turn:number,seqs:z.array(number),steps:z.array(number),title:z.string(),detail:z.string()})
@@ -16,7 +16,7 @@ const turn = z.object({number,startedAt:z.number().finite(),endedAt:nullableTime
 const pending = z.object({turn:number,step:number,start:nullableTime,reasoningFirst:nullableTime,reasoningLast:nullableTime,lastContentAt:nullableTime}).nullable()
 const dayModels = z.array(z.object({provider:z.string(),model:z.string(),effort:z.string().optional(),tokens:number}))
 const days = z.array(z.object({key:z.string(),tokens:number,models:dayModels}))
-const usage = z.object({input:number,output:number,cacheRead:number,cacheWrite:number,reasoning:number.nullable(),tokens:number,exact:z.boolean()}).nullable()
+const usage = z.object({input:number,output:number,cacheRead:number,cacheWrite:number,reasoning:number.nullable(),cacheReported:z.boolean().optional(),tokens:number,exact:z.boolean()}).nullable()
 const bucketKeys = z.enum(['system','tools','memory','files','results','conversation'])
 const surface = z.object({system:number,tools:number,memory:number,files:number,results:number,conversation:number})
 const surfaceTotals = surface.extend({total:number})

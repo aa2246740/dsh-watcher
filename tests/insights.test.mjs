@@ -133,6 +133,16 @@ test('settled requests are recorded with usage and timing',()=>{
   assert.equal(r.modelMs,90);
   assert.ok(r.surface.total>=0);
 });
+test('unreported cache buckets stay unknown instead of a precise zero',()=>{
+  const s=fold(fixture([complete(3,{inputTokens:10,outputTokens:5,totalTokens:15})]));
+  const r=viewOf(s).requests[0];
+  assert.equal(r.usage.cacheReported,false);
+  assert.equal(r.usage.cacheRead,0);
+  assert.equal(viewOf(s).totals.cacheReports,0);
+  const s2=fold(fixture([complete(3,{inputTokens:10,outputTokens:5,cacheWriteTokens:7,totalTokens:22})]));
+  assert.equal(viewOf(s2).requests[0].usage.cacheReported,true);
+  assert.equal(viewOf(s2).totals.cacheReports,1);
+});
 test('request/context publishes the advertised window',()=>{
   const s=fold([event('request/context',0,0,{provider:'p',model:'a',contextWindow:200000})]);
   assert.equal(viewOf(s).context.window,200000);

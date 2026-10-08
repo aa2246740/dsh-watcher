@@ -645,12 +645,12 @@ function RequestInspector({
             <>
               <dl className={css.reqMetrics}>
                 <div className={css.reqMetric}><dt>输入</dt><dd>{u.input.toLocaleString('zh-CN')}</dd></div>
-                <div className={css.reqMetric}><dt>缓存命中</dt><dd>{u.cacheRead.toLocaleString('zh-CN')}{cachePct === null ? '' : ` · ${cachePct}%`}</dd></div>
+                <div className={css.reqMetric}><dt>缓存命中</dt><dd>{u.cacheReported === false ? '未上报' : <>{u.cacheRead.toLocaleString('zh-CN')}{cachePct === null ? '' : ` · ${cachePct}%`}</>}</dd></div>
                 <div className={css.reqMetric}><dt>缓存写入</dt><dd>{u.cacheWrite.toLocaleString('zh-CN')}</dd></div>
                 <div className={css.reqMetric}><dt>输出</dt><dd>{u.output.toLocaleString('zh-CN')}</dd></div>
                 {u.reasoning === null ? null : <div className={css.reqMetric}><dt>推理</dt><dd>{u.reasoning.toLocaleString('zh-CN')}</dd></div>}
               </dl>
-              {cachePct !== null && cachePct < 60 && prompt > 0 ? (
+              {u.cacheReported !== false && cachePct !== null && cachePct < 60 && prompt > 0 ? (
                 <p className={css.reqNote}>缓存命中偏低 — 前缀可能被注入、文件变更或压缩打断。</p>
               ) : null}
             </>
@@ -887,14 +887,15 @@ function ModelStage({
       const u = request.usage
       if (u === null) return null
       const prompt = u.input + u.cacheRead + u.cacheWrite
-      const pct = prompt > 0 ? Math.round((u.cacheRead / prompt) * 100) : null
+      const cacheUnknown = u.cacheReported === false
+      const pct = cacheUnknown || prompt <= 0 ? null : Math.round((u.cacheRead / prompt) * 100)
       const delta = request.delta.total
       const label = `${fmtK(prompt)} · ${pct === null ? '—' : `${pct}%`} · ${fmtSignedK(delta)}`
       return (
         <button
           type="button"
           className={css.requestChip}
-          title={`请求用量 ${prompt.toLocaleString('zh-CN')} token（● 厂商上报）· 缓存命中 ${pct ?? '—'}% · 提示词较上一发 ${fmtSignedK(delta)}（~估算）`}
+          title={`请求用量 ${prompt.toLocaleString('zh-CN')} token（● 厂商上报）· 缓存命中 ${cacheUnknown ? '未上报' : `${pct ?? '—'}%`} · 提示词较上一发 ${fmtSignedK(delta)}（~估算）`}
           onClick={event => {
             event.stopPropagation()
             onOpenRequest?.(request)
