@@ -15,6 +15,9 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    env:
+      npm_config_auto_install_peers: 'false'
+      PNPM_CONFIG_AUTO_INSTALL_PEERS: 'false'
     steps:
       - uses: actions/checkout@v4
 
@@ -35,7 +38,7 @@ jobs:
           TAG=${GITHUB_REF_NAME#v}
           if [ "$PKG" != "$TAG" ]; then echo "tag v$TAG != package.json $PKG"; exit 1; fi
 
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --config.auto-install-peers=false
       - run: pnpm run build
       - run: pnpm test
 
