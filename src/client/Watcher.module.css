@@ -1156,61 +1156,6 @@ button.requestChip:hover {
   color: var(--dsw-alias-label-secondary);
 }
 
-.modelStageBar {
-  display: flex;
-  gap: 2px;
-  height: 5px;
-  margin: 2px 0 10px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: var(--dsw-alias-border-l2);
-}
-
-.modelStageBar > span {
-  min-width: 3px;
-  border-radius: inherit;
-}
-
-.modelStageBar [data-segment='wait'],
-.modelStageSwatch[data-segment='wait'] { background: var(--dsw-alias-label-dimmed); }
-.modelStageBar [data-segment='reasoning'],
-.modelStageSwatch[data-segment='reasoning'] { background: var(--dsw-static-deepseek-450); }
-.modelStageBar [data-segment='output'],
-.modelStageSwatch[data-segment='output'] { background: var(--dsw-alias-label-secondary); }
-.modelStageBar [data-segment='unattributed'],
-.modelStageSwatch[data-segment='unattributed'] { background: var(--dsw-alias-state-warn-primary); }
-
-.modelStageLedger {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 5px 12px;
-  margin: 0;
-}
-
-.modelStageMetric {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  line-height: 18px;
-}
-
-.modelStageMetric dt,
-.modelStageMetric dd { margin: 0; }
-.modelStageMetric dt { display: inline-flex; min-width: 0; align-items: center; gap: 6px; }
-.modelStageMetric dd { flex: none; color: var(--dsw-alias-label-secondary); text-align: right; }
-
-.modelStageSwatch {
-  flex: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-}
-
 .modelStageNote {
   margin: 8px 0 0;
   color: var(--dsw-alias-label-tertiary);
@@ -2205,7 +2150,6 @@ button.requestChip:hover {
   .metrics dd { text-align: left; }
   .modelStageCopy { grid-template-columns: 1fr; gap: 0; }
   .modelStageSummary { white-space: normal; }
-  .modelStageLedger { grid-template-columns: 1fr; }
   .reasoningToggle { grid-template-columns: 12px minmax(0, 1fr); }
   .reasoningMeta { grid-column: 2; text-align: left; white-space: normal; }
   .groupedModelToggle > span { display: grid; gap: 0; }

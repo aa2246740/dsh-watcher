@@ -585,16 +585,22 @@ const fmtSignedK = (n: number) => `${n < 0 ? '−' : '+'}${fmtK(Math.abs(n))}`
  */
 function RequestInspector({
   request,
+  trace,
+  now,
   closing,
   onBack,
   onExited,
 }: {
   request: InsightRequest
+  /** Step 的模型阶段 trace：输出/未归因耗时只有 trace 里有，用量账本没有。 */
+  trace: ModelStepTrace | null
+  now: number
   closing: boolean
   onBack: () => void
   onExited: () => void
 }) {
   const u = request.usage
+  const stageMetrics = trace === null ? null : modelStageMetrics(trace, now)
   const prompt = u === null ? 0 : u.input + u.cacheRead + u.cacheWrite
   const cachePct = u !== null && prompt > 0 ? Math.round((u.cacheRead / prompt) * 100) : null
   const surfaceTotal = Math.max(1, request.surface.total)
@@ -717,6 +723,10 @@ function RequestInspector({
           <dl className={css.reqMetrics}>
             <div className={css.reqMetric}><dt>首个响应</dt><dd>{formatDuration(request.firstMs) ?? '未记录'}</dd></div>
             <div className={css.reqMetric}><dt>可见推理</dt><dd>{formatDuration(request.reasoningMs) ?? '未记录'}</dd></div>
+            <div className={css.reqMetric}><dt>输出 / 工具意图</dt><dd>{stageMetrics === null ? '未记录' : formatDuration(stageMetrics.outputMs) ?? '时间戳不可用'}</dd></div>
+            {stageMetrics !== null && stageMetrics.unattributedMs !== null && stageMetrics.unattributedMs > 0
+              ? <div className={css.reqMetric}><dt>重试 / 未归因</dt><dd>{formatDuration(stageMetrics.unattributedMs)}</dd></div>
+              : null}
             <div className={css.reqMetric}><dt>模型总耗时</dt><dd>{formatDuration(request.modelMs) ?? '未记录'}</dd></div>
           </dl>
         </section>
@@ -805,13 +815,6 @@ function reasoningAttemptState(attempt: ModelAttempt): string {
   return '已完成'
 }
 
-type ModelStageSegment = {
-  key: 'wait' | 'reasoning' | 'output' | 'unattributed'
-  label: string
-  durationMs: number | null
-  unavailableLabel: string
-}
-
 function ModelStage({
   trace,
   stepId,
@@ -849,37 +852,6 @@ function ModelStage({
     trace.reasoningTokens === null ? null : `${trace.reasoningTokens.toLocaleString('zh-CN')} 推理 token`,
     metrics.live ? '进行中' : null,
   ].filter((value): value is string => value !== null).join(' · ')
-  const segments: ModelStageSegment[] = [
-    {
-      key: 'wait',
-      label: '首响应等待',
-      durationMs: metrics.firstResponseMs,
-      unavailableLabel: '时间戳不可用',
-    },
-    {
-      key: 'reasoning',
-      label: '可见推理',
-      durationMs: metrics.visibleReasoningMs,
-      unavailableLabel: hasReasoning ? '分段耗时不可用' : '未记录',
-    },
-    {
-      key: 'output',
-      label: '输出 / 工具意图',
-      durationMs: metrics.outputMs,
-      unavailableLabel: '时间戳不可用',
-    },
-    ...metrics.unattributedMs !== null && metrics.unattributedMs > 0
-      ? [{
-          key: 'unattributed' as const,
-          label: '重试 / 未归因',
-          durationMs: metrics.unattributedMs,
-          unavailableLabel: '不可用',
-        }]
-      : [],
-  ]
-  const measuredSegments = segments.filter((segment): segment is ModelStageSegment & { durationMs: number } => (
-    segment.durationMs !== null && segment.durationMs > 0
-  ))
   const bodyId = `watcher-model-stage-${stepId}`
 
   const requestChip = (() => {
@@ -941,33 +913,6 @@ function ModelStage({
       </div>
 
       <div id={bodyId} className={css.modelStageBody} hidden={!open}>
-        {measuredSegments.length === 0
-          ? null
-          : (
-            <div className={css.modelStageBar} aria-label="模型阶段耗时比例">
-              {measuredSegments.map(segment => (
-                <span
-                  key={segment.key}
-                  data-segment={segment.key}
-                  style={{ flexGrow: Math.max(segment.durationMs, 1) }}
-                  title={`${segment.label} ${formatDuration(segment.durationMs) ?? ''}`}
-                />
-              ))}
-            </div>
-          )}
-
-        <dl className={css.modelStageLedger}>
-          {segments.map(segment => (
-            <div key={segment.key} className={css.modelStageMetric}>
-              <dt>
-                <span className={css.modelStageSwatch} data-segment={segment.key} aria-hidden="true" />
-                {segment.label}
-              </dt>
-              <dd>{formatDuration(segment.durationMs) ?? segment.unavailableLabel}</dd>
-            </div>
-          ))}
-        </dl>
-
         {reasoningAttempts.length === 0
           ? <p className={css.modelStageNote}>本 Step 没有供应商可见推理记录</p>
           : (
@@ -1711,6 +1656,15 @@ export function WorkPicturePanel({
       ? projectedTokens
       : null
   const selectedRequest = selectedRequestKey === null ? undefined : requestByStep.get(selectedRequestKey)
+  const traceByStep = useMemo(() => {
+    const map = new Map<string, ModelStepTrace>()
+    for (const turn of picture.turns)
+      for (const group of turn.groups)
+        for (const step of group.steps)
+          if (step.model !== null) map.set(`${step.turn}:${step.step}`, step.model)
+    return map
+  }, [picture.turns])
+  const selectedTrace = selectedRequestKey === null ? null : traceByStep.get(selectedRequestKey) ?? null
 
   useLayoutEffect(() => {
     historyAbortRef.current?.abort()
@@ -1893,6 +1847,8 @@ export function WorkPicturePanel({
           : (
             <RequestInspector
               request={selectedRequest}
+              trace={selectedTrace}
+              now={now}
               closing={inspectorClosing}
               onBack={() => closeInspector()}
               onExited={finishInspectorExit}
