@@ -113,7 +113,7 @@
     "@deepseek-ai/dsh-session-stats": "0.2.0-rc.2",
     "@eslint/js": "^10.0.1",
     "@size-limit/file": "^14.2.0",
-    "@types/node": "^22.20.4",
+    "@types/node": "^26.6.5",
     "@types/react": "~18.3.1",
     "@types/react-dom": "~18.3.0",
     "@vitest/coverage-v8": "^5.0.5",
