@@ -4,5 +4,13 @@
   "minimumReleaseAge": "7 days",
   "labels": ["chore", "P3"],
   "prConcurrentLimit": 2,
-  "dependencyDashboard": false
+  "dependencyDashboard": false,
+  "packageRules": [
+    {
+      "description": "React is supplied by the DSH Host (React 18). Do not take semver-major updates.",
+      "matchPackageNames": ["react", "react-dom", "@types/react", "@types/react-dom"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    }
+  ]
 }

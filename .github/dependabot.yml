@@ -13,3 +13,18 @@ updates:
     commit-message:
       prefix: chore
       include: scope
+    # React is supplied by the DSH Host (React 18). A semver-major bump
+    # would typecheck against an API the runtime does not provide.
+    ignore:
+      - dependency-name: react
+        update-types:
+          - version-update:semver-major
+      - dependency-name: react-dom
+        update-types:
+          - version-update:semver-major
+      - dependency-name: '@types/react'
+        update-types:
+          - version-update:semver-major
+      - dependency-name: '@types/react-dom'
+        update-types:
+          - version-update:semver-major
