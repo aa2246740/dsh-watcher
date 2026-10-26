@@ -3,7 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-session-projection'
 // Untyped local ESM fold: validated at runtime by zod below; single .mjs source kept for node tests.
 // @ts-ignore TS7016: no declarations for the local .mjs module
-import { initialState, reduceEvent, viewOf } from './engine.mjs'
+import { initialState, reduceEvent, viewOf, SLOT_CAP } from './engine.mjs'
 const number = z.number().finite().nonnegative()
 const signed = z.number().finite()
 const nullableTime = z.number().finite().nullable()
@@ -15,7 +15,7 @@ const finding = z.object({id:z.string(),kind:z.string(),turn:number,seqs:z.array
 const turn = z.object({number,startedAt:z.number().finite(),endedAt:nullableTime,steps:number,stats,route:route.optional()}).nullable()
 const pending = z.object({turn:number,step:number,start:nullableTime,reasoningFirst:nullableTime,reasoningLast:nullableTime,lastContentAt:nullableTime}).nullable()
 const dayModels = z.array(z.object({provider:z.string(),model:z.string(),effort:z.string().optional(),tokens:number}))
-const days = z.array(z.object({key:z.string(),tokens:number,models:dayModels}))
+const days = z.array(z.object({start:z.number().int().nonnegative(),tokens:number,models:dayModels})).max(SLOT_CAP)
 const usage = z.object({input:number,output:number,cacheRead:number,cacheWrite:number,reasoning:number.nullable(),cacheReported:z.boolean().optional(),tokens:number,exact:z.boolean()}).nullable()
 const bucketKeys = z.enum(['system','tools','memory','files','results','conversation'])
 const surface = z.object({system:number,tools:number,memory:number,files:number,results:number,conversation:number})
@@ -27,12 +27,12 @@ const context = z.object({window:number.nullable(),surface:surfaceTotals.extend(
 const toolStat = z.object({name:z.string(),calls:number,errors:number,toolMs:number,stepTokens:number,resultChars:number})
 const skillStat = z.object({name:z.string(),modelCalls:number,userCalls:number,errors:number,toolMs:number,stepTokens:number,injectedChars:number,lastSeen:number})
 const turnRow = z.object({n:number,start:z.number().finite(),end:z.number().finite(),tokens:number,tools:number,calls:number})
-export const viewSchema = z.object({version:z.literal(4),sessionId:z.string(),seq:z.number().int().min(-1),updatedAt:z.number().finite(),
+export const viewSchema = z.object({version:z.literal(5),sessionId:z.string(),seq:z.number().int().min(-1),updatedAt:z.number().finite(),
   totals:stats,models:z.array(stats.extend({provider:z.string(),model:z.string(),effort:z.string().optional()})),days,turn,pending,findings:z.array(finding).max(30),findingCount:number,
   context,requests:z.array(requestRow).max(60),
   cwd:z.string().nullable(),preset:z.string().nullable(),prompts:number,
   toolStats:z.array(toolStat),skillStats:z.array(skillStat),turns:z.array(turnRow).max(500)})
-const stateSchema = z.object({version:z.literal(4),sessionId:z.string(),skip:number,seq:z.number().int().min(-1),updatedAt:z.number().finite(),
+const stateSchema = z.object({version:z.literal(5),sessionId:z.string(),skip:number,seq:z.number().int().min(-1),updatedAt:z.number().finite(),
   route,totals:stats,models:z.array(stats.extend({provider:z.string(),model:z.string()})),days,turn,
   cwd:z.string().nullable(),preset:z.string().nullable(),prompts:number,
   stepTokens:z.object({turn:number,step:number,tokens:number}).nullable(),
@@ -51,7 +51,7 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
   interface SessionProjectionMap {watcherInsights:InsightsView}
 }
 export function installProjection(ctx:Context):void {
-  ctx.sessionProjections.register<'watcherInsights',InsightsState>({key:'watcherInsights',stateVersion:4,stateSchema,
+  ctx.sessionProjections.register<'watcherInsights',InsightsState>({key:'watcherInsights',stateVersion:5,stateSchema,
     init:(header,inherited)=>stateSchema.parse(initialState(header,inherited)),apply:(state,event)=>reduceEvent(state,event),
     wire:{viewSchema,view:state=>viewOf(state)}})
   ctx.inject(['sessions'], c => {

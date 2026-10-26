@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Daily token buckets are quarter-hour UTC instants (`days[].start`). The browser places each bucket on its own local calendar day, so a host started in UTC no longer shifts 00:00–08:00 Asia/Shanghai usage onto the previous day. The day axis steps by local midnight across DST. Projection `stateVersion` is 5. Caches without `start` still render through the old `days[].key`, turn, or `updatedAt` fallback until that session is refolded.
+
 ## 0.9.0 — 2026-10-17
 
 - Target official DeepSeek Harness **0.2.1-rc.2** (`dsh-v0.2.1-rc.2`, `@deepseek-ai/dsh@0.2.1-rc.2`, commit `687f282e8625c6b8d11ff58211a90524be2e4317`). Dev pins are `0.2.1-rc.2`. `@deepseek-ai/dsh-*` peers and `engines.dsh` are `>=0.2.1-rc.1 <0.2.2`, matching DSHX 0.9.7: accepts `0.2.1-rc.1` / `0.2.1-rc.2` / stable `0.2.1`, rejects `0.2.1` alphas and `0.2.0-rc.2`. `@deepseek-ai/cordis` stays `~4.0.4`.

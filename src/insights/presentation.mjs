@@ -123,9 +123,9 @@ export async function scanSessions(remote, { signal, limit = 30, onProgress = ()
     const candidate = rawCandidate?.val ?? rawCandidate;
     let value = null, error = null;
     if (row.origin === 'subagent') error = '直接子代理暂未纳入；避免重复计算继承前缀';
-    // version 4 is the combined wire (days, context surface, rankings).
-    // versions 1–3 stay displayable so older caches are not dropped.
-    else if ([1, 2, 3, 4].includes(candidate?.version) && candidate.sessionId === row.sessionId && candidate.totals && Array.isArray(candidate.models) && Array.isArray(candidate.findings)) value = candidate;
+    // version 5 stores quarter-hour UTC buckets on days[].start. The browser assigns the local day.
+    // versions 1–4 stay displayable: 2–4 still have a host-local days[].key, version 1 has neither.
+    else if ([1, 2, 3, 4, 5].includes(candidate?.version) && candidate.sessionId === row.sessionId && candidate.totals && Array.isArray(candidate.models) && Array.isArray(candidate.findings)) value = candidate;
     else error = '尚无 Watcher 统计缓存；在加载插件后运行或打开此会话，再刷新统计';
     return { sessionId: row.sessionId, value, error, updatedAt: Number(row.updatedAt) || 0, cwd: typeof row.cwd === 'string' ? row.cwd : null };
   });
