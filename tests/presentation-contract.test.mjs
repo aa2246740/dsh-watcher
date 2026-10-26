@@ -34,7 +34,7 @@ test('the Markdown reader is supplied through the declared RC1 client injection'
   }
   assert.equal(pkg.engines.dsh, '>=0.2.1-rc.1 <0.2.2')
   assert.equal(pkg.peerDependencies['@deepseek-ai/cordis'], '~4.0.4')
-  assert.equal(pkg.devDependencies['@deepseek-ai/cordis'], '4.0.4')
+  assert.equal(pkg.devDependencies['@deepseek-ai/cordis'], '4.0.5')
   for (const icon of [
     'IconChevronRightOutlineRegular',
     'IconRefreshOutlineRegular',
