@@ -5,6 +5,8 @@ import { createPortal } from 'react-dom'
 // @ts-ignore TS7016: no declarations for the local .mjs module
 import { alertsOf, DEFAULT_LIMITS, limitsOf, scanSessions, mergeTools, mergeSkills, mergeWorkspaces, workspaceLabel } from '../insights/presentation.mjs'
 // @ts-ignore TS7016: no declarations for the local .mjs module
+import { bookDayKey, calendarDayKeys, calendarSpanDays, dayKey, rangeCutoff, yesterdayKey } from '../insights/calendar.mjs'
+// @ts-ignore TS7016: no declarations for the local .mjs module
 import { estimateFromInsights, estimateUsageRows, formatEstimate, formatEstimateNote, estimateDisclaimer, mergePricing, defaultPricing, readStoredOverride, persistPricingEditor, clearPricingEditor, effectivePricingText } from '../insights/pricing.mjs'
 // @ts-ignore TS7016: no declarations for the local .mjs module
 import { costCopy, detectLocale } from '../insights/i18n.mjs'
@@ -86,11 +88,6 @@ const fmtCompact = (n: number) => {
   if (n >= 1e8) return `${(n / 1e8).toFixed(1)} 亿`
   if (n >= 1e4) return `${(n / 1e4).toFixed(1)} 万`
   return fmt(n)
-}
-
-const dayKey = (ms: number) => {
-  const d = new Date(ms)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 const dayLabel = (key: string) => {
@@ -511,8 +508,8 @@ export function InsightsSettings(props: { remote?: any }) {
               .map((r: any) => r.updatedAt)
               .filter((t: any) => typeof t === 'number' && t > 0)
             if (times.length >= 2) {
-              const span = Math.max(...times) - Math.min(...times)
-              if (span > 7 * 86400000) {
+              // 按本地日历日数，不按 7*24h，避免夏令时那天差一小时就提错档
+              if (calendarSpanDays(Math.min(...times), Math.max(...times), 8) > 7) {
                 setRange('30')
               }
             }
@@ -543,8 +540,7 @@ export function InsightsSettings(props: { remote?: any }) {
   const analytics = useMemo(() => {
     if (!sessions) return null
     const now = Date.now()
-    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
-    // '全部' 的日图按最早记录起算，封顶 365 天；更早数据只进汇总不进日图
+    // '全部' 的日图按最早记录起算，封顶 365 个本地日历日；更早数据只进汇总不进日图
     const earliest = sessions.rows.reduce((min: number, r: any) => {
       if (!r.value) return min
       const firstTurn = (r.value.turns ?? []).length ? Math.min(...r.value.turns.map((t: any) => t.start)) : null
@@ -552,9 +548,9 @@ export function InsightsSettings(props: { remote?: any }) {
       return candidates.length ? Math.min(min, ...candidates) : min
     }, now)
     const days = range === 'all'
-      ? Math.min(365, Math.max(1, Math.ceil((now - earliest) / 86400000) + 1))
+      ? calendarSpanDays(earliest, now, 365)
       : range === '1' ? 1 : Number(range)
-    const cutoff = range === 'all' ? 0 : range === '1' ? todayStart.getTime() : now - days * 86400000
+    const cutoff = range === 'all' ? 0 : rangeCutoff(now, days)
     const validRows = sessions.rows.filter((r: any) => r.value && (!r.updatedAt || r.updatedAt >= cutoff))
     const validViews = validRows.map((r: any) => r.value)
     let totalTokens = 0
@@ -782,8 +778,8 @@ export function InsightsSettings(props: { remote?: any }) {
     })
 
     // 每日活动序列：有轮次流水的按轮次真实日期分摊（模型构成按会话模型占比拆分）；无流水退回最后活跃日
-    const keys: string[] = []
-    for (let i = days - 1; i >= 0; i--) keys.push(dayKey(now - i * 86400000))
+    // 日轴用本地午夜逐日推进。减 86400000 会在夏令时 23 小时那天跳过一天，或在 25 小时那天重复一天。
+    const keys: string[] = calendarDayKeys(now, days)
     const byDay = new Map(keys.map(k => [k, { models: new Map<string, number>(), sessions: 0 }]))
     const addModels = (bucket: { models: Map<string, number> }, models: any[], tokens: number) => {
       const total = Math.max(1, models.reduce((s: number, m: any) => s + (m.tokens ?? 0), 0))
@@ -792,8 +788,8 @@ export function InsightsSettings(props: { remote?: any }) {
       })
     }
     validRows.forEach((row: any) => {
-      // token 优先按结算日的 days 分账，键是本地日历日，不做时区换算。
-      // 没有 days 时，用轮次流水把 token 摊到轮次开始那天；再没有才退回 updatedAt。
+      // token 按结算时刻分账。days[].start 是 UTC 15 分钟桶的起点，浏览器用本地日历日归桶。
+      // 没有 start 的旧缓存仍用 days[].key；没有 days 时用轮次开始日，再没有才退回 updatedAt。
       const models = row.value.models?.length
         ? row.value.models
         : [{ model: '未标注', tokens: row.value.totals.tokens ?? 0 }]
@@ -804,7 +800,9 @@ export function InsightsSettings(props: { remote?: any }) {
         if (!bucket) return
         bucket.sessions += 1
         dayBooks.forEach((d: any) => {
-          const dayBucket = byDay.get(d.key)
+          const slotKey = bookDayKey(d)
+          if (!slotKey) return
+          const dayBucket = byDay.get(slotKey)
           if (!dayBucket) return
           const dayModels = Array.isArray(d.models) && d.models.length
             ? d.models
@@ -834,8 +832,8 @@ export function InsightsSettings(props: { remote?: any }) {
       }
     })
 
-    const todayStr = dayKey(Date.now())
-    const yesterdayStr = dayKey(Date.now() - 86400000)
+    const todayStr = dayKey(now)
+    const yesterdayStr = yesterdayKey(now)
 
     const daySeries = keys.map(key => {
       const bucket = byDay.get(key) ?? { models: new Map(), sessions: 0 }

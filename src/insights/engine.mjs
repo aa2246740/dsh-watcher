@@ -1,9 +1,10 @@
 /** Read-only DSH 0.2.1-rc.2 log fold. No prompt, reasoning or tool body is retained. */
 import { createHash } from 'node:crypto';
 export const KEY = 'watcherInsights';
-const DAY_CAP = 400;
-// Local calendar day, identical to the client dayKey(): never UTC, never updatedAt.
-const localDayKey = ms => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+// 15 minutes, not 30: +5:45 / +8:45 / +12:45 are real offsets, and a 30-minute slot straddles their midnight.
+// The key is an absolute UTC instant. The browser, not the host process, picks the local calendar day.
+export const SLOT_MS = 15 * 60 * 1000;
+export const SLOT_CAP = 8640;
 const record = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const count = v => Number.isSafeInteger(v) && v >= 0;
 const elapsed = (start, end) => start === null ? 0 : Math.max(0, end - start);
@@ -25,7 +26,7 @@ export function emptySkillStat(name) {
   return { name, modelCalls: 0, userCalls: 0, errors: 0, toolMs: 0, stepTokens: 0, injectedChars: 0, lastSeen: 0 };
 }
 export function initialState(header = {}, inherited = 0) {
-  return { version: 4, sessionId: String(header.id ?? ''), skip: inherited, seq: -1,
+  return { version: 5, sessionId: String(header.id ?? ''), skip: inherited, seq: -1,
     updatedAt: 0, route: { provider: 'unknown', model: 'unknown' }, totals: emptyStats(),
     models: [], days: [], turn: null, open: null, tools: [], previousFailure: null,
     findings: [], findingCount: 0,
@@ -177,19 +178,19 @@ function applySurface(s, event) {
 }
 function books(s, route = s.route) { return [s.totals, modelRow(s, route), ...(s.turn ? [s.turn.stats] : [])]; }
 function creditDay(s, time, route, u) {
-  const key = localDayKey(time);
-  let day = s.days.find(d => d.key === key);
+  const start = Math.floor(time / SLOT_MS) * SLOT_MS;
+  let day = s.days.find(d => d.start === start);
   if (!day) {
-    day = { key, tokens: 0, models: [] };
+    day = { start, tokens: 0, models: [] };
     s.days.push(day);
-    s.days.sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+    s.days.sort((a, b) => a.start - b.start);
   }
   day.tokens += u.tokens;
   const effort = typeof route?.effort === 'string' ? route.effort : null;
   let row = day.models.find(m => m.provider === route.provider && m.model === route.model && (m.effort ?? null) === effort);
   if (!row) { row = { provider: route.provider, model: route.model, ...(effort ? { effort } : {}), tokens: 0 }; day.models.push(row); }
   row.tokens += u.tokens;
-  if (s.days.length > DAY_CAP) s.days = s.days.slice(s.days.length - DAY_CAP);
+  if (s.days.length > SLOT_CAP) s.days = s.days.slice(s.days.length - SLOT_CAP);
 }
 function begin(s, d, time, uncertain = false) {
   s.open = { turn: d.turn, step: d.step, start: uncertain ? null : time, first: null,
