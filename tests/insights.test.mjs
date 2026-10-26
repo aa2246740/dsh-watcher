@@ -1,6 +1,6 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { initialState, reduceEvent, viewOf } from '../src/insights/engine.mjs';
+import { initialState, reduceEvent, viewOf, SLOT_CAP, SLOT_MS } from '../src/insights/engine.mjs';
 import { alertsOf, limitsOf, mergeModels, mergeSkills, mergeTools, mergeWorkspaces, scanSessions, workspaceLabel } from '../src/insights/presentation.mjs';
 const event = (type, seq, time, data = {}) => ({ type, seq, time, data });
 const usage = { inputTokens: 10, outputTokens: 5, cacheReadTokens: 20, reasoningTokens: 3, totalTokens: 35 };
@@ -71,16 +71,13 @@ test('cached foreign session identity is rejected',async()=>{const remote={sessi
 test('direct subagents are explicitly excluded',async()=>{const remote={session:{list:async()=>({items:[{sessionId:'sub',origin:'subagent'}]})}};assert.match((await scanSessions(remote)).rows[0].error,/子代理/);});
 test('durable attempt stream updates pending, settlement publishes immediately',()=>{const s=fold(fixture());const n=reduceEvent(s,event('assistant/attempt',3,200,{turn:1,step:1,stream:[{type:'text-chunks',time0:200,index:0,dt:[],texts:['x']}]}));assert.equal(viewOf(n).pending.lastContentAt,200);assert.equal(viewOf(reduceEvent(n,complete(4))).totals.reported,1);});
 test('checkpoint restore matches uninterrupted state',()=>{const s=fold(fixture());assert.deepEqual(viewOf(reduceEvent(JSON.parse(JSON.stringify(s)),complete())),viewOf(reduceEvent(s,complete())));});
-// Local calendar day key, identical to the engine's creditDay() and the client dayKey():
-// never UTC, so expectations hold in any timezone.
-const localDayKey = ms => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const settleAt = (seq, time, turnNo = 1, stepNo = 1, model = 'a') => [
   event('turn/start', seq, time, { turn: turnNo }),
   event('step/start', seq + 1, time + 1, { turn: turnNo, step: stepNo }),
   event('assistant/message', seq + 2, time + 2, { turn: turnNo, step: stepNo, usage, message: { source: { kind: 'model', provider: 'p', model }, role: 'assistant', content: [] } }),
   event('turn/end', seq + 3, time + 3, { turn: turnNo }),
 ];
-test('viewOf publishes per-day usage alongside totals',()=>{const s=fold(fixture([complete()]));assert.ok(Array.isArray(s.days));assert.deepEqual(viewOf(s).days,s.days);assert.equal(viewOf(s).version,4);});
+test('viewOf publishes per-day usage alongside totals',()=>{const s=fold(fixture([complete()]));assert.ok(Array.isArray(s.days));assert.deepEqual(viewOf(s).days,s.days);assert.equal(viewOf(s).version,5);});
 test('surface attributes system, memory, conversation and tool prices',()=>{
   const s=fold([
     event('request/header',0,0,{header:{config:{provider:'p',model:'a'},tools:[{name:'bash'}]}}),
@@ -152,37 +149,59 @@ test('skipped surface events mark the estimate partial',()=>{
   assert.equal(viewOf(s).context.surface.partial,true);
   assert.equal(viewOf(s).context.surface.conversation,0);
 });
-test('two settlements 36 hours apart land on two distinct local days',()=>{
+test('two settlements 36 hours apart stay in two quarter-hour buckets',()=>{
   const hour = 3600000;
   const t1 = 0;
-  const t2 = t1 + 36 * hour; // 36h apart always crosses local midnight, whatever the offset
+  const t2 = t1 + 36 * hour;
   const s = fold(fixture([...settleAt(3, t1, 1, 1, 'a'), ...settleAt(7, t2, 2, 1, 'b')]));
   assert.equal(s.totals.reported, 2);
-  assert.deepEqual(s.days.map(d => d.key), [localDayKey(t1), localDayKey(t2)].sort());
+  assert.equal(s.days.length, 2);
+  assert.deepEqual(s.days.map(d => d.start), [0, t2]);
   assert.deepEqual(s.days.map(d => d.tokens), [35, 35]);
   assert.deepEqual(s.days.map(d => d.models.map(m => m.model)), [['a'], ['b']]);
   assert.equal(s.days.reduce((sum, d) => sum + d.tokens, 0), s.totals.tokens);
 });
-test('two settlements on the same local day merge into one day entry',()=>{
-  const hour = 3600000;
-  const t1 = 0;
-  const t2 = t1 + hour; // one hour apart: same local day for every real offset
+test('two settlements inside one quarter-hour merge into one bucket',()=>{
+  const t1 = SLOT_MS;
+  const t2 = t1 + 5 * 60 * 1000;
   const s = fold(fixture([...settleAt(3, t1, 1, 1, 'a'), ...settleAt(7, t2, 2, 1, 'a')]));
   assert.equal(s.totals.reported, 2);
   assert.equal(s.days.length, 1);
-  assert.equal(s.days[0].key, localDayKey(t1));
+  assert.equal(s.days[0].start, SLOT_MS);
   assert.equal(s.days[0].tokens, 70);
   assert.equal(s.days[0].models.length, 1);
   assert.equal(s.days[0].models[0].tokens, 70);
   assert.equal(s.days[0].tokens, s.totals.tokens);
 });
+test('a settlement past the quarter-hour boundary opens the next bucket',()=>{
+  const t1 = SLOT_MS;
+  const t2 = t1 + 20 * 60 * 1000;
+  const s = fold(fixture([...settleAt(3, t1, 1, 1, 'a'), ...settleAt(7, t2, 2, 1, 'a')]));
+  assert.equal(s.days.length, 2);
+  assert.deepEqual(s.days.map(d => d.start), [SLOT_MS, SLOT_MS * 2]);
+  assert.equal(s.days.reduce((sum, d) => sum + d.tokens, 0), s.totals.tokens);
+});
+test('quarter-hour books drop the oldest slot once the cap is reached',()=>{
+  const seeded = initialState({ id: 's' });
+  for (let i = 0; i < SLOT_CAP; i++) seeded.days.push({ start: i * SLOT_MS, tokens: 1, models: [] });
+  const next = SLOT_CAP * SLOT_MS;
+  const s = fold([
+    event('request/header', 0, next, { header: { config: { provider: 'p', model: 'a' } } }),
+    ...settleAt(1, next, 1, 1, 'a'),
+  ], seeded);
+  assert.equal(s.days.length, SLOT_CAP);
+  assert.equal(s.days[0].start, SLOT_MS);
+  assert.equal(s.days.at(-1).start, next);
+  assert.equal(s.days.at(-1).tokens, 35);
+  assert.equal(s.totals.tokens, 35);
+});
 test('settlements without usage never manufacture a day',()=>{const s=fold(fixture());assert.deepEqual(s.days,[]);});
 test('effort changes split the same model into separate day model rows',()=>{
   const rows = [
     event('request/header', 0, 0, { header: { config: { provider: 'p', model: 'a', reasoningEffort: 'high' } } }),
-    ...settleAt(1, 3600000, 1, 1, 'a'),
-    event('request/header', 5, 7200000, { header: { config: { provider: 'p', model: 'a', reasoningEffort: 'low' } } }),
-    ...settleAt(6, 10800000, 2, 1, 'a'),
+    ...settleAt(1, SLOT_MS, 1, 1, 'a'),
+    event('request/header', 5, SLOT_MS + 5 * 60 * 1000, { header: { config: { provider: 'p', model: 'a', reasoningEffort: 'low' } } }),
+    ...settleAt(6, SLOT_MS + 5 * 60 * 1000, 2, 1, 'a'),
   ];
   const s = fold(rows);
   assert.equal(s.days.length, 1);
@@ -191,7 +210,12 @@ test('effort changes split the same model into separate day model rows',()=>{
   assert.equal(s.days[0].tokens, 70);
 });
 test('day books survive checkpoint restore without double counting',()=>{const s=fold(fixture([complete()]));const restored=reduceEvent(JSON.parse(JSON.stringify(s)),complete());assert.equal(restored.days.length,1);assert.equal(restored.days[0].tokens,35);assert.deepEqual(viewOf(restored).days,viewOf(s).days);});
-test('settings scan accepts version 2 caches with days',async()=>{const v2=viewOf(fold(fixture([complete()])));const remote={session:{list:async()=>({items:[{sessionId:'s',projections:{values:{watcherInsights:v2}}}]})}};const r=await scanSessions(remote);assert.equal(r.rows[0].value,v2);assert.equal(r.rows[0].error,null);});
+test('settings scan accepts version 5 caches with quarter-hour buckets',async()=>{const v5=viewOf(fold(fixture([complete()])));const remote={session:{list:async()=>({items:[{sessionId:'s',projections:{values:{watcherInsights:v5}}}]})}};const r=await scanSessions(remote);assert.equal(r.rows[0].value,v5);assert.equal(r.rows[0].error,null);assert.equal(typeof r.rows[0].value.days[0].start,'number');});
+test('version 4 cache with a host day key and no start still scans',async()=>{
+  const v4={...viewOf(fold(fixture([complete()]))),version:4,days:[{key:'2026-10-25',tokens:35,models:[]}]};
+  const remote={session:{list:async()=>({items:[{sessionId:'s',updatedAt:1234,projections:{values:{watcherInsights:v4}}}]})}};
+  const r=await scanSessions(remote);assert.equal(r.rows[0].value,v4);assert.equal(r.rows[0].error,null);
+});
 test('version 1 cache without days still displays via the updatedAt fallback',async()=>{
   const v1={...viewOf(fold(fixture([complete()]))),version:1};delete v1.days;
   const remote={session:{list:async()=>({items:[{sessionId:'s',updatedAt:1234,projections:{values:{watcherInsights:v1}}}]})}};
@@ -208,7 +232,7 @@ test('tool calls record counts, step tokens, duration and result size', () => {
   const t = s.toolStats.find(x => x.name === 'bash');
   assert.equal(t.calls, 1); assert.equal(t.stepTokens, 35); assert.equal(t.errors, 0);
   assert.equal(t.toolMs, 100); assert.equal(t.resultChars, 50);
-  const v = viewOf(s); assert.equal(v.version, 4); assert.equal(v.toolStats[0].name, 'bash');
+  const v = viewOf(s); assert.equal(v.version, 5); assert.equal(v.toolStats[0].name, 'bash');
 });
 test('calls made before usage settles still get the full step tokens at step end', () => {
   const s = fold(fixture([call(3, 'c'), complete(4), result(5, 'c', false, 'ok'), stepEnd(6)]));
