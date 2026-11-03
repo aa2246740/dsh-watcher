@@ -6,6 +6,7 @@ import type { ConversationSnapshot } from '@deepseek-ai/dsh-client-ui-conversati
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SessionPendingInteractionBase, SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { logDebug } from '../log.ts'
 import { createCompleteHistoryLoader } from './history-loader.ts'
 import { WorkPicturePanel, useObservedPicture } from './Watcher.tsx'
 import type { WatcherSnapshot } from '../observation/fold.ts'
@@ -51,14 +52,19 @@ export function betterSidebarServiceOf(ctx: ClientContext): BetterSidebarService
 }
 
 /** The Watcher tab descriptor registered into dsh-better-sidebar. */
-export function watcherSidebarDescriptor(): WatcherSidebarDescriptor {
+export function watcherSidebarDescriptor(ownCtx?: ClientContext): WatcherSidebarDescriptor {
   return {
     id: 'dsh-watcher:picture',
     title: 'Watcher',
     single: true,
     order: 80,
     component: ({ ctx, scope, visible }) => (
-      <WatcherSidebarTab ctx={ctx} sessionId={scope.sessionId as SessionId} visible={visible} />
+      <WatcherSidebarTab
+        ctx={ctx}
+        ownCtx={ownCtx}
+        sessionId={scope.sessionId as SessionId}
+        visible={visible}
+      />
     ),
   }
 }
@@ -95,6 +101,48 @@ interface WatcherSidebarSources {
   status: ObservableSnapshotLike<SessionStatusSnapshot>
   stats: ObservableSnapshotLike<unknown> | undefined
   face: WatcherSessionFace
+  /** Context whose `uiConversation` is the service the reads above resolved. */
+  loaderCtx: ClientContext
+}
+
+type SidebarSourceService = 'sessions' | 'uiConversation' | 'uiSession'
+
+/**
+ * Read one session service from Watcher's context, then from the host ctx.
+ * Cordis throws `cannot get property "<name>" without inject` when the
+ * receiver did not declare the service. Better Sidebar's context does not
+ * declare these three; Watcher's child context inherits them from this plugin.
+ */
+function sidebarService(
+  ownCtx: ClientContext | undefined,
+  hostCtx: ClientContext,
+  key: SidebarSourceService,
+): unknown {
+  if (ownCtx !== undefined) {
+    try {
+      const value = (ownCtx as unknown as Record<SidebarSourceService, unknown>)[key]
+      if (value !== undefined) return value
+    } catch {
+      // The plugin context does not expose this service. The host ctx is the fallback.
+    }
+  }
+  return (hostCtx as unknown as Record<SidebarSourceService, unknown>)[key]
+}
+
+/** History paging only needs the conversation service the tab already resolved. */
+function withUiConversation(base: ClientContext, uiConversation: ClientContext['uiConversation']): ClientContext {
+  const ctx = Object.create(base) as ClientContext
+  ctx.uiConversation = uiConversation
+  return ctx
+}
+
+let sidebarSourceFailureLogged = false
+
+function reportSidebarSourceFailure(error: unknown): void {
+  if (sidebarSourceFailureLogged) return
+  sidebarSourceFailureLogged = true
+  const detail = error instanceof Error ? error.message : String(error)
+  logDebug(`dsh-watcher sidebar tab could not read session sources: ${detail}`)
 }
 
 function subscribeNone(): () => void {
@@ -126,19 +174,39 @@ function useObservableValue<T>(source: ObservableSnapshotLike<T> | undefined): T
  * `uiConversation.binding` for the Conversation snapshot. Returns undefined
  * while the Session has no retained binding (the tab shows its waiting state).
  */
-function resolveSidebarSources(ctx: ClientContext, sessionId: SessionId): WatcherSidebarSources | undefined {
-  const sessions = ctx.sessions as
-    | { binding?: (id: SessionId) => { session?: WatcherSessionFace } | undefined }
-    | undefined
-  const face = sessions?.binding?.(sessionId)?.session
-  if (face === undefined) return undefined
+function resolveSidebarSources(
+  ownCtx: ClientContext | undefined,
+  hostCtx: ClientContext,
+  sessionId: SessionId,
+): WatcherSidebarSources | undefined {
   try {
-    const conversation = ctx.uiConversation.binding(sessionId).snapshot
-    const status = ctx.uiSession.sessionStatus
+    const sessions = sidebarService(ownCtx, hostCtx, 'sessions') as
+      | { binding?: (id: SessionId) => { session?: WatcherSessionFace } | undefined }
+      | undefined
+    const face = sessions?.binding?.(sessionId)?.session
+    if (face === undefined) return undefined
+    const uiConversation = sidebarService(ownCtx, hostCtx, 'uiConversation') as {
+      binding: (id: SessionId) => { snapshot: ObservableSnapshotLike<ConversationSnapshot> }
+    }
+    const uiSession = sidebarService(ownCtx, hostCtx, 'uiSession') as {
+      sessionStatus: ObservableSnapshotLike<SessionStatusSnapshot>
+    }
+    const conversation = uiConversation.binding(sessionId).snapshot
+    const status = uiSession.sessionStatus
     const stats = face.projections?.faceOf?.('sessionStats')
-    return { conversation, session: face, status, stats, face }
-  } catch {
+    return {
+      conversation,
+      session: face,
+      status,
+      stats,
+      face,
+      loaderCtx: withUiConversation(ownCtx ?? hostCtx, uiConversation as ClientContext['uiConversation']),
+    }
+  } catch (error) {
     // `uiConversation.binding` throws while the Session binding is not current.
+    // An undeclared inject throws here too. Either way the tab waits, but the
+    // inject failure used to be invisible: log it once.
+    reportSidebarSourceFailure(error)
     return undefined
   }
 }
@@ -158,12 +226,17 @@ function waitingRoot(): ReactNode {
  * faces; the cost/performance HUD and whole-history paging stay explicit (and
  * `visible: false` never starts a load — only the button does).
  */
-export function WatcherSidebarTab({ ctx, sessionId, visible }: {
+export function WatcherSidebarTab({ ctx, ownCtx, sessionId, visible }: {
   ctx: ClientContext
+  /** Watcher's context. Session services are read here before the host ctx. */
+  ownCtx?: ClientContext
   sessionId: SessionId
   visible: boolean
 }): ReactNode {
-  const sources = useMemo(() => resolveSidebarSources(ctx, sessionId), [ctx, sessionId])
+  const sources = useMemo(
+    () => resolveSidebarSources(ownCtx, ctx, sessionId),
+    [ownCtx, ctx, sessionId],
+  )
   const conversation = useObservableValue(sources?.conversation)
   const sessionSnapshot = useObservableValue(sources?.session)
   const statusMap = useObservableValue(sources?.status)
@@ -188,15 +261,15 @@ export function WatcherSidebarTab({ ctx, sessionId, visible }: {
     }
   }, [conversation, chat, pendingInteraction, sessionSnapshot])
 
-  if (snapshot === undefined) return waitingRoot()
+  if (snapshot === undefined || sources === undefined) return waitingRoot()
   return (
     <WatcherSidebarReady
-      ctx={ctx}
+      ctx={sources.loaderCtx}
       sessionId={sessionId}
       visible={visible}
       snapshot={snapshot}
       stats={stats}
-      face={sources?.face}
+      face={sources.face}
     />
   )
 }

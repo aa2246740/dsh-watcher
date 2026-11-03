@@ -97,10 +97,10 @@ function registerSpy() {
   }
 }
 
-test('the client keeps its top-level injection surface unchanged', async () => {
+test('the client keeps betterSidebar off its top-level injection surface', async () => {
   const source = readFileSync(INDEX_SOURCE, 'utf8')
   const pkg = JSON.parse(readFileSync(PACKAGE_SOURCE, 'utf8'))
-  assert.match(source, /export const inject = \['slots', 'sessions', 'uiConversation'\]/)
+  assert.match(source, /export const inject = \['slots', 'sessions', 'uiConversation', 'uiSession'\]/)
   assert.doesNotMatch(source, /inject = \[[^\]]*betterSidebar/)
   // The optional integration stays out of the client bundle surface: no
   // value or type import of the peer anywhere in the client sources, and no
@@ -176,4 +176,173 @@ test('the registered tab renders its waiting state while no session is bound', (
   assert.equal(status.type, 'span')
   assert.equal(status.props.role, 'status')
   assert.match(status.props.children, /正在等待会话记录/)
+})
+
+function recordingLog() {
+  const calls = []
+  return {
+    calls,
+    logDebug(message) { calls.push(String(message)) },
+    logInfo() {},
+    logError() {},
+  }
+}
+
+function watcherStub() {
+  return {
+    WorkPicturePanel: () => null,
+    useObservedPicture: () => ({ picture: {}, performanceByTurn: {} }),
+  }
+}
+
+function loadSidebar(log = recordingLog()) {
+  return loadModule('../src/client/SidebarTab.tsx', {
+    '../log.ts': log,
+    './Watcher.tsx': watcherStub(),
+  })
+}
+
+function observable(value) {
+  return {
+    getSnapshot: () => value,
+    subscribe: () => () => {},
+  }
+}
+
+/** Session services Watcher's own context can read. */
+function pluginSources(sessionId) {
+  const chat = {
+    legacy: { nodes: [], turnTimings: [], runningCalls: [] },
+    timeline: { turnOrder: [] },
+  }
+  const face = {
+    ...observable({ blank: false, running: false, hasMore: false, loadingOlder: false }),
+    loadOlder: async () => {},
+    projections: { faceOf: () => undefined },
+  }
+  return {
+    sessions: {
+      binding(id) {
+        return id === sessionId ? { session: face } : undefined
+      },
+    },
+    uiConversation: {
+      events: { register() {} },
+      binding(id) {
+        if (id !== sessionId) throw new Error('binding is not current')
+        return { snapshot: observable({ views: new Map([['chat', chat]]) }) }
+      },
+    },
+    uiSession: {
+      sessionStatus: observable(new Map()),
+    },
+  }
+}
+
+/**
+ * Better Sidebar's render context: `slots` is present, and every other
+ * service read throws the way Cordis does without inject.
+ */
+function bareHostCtx() {
+  const host = { slots: {} }
+  return new Proxy(host, {
+    get(target, prop, receiver) {
+      if (prop === 'slots' || typeof prop === 'symbol') return Reflect.get(target, prop, receiver)
+      throw new Error(`cannot get property "${String(prop)}" without inject`)
+    },
+  })
+}
+
+function renderTab(descriptor, ctx, sessionId) {
+  const element = descriptor.component({ ctx, scope: { sessionId }, visible: true })
+  let rendered = element.type(element.props)
+  // The ready state is a second component; the waiting state is the div itself.
+  if (rendered !== null && typeof rendered === 'object' && typeof rendered.type === 'function') {
+    rendered = rendered.type(rendered.props)
+  }
+  return rendered
+}
+
+test('the sidebar tab reads session sources from the watcher context when the host ctx only has slots', () => {
+  const sidebar = loadSidebar()
+  const sessionId = 'session-1'
+  const descriptor = sidebar.watcherSidebarDescriptor(pluginSources(sessionId))
+  const rendered = renderTab(descriptor, bareHostCtx(), sessionId)
+  assert.equal(rendered.props['data-watcher-sidebar'], 'picture')
+})
+
+test('registerTab closes over the watcher context, so a slots-only host ctx still resolves the picture', () => {
+  const log = recordingLog()
+  const sidebar = loadSidebar(log)
+  const index = loadModule('../src/client/index.tsx', { './SidebarTab.tsx': sidebar })
+  const sessionId = 'session-1'
+  const spy = registerSpy()
+  const { ctx } = fakeContext({ betterSidebar: spy })
+  Object.assign(ctx, pluginSources(sessionId))
+  index.apply(ctx)
+  assert.equal(spy.calls.length, 1)
+  const rendered = renderTab(spy.calls[0], bareHostCtx(), sessionId)
+  assert.equal(rendered.props['data-watcher-sidebar'], 'picture')
+  assert.deepEqual(log.calls, [])
+})
+
+test('a service missing on the watcher context falls back to the host ctx', () => {
+  const sidebar = loadSidebar()
+  const sessionId = 'session-1'
+  const sources = pluginSources(sessionId)
+  const own = {
+    sessions: sources.sessions,
+    uiConversation: sources.uiConversation,
+    get uiSession() {
+      throw new Error('cannot get property "uiSession" without inject')
+    },
+  }
+  const host = {
+    slots: {},
+    get sessions() { throw new Error('cannot get property "sessions" without inject') },
+    get uiConversation() { throw new Error('cannot get property "uiConversation" without inject') },
+    uiSession: sources.uiSession,
+  }
+  const rendered = renderTab(sidebar.watcherSidebarDescriptor(own), host, sessionId)
+  assert.equal(rendered.props['data-watcher-sidebar'], 'picture')
+})
+
+test('a missing session binding stays on the waiting state and does not log', () => {
+  const log = recordingLog()
+  const sidebar = loadSidebar(log)
+  const descriptor = sidebar.watcherSidebarDescriptor()
+  const rendered = renderTab(descriptor, { slots: {}, sessions: { binding: () => undefined } }, 'cold')
+  assert.equal(rendered.props['data-watcher-sidebar'], 'waiting')
+  assert.deepEqual(log.calls, [])
+})
+
+test('a source resolution failure is logged once at debug level', () => {
+  const log = recordingLog()
+  const sidebar = loadSidebar(log)
+  const host = {
+    slots: {},
+    sessions: {
+      binding: () => ({
+        session: {
+          getSnapshot: () => ({ blank: true, running: false, hasMore: false, loadingOlder: false }),
+          subscribe: () => () => {},
+          loadOlder: async () => {},
+        },
+      }),
+    },
+    get uiConversation() {
+      throw new Error('cannot get property "uiConversation" without inject')
+    },
+    get uiSession() {
+      throw new Error('cannot get property "uiSession" without inject')
+    },
+  }
+  const descriptor = sidebar.watcherSidebarDescriptor()
+  const first = renderTab(descriptor, host, 'session-1')
+  const second = renderTab(descriptor, host, 'session-1')
+  assert.equal(first.props['data-watcher-sidebar'], 'waiting')
+  assert.equal(second.props['data-watcher-sidebar'], 'waiting')
+  assert.equal(log.calls.length, 1)
+  assert.match(log.calls[0], /could not read session sources/)
+  assert.match(log.calls[0], /cannot get property "uiConversation" without inject/)
 })

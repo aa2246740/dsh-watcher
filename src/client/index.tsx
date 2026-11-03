@@ -13,7 +13,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 
 export const name = 'dsh-watcher-client'
-export const inject = ['slots', 'sessions', 'uiConversation']
+export const inject = ['slots', 'sessions', 'uiConversation', 'uiSession']
 
 /**
  * Native session-header utility. Order 50 sits after Session log (0)
@@ -51,6 +51,11 @@ export function apply(ctx: ClientContext) {
     const betterSidebar = betterSidebarServiceOf(c)
     const { registerTab } = betterSidebar ?? {}
     if (typeof registerTab !== 'function') return
-    c.effect(() => registerTab(watcherSidebarDescriptor()))
+    // Better Sidebar renders the tab with its own context. That context does
+    // not inject uiConversation, uiSession, or sessions, and Cordis throws on
+    // the read. `c` is this plugin's child context, so those services resolve
+    // by walking the parent fiber. The descriptor falls back to the host ctx
+    // only for a service this context does not expose.
+    c.effect(() => registerTab(watcherSidebarDescriptor(c)))
   })
 }

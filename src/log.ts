@@ -6,6 +6,10 @@ export function redact(value: unknown): string {
   return text.replace(SECRET, '$1[redacted]').replace(QUERY_SECRET, '$1[redacted]')
 }
 
+export function logDebug(message: string): void {
+  console.debug(redact(message))
+}
+
 export function logInfo(message: string): void {
   console.log(redact(message))
 }
