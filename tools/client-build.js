@@ -9,9 +9,19 @@ import { createRequire } from 'node:module'
 
 const PLATFORM_MODULES = [
   'react', 'react/jsx-runtime', 'react-dom', 'react-dom/client', '@deepseek-ai/cordis',
+  'zod', '@tanstack/react-virtual',
   '@deepseek-ai/dsh-client-store', '@deepseek-ai/dsh-client-ui-slots',
   '@deepseek-ai/dsh-client-ui-primitives', '@deepseek-ai/dsh-client-ui-dockkit',
 ]
+
+function clientBuildValueDefines(environment = process.env) {
+  const values = {}
+  for (const [name, value] of Object.entries(environment)) {
+    if (!name.startsWith('DSH_CLIENT_') || value === undefined) continue
+    values[`process.env.${name}`] = JSON.stringify(value)
+  }
+  return values
+}
 
 const CSS_VIRTUAL_PREFIX = '\0dshx-css-module:'
 const INLINE_SAFE = /^(?:@deepseek-ai\/dsh-(?:file-reference|session|llm|tools|brand|deque|output-retention|typert-protocol|util-crypto|util-values|util-workspace-path)(?:\/|$)|@deepseek-ai\/dsh-token-meter\/client$|@deepseek-ai\/dsh-native-command\/types$|@deepseek-ai\/dsh-host-open-in-app\/shared$|@deepseek-ai\/dsh-plugin-manager\/registry$|@deepseek-ai\/dsh-agent-preset-registry\/display$|@deepseek-ai\/dsh-spill-policy\/notice$)/
@@ -81,6 +91,7 @@ function clientConfig(id, entry) {
       'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
       'import.meta.env.MODE': JSON.stringify(process.env.NODE_ENV ?? 'production'),
       'import.meta.env': JSON.stringify({ MODE: process.env.NODE_ENV ?? 'production' }),
+      ...clientBuildValueDefines(),
     },
     plugins: [{
       name: 'dshx-client-bundle-purity',
@@ -141,6 +152,7 @@ export function externalClientBundle(id, entries, { clientEntry } = {}) {
       neverBundle: (specifier) => !/^[./]/.test(specifier),
       alwaysBundle: (specifier) => /^[./]/.test(specifier),
     },
+    define: clientBuildValueDefines(),
     outputOptions: { entryFileNames: '[name].js' },
   })
   if (clientEntry !== undefined) {
