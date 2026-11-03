@@ -1,4 +1,4 @@
-import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { ConversationSnapshot } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { loadCompleteHistory, type CompleteHistoryResult } from '../hub/history.ts'
 
@@ -13,13 +13,25 @@ export interface WatcherHistorySession {
 }
 
 /**
+ * The conversation service the caller already resolved. This is a plain
+ * dependency, not a Cordis context: Cordis 4.0.5 rejects
+ * `ctx.uiConversation = ...` on any object that inherits a context
+ * (`cannot set property "uiConversation" in multiple fibers`).
+ */
+export interface WatcherHistoryConversation {
+  binding: (sessionId: SessionId) => {
+    snapshot: { getSnapshot: () => ConversationSnapshot }
+  }
+}
+
+/**
  * Build the explicit whole-history loader for one Session: repeat the
  * Session's public, read-only paging verb until the head stops moving, using
  * the same conversation head key the header overlay reports. Nothing starts
  * it automatically — only a user action does.
  */
 export function createCompleteHistoryLoader(
-  ctx: ClientContext,
+  uiConversation: WatcherHistoryConversation,
   sessionId: SessionId,
   session: WatcherHistorySession,
 ): (signal: AbortSignal) => Promise<CompleteHistoryResult> {
@@ -28,7 +40,7 @@ export function createCompleteHistoryLoader(
     loadOlder: () => session.loadOlder(),
     read: () => {
       const sessionSnapshot = session.getSnapshot()
-      const conversation = ctx.uiConversation.binding(sessionId).snapshot.getSnapshot()
+      const conversation = uiConversation.binding(sessionId).snapshot.getSnapshot()
       const chat = conversation.views.get('chat')
       if (chat === undefined) throw new Error('dsh-watcher: Chat conversation target is unavailable')
       const firstNode = chat.legacy.nodes[0]

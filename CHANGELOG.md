@@ -6,6 +6,7 @@
 
 ## Unreleased
 
+- The Better Sidebar Watcher tab passes the conversation service it already resolved into the history loader. Copying `uiConversation` onto an object that inherits a Cordis context throws `cannot set property "uiConversation" in multiple fibers` on Cordis 4.0.5, and the tab stayed on "Watcher 正在等待会话记录…". CSS module class hashes now use a package-relative filename, so a fresh `pnpm run build` matches the committed client bundle on another checkout path.
 - Daily token buckets are quarter-hour UTC instants (`days[].start`). The browser places each bucket on its own local calendar day, so a host started in UTC no longer shifts 00:00–08:00 Asia/Shanghai usage onto the previous day. The day axis steps by local midnight across DST. Projection `stateVersion` is 5. Caches without `start` still render through the old `days[].key`, turn, or `updatedAt` fallback until that session is refolded.
 - Dev pin `@deepseek-ai/cordis` is `4.0.5`, the version `@deepseek-ai/dsh@0.2.1-rc.2` and `@deepseek-ai/dsh-session@0.2.1-rc.2` require (`~4.0.5`). The peer range stays `~4.0.4`.
 
