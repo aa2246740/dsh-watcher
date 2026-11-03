@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.1 — 2026-11-03
+
+- The Better Sidebar Watcher tab reads `sessions`, `uiConversation`, and `uiSession` from Watcher's own context. Better Sidebar's host context does not inject those services, so the tab stayed on "Watcher 正在等待会话记录…". The client inject list now includes `uiSession`. A failed source read is logged once at debug level.
+
 ## Unreleased
 
 - Daily token buckets are quarter-hour UTC instants (`days[].start`). The browser places each bucket on its own local calendar day, so a host started in UTC no longer shifts 00:00–08:00 Asia/Shanghai usage onto the previous day. The day axis steps by local midnight across DST. Projection `stateVersion` is 5. Caches without `start` still render through the old `days[].key`, turn, or `updatedAt` fallback until that session is refolded.

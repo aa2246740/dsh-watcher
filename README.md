@@ -75,7 +75,11 @@ dsh plugin --profile web remove dsh-watcher
 
 交互约定在 [DESIGN.md](./DESIGN.md)。MIT。
 
-## 本次更新（0.9.0）
+## 本次更新（0.9.1）
+
+- Better Sidebar 里的 Watcher 页改读插件自己的会话上下文。以前那一页拿的是侧栏宿主的 context，读不到 `uiConversation` / `uiSession`，所以会一直停在「正在等待会话记录…」。
+
+## 0.9.0
 
 - 对齐官方 DeepSeek Harness **0.2.1-rc.2**（`dsh-v0.2.1-rc.2`，SHA `687f282e8625c6b8d11ff58211a90524be2e4317`）。`@deepseek-ai/dsh-*` 的 peer 与 `engines.dsh` 是 `>=0.2.1-rc.1 <0.2.2`：接受 `0.2.1-rc.2` 和稳定版 `0.2.1`，拒绝 alpha，也拒绝 `0.2.0-rc.2`。
 - 图标仍是 `IconChevronRightOutlineRegular`、`IconRefreshOutlineRegular`、`IconCheckOutlineRegular`、`IconCopyOutlineRegular`。这四个名字在 `0.2.1-rc.2` 的 primitives 里还在。带尺寸后缀的旧导出仍然没有。

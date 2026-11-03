@@ -75,7 +75,11 @@ The settings summary and session HUD show **Estimated cost** (not “total value
 
 The interaction contract lives in [DESIGN.md](./DESIGN.md). MIT.
 
-## What's new in 0.9.0
+## What's new in 0.9.1
+
+- The Better Sidebar Watcher page now reads the plugin's own session context. It previously received the sidebar host context, which cannot see `uiConversation` or `uiSession`, so the page stayed on "waiting for the session record…".
+
+## 0.9.0
 
 - Targets official DeepSeek Harness **0.2.1-rc.2** (`dsh-v0.2.1-rc.2`, SHA `687f282e8625c6b8d11ff58211a90524be2e4317`). `@deepseek-ai/dsh-*` peers and `engines.dsh` are `>=0.2.1-rc.1 <0.2.2`: the range accepts `0.2.1-rc.2` and stable `0.2.1`, rejects alphas, and rejects `0.2.0-rc.2`.
 - Icons stay `IconChevronRightOutlineRegular`, `IconRefreshOutlineRegular`, `IconCheckOutlineRegular`, and `IconCopyOutlineRegular`. Those four names are still exported by primitives at `0.2.1-rc.2`. The size-suffixed names are still absent.
