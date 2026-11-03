@@ -39,7 +39,7 @@ export function apply(ctx: ClientContext) {
         | undefined
       if (session === undefined) throw new Error(`dsh-watcher: session "${sessionId}" is unavailable`)
       return {
-        loadAllHistory: signal => createCompleteHistoryLoader(ctx, sessionId, session)(signal),
+        loadAllHistory: signal => createCompleteHistoryLoader(ctx.uiConversation, sessionId, session)(signal),
       }
     },
   }, Watcher))

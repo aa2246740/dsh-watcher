@@ -3,7 +3,7 @@
 // the emitted bundle recipe so plugins can run `npm run build` against a public clone.
 import { readFile } from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
-import { basename, dirname, isAbsolute, join } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createRequire } from 'node:module'
 
@@ -115,8 +115,12 @@ function clientConfig(id, entry) {
         this.addWatchFile?.(fileId)
         const source = await readFile(fileId)
         const { transform } = await lightning()
+        // Lightning CSS mixes the filename into CSS-module class hashes.
+        // An absolute path changes those hashes on every checkout, so the
+        // committed client bundle would not match a rebuild elsewhere.
+        const cssFilename = relative(process.cwd(), fileId).split(sep).join('/')
         const { code, exports: cssExports } = transform({
-          filename: fileId, code: source,
+          filename: cssFilename, code: source,
           cssModules: { pattern: '[hash]_[local]' }, minify: true,
         })
         const classMap = {}

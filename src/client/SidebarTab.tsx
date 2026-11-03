@@ -101,8 +101,10 @@ interface WatcherSidebarSources {
   status: ObservableSnapshotLike<SessionStatusSnapshot>
   stats: ObservableSnapshotLike<unknown> | undefined
   face: WatcherSessionFace
-  /** Context whose `uiConversation` is the service the reads above resolved. */
-  loaderCtx: ClientContext
+  /** Conversation service the reads above resolved. Not a Cordis context. */
+  uiConversation: {
+    binding: (id: SessionId) => { snapshot: ObservableSnapshotLike<ConversationSnapshot> }
+  }
 }
 
 type SidebarSourceService = 'sessions' | 'uiConversation' | 'uiSession'
@@ -127,13 +129,6 @@ function sidebarService(
     }
   }
   return (hostCtx as unknown as Record<SidebarSourceService, unknown>)[key]
-}
-
-/** History paging only needs the conversation service the tab already resolved. */
-function withUiConversation(base: ClientContext, uiConversation: ClientContext['uiConversation']): ClientContext {
-  const ctx = Object.create(base) as ClientContext
-  ctx.uiConversation = uiConversation
-  return ctx
 }
 
 let sidebarSourceFailureLogged = false
@@ -200,7 +195,7 @@ function resolveSidebarSources(
       status,
       stats,
       face,
-      loaderCtx: withUiConversation(ownCtx ?? hostCtx, uiConversation as ClientContext['uiConversation']),
+      uiConversation,
     }
   } catch (error) {
     // `uiConversation.binding` throws while the Session binding is not current.
@@ -264,7 +259,7 @@ export function WatcherSidebarTab({ ctx, ownCtx, sessionId, visible }: {
   if (snapshot === undefined || sources === undefined) return waitingRoot()
   return (
     <WatcherSidebarReady
-      ctx={sources.loaderCtx}
+      uiConversation={sources.uiConversation}
       sessionId={sessionId}
       visible={visible}
       snapshot={snapshot}
@@ -274,8 +269,8 @@ export function WatcherSidebarTab({ ctx, ownCtx, sessionId, visible }: {
   )
 }
 
-function WatcherSidebarReady({ ctx, sessionId, visible, snapshot, stats, face }: {
-  ctx: ClientContext
+function WatcherSidebarReady({ uiConversation, sessionId, visible, snapshot, stats, face }: {
+  uiConversation: WatcherSidebarSources['uiConversation']
   sessionId: SessionId
   visible: boolean
   snapshot: WatcherSnapshot
@@ -286,8 +281,8 @@ function WatcherSidebarReady({ ctx, sessionId, visible, snapshot, stats, face }:
   // The loader exists only while the Session face does; the "载入全部历史"
   // control is the sole trigger, so a hidden (visible=false) tab never pages.
   const loadAllHistory = useMemo(
-    () => (face === undefined ? undefined : createCompleteHistoryLoader(ctx, sessionId, face)),
-    [ctx, sessionId, face],
+    () => (face === undefined ? undefined : createCompleteHistoryLoader(uiConversation, sessionId, face)),
+    [uiConversation, sessionId, face],
   )
   return (
     <div className={css.sidebarHost} data-watcher-sidebar="picture">
