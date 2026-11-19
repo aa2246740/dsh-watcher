@@ -13,9 +13,28 @@ updates:
     commit-message:
       prefix: chore
       include: scope
-    # React is supplied by the DSH Host (React 18). A semver-major bump
-    # would typecheck against an API the runtime does not provide.
+    # Packages that only work at matching versions move in one PR.
+    groups:
+      size-limit:
+        patterns:
+          - size-limit
+          - '@size-limit/*'
+      vitest:
+        patterns:
+          - vitest
+          - '@vitest/*'
+      eslint:
+        patterns:
+          - eslint
+          - '@eslint/*'
+          - typescript-eslint
     ignore:
+      # The Harness SDK (@deepseek-ai/dsh-*, @deepseek-ai/cordis) is pinned to
+      # the Harness release this plugin is adapted to and must match the peer
+      # and engines.dsh ranges. Moving it is a manual adaptation, never a bot PR.
+      - dependency-name: '@deepseek-ai/*'
+      # React is supplied by the DSH Host (React 18). A semver-major bump
+      # would typecheck against an API the runtime does not provide.
       - dependency-name: react
         update-types:
           - version-update:semver-major
