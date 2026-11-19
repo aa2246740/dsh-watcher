@@ -3,7 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-session-projection'
 // Untyped local ESM fold: validated at runtime by zod below; single .mjs source kept for node tests.
 // @ts-ignore TS7016: no declarations for the local .mjs module
-import { initialState, reduceEvent, viewOf, SLOT_CAP } from './engine.mjs'
+import { initialState, reduceEvent, viewOf, SLOT_CAP, KEY } from './engine.mjs'
 const number = z.number().finite().nonnegative()
 const signed = z.number().finite()
 const nullableTime = z.number().finite().nullable()
@@ -46,19 +46,28 @@ const stateSchema = z.object({version:z.literal(5),sessionId:z.string(),skip:num
   surface,surfacePartial:z.boolean(),lastSurface:surfaceTotals.nullable(),requests:z.array(requestRow).max(60)})
 export type InsightsView = z.infer<typeof viewSchema>
 type InsightsState = z.infer<typeof stateSchema>
+// Harness 0.2.2 dropped SessionProjectionStateMap: host state is typed by the
+// register() call, and only the client view is merged into the shared map.
 declare module '@deepseek-ai/dsh-session-projection/types' {
-  interface SessionProjectionStateMap {watcherInsights:InsightsState}
   interface SessionProjectionMap {watcherInsights:InsightsView}
 }
-export function installProjection(ctx:Context):void {
-  ctx.sessionProjections.register<'watcherInsights',InsightsState>({key:'watcherInsights',stateVersion:5,stateSchema,
+/**
+ * Register the Watcher fold and warm attached Sessions.
+ * 0.2.2 returns an awaitable handle and asks callers to await it before
+ * consumers read; 0.2.0/0.2.1 return a disposer, which `await` passes through.
+ * Watcher keeps the default `summary: true`: Insights reads this key from
+ * `session.list()` rows.
+ */
+export async function installProjection(ctx:Context):Promise<void> {
+  await ctx.sessionProjections.register<'watcherInsights',InsightsState>({key:'watcherInsights',stateVersion:5,stateSchema,
     init:(header,inherited)=>stateSchema.parse(initialState(header,inherited)),apply:(state,event)=>reduceEvent(state,event),
     wire:{viewSchema,view:state=>viewOf(state)}})
   ctx.inject(['sessions'], c => {
     try {
       for (const session of (c.sessions as any).list?.() ?? []) {
         try {
-          c.sessionProjections.snapshot(session)
+          // Fold only this key: 0.2.2 snapshot(session, keys) computes the selected units alone.
+          c.sessionProjections.snapshot(session, [KEY])
         } catch (error) {
           c.logger?.warn?.(`dsh-watcher: projection warm-up failed for a session: ${String(error)}`)
         }
