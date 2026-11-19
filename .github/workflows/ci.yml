@@ -15,12 +15,12 @@ jobs:
       npm_config_auto_install_peers: 'false'
       PNPM_CONFIG_AUTO_INSTALL_PEERS: 'false'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # No `version`: the action reads `packageManager` from package.json.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
@@ -42,7 +42,7 @@ jobs:
       - name: Time the client bundle build
         run: node scripts/measure-build.mjs
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: security-review

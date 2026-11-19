@@ -28,3 +28,24 @@ updates:
       - dependency-name: '@types/react-dom'
         update-types:
           - version-update:semver-major
+
+  # Workflow actions. Majors move the action runtime (Node 20 -> 24 was the
+  # last one), so they arrive as one grouped PR that CI exercises; the publish
+  # workflow is only read, not run, before merging.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 1
+    cooldown:
+      default-days: 7
+    labels:
+      - chore
+      - P3
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      github-actions:
+        patterns:
+          - '*'

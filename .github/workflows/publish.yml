@@ -19,12 +19,12 @@ jobs:
       npm_config_auto_install_peers: 'false'
       PNPM_CONFIG_AUTO_INSTALL_PEERS: 'false'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # No `version`: the action reads `packageManager` from package.json.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
@@ -48,6 +48,6 @@ jobs:
 
       - name: GitHub release notes
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
