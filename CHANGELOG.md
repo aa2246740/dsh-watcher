@@ -10,6 +10,8 @@
 - Runtime `zod` is `4.6.6`, the version the 0.2.2-rc.5 projection packages use. The host only calls `.parse()`, so older hosts are unaffected.
 - CI: `pnpm-workspace.yaml` now sets `autoInstallPeers: false`. Dependabot runs pnpm 12, which ignores that setting in `.npmrc`, so its lockfiles failed the frozen install (#44, #45).
 - Dev tools: eslint `10.14.0`, size-limit and `@size-limit/file` `14.3.0`.
+- Context 水面 now falls after compaction (#43). Recorded `user/message` events carry the UserMessage itself as `data`, but the fold read `data.message`, so every user message priced 0 and returned early. That also skipped each compaction checkpoint, a `user/message` with `surfaceOp: { op: "replace" }`, so nothing was ever subtracted. `agent/inbox/spliced` is only the pending input queue and stays ignored. Replacements now splice by surface position, like Harness `foldSurface`; a second compaction's range can start at a checkpoint whose seq is higher than its end. On every local session Harness can fold (295, 36 of them compacted), the node list now equals Harness's. Projection `stateVersion` is 6, so the host refolds cached sessions.
+- The panel's 水面 reads the host's `contextPressure` projection (the Composer context meter) for the open session when it exists, and falls back to Watcher's estimate otherwise (cold sessions, statistics list). ● marks only an unmoved provider-reported prompt (shown as 最近一发). The host's `projectedTokens` and Watcher's own fold stay ○ 估算, and a partial fold says 部分历史未载入.
 
 ## 0.9.1 — 2026-11-03
 

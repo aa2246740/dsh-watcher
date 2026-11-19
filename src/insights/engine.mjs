@@ -134,6 +134,8 @@ function bucketFor(type, message) {
   if (type === 'user/message') {
     const source = record(message?.source) ? message.source : null;
     const kind = typeof source?.kind === 'string' ? source.kind : 'user';
+    // 压缩检查点（source 带 compactionId）是被折叠对话的摘要，仍归对话。
+    if (typeof source?.compactionId === 'string') return 'conversation';
     if (kind !== 'user') return 'memory'; // AGENTS.md、技能、文件变更通知、cron 等注入内容
     const blocks = Array.isArray(message?.content) ? message.content : [];
     return blocks.some(b => record(b) && (b.type === 'file' || b.type === 'image')) ? 'files' : 'conversation';
@@ -154,23 +156,53 @@ function surfaceDiff(now, before) {
   delta.total = (now.total ?? 0) - (before?.total ?? 0);
   return delta;
 }
+/**
+ * The model-visible message an event adds, as Harness `deriveEventMessage`
+ * reads it: `user/message` records the UserMessage itself as `data`; the
+ * other surface types wrap theirs in `data.message`.
+ */
+function surfaceMessageOf(event) {
+  return event.type === 'user/message' ? event.data : event.data.message;
+}
+function dropNodes(s, nodes) {
+  for (const n of nodes) s.surface[n.bucket] = Math.max(0, s.surface[n.bucket] - n.tokens);
+}
+/**
+ * Positional range `[from, to]` a `replace` shadows in `s.surfaceNodes`.
+ * The Harness splices by node position, not by seq order: after one
+ * compaction a checkpoint with a high seq sits before older nodes, so a later
+ * range such as 1196→25 is valid. Nodes this fold never holds (an inherited
+ * prefix, or the oldest nodes past the cap) are always a positional prefix,
+ * so a range that starts there covers the retained nodes up to `endSeq`.
+ * Returns null when the range cannot be placed at all.
+ */
+function replacedRange(nodes, op) {
+  const from = nodes.findIndex(n => n.seq === op.startSeq);
+  const to = nodes.findIndex(n => n.seq === op.endSeq);
+  if (from >= 0) return to >= from ? [from, to] : null;
+  return [0, to];
+}
 function applySurface(s, event) {
-  const d = event.data;
-  const tokens = priceMessage(d.message);
-  if (tokens === 0) return;
-  const bucket = bucketFor(event.type, d.message);
-  const op = event.surfaceOp ?? d.surfaceOp;
-  if (record(op) && op.op === 'replace' && count(op.startSeq) && count(op.endSeq)) {
-    const start = op.startSeq, end = op.endSeq;
-    for (const n of s.surfaceNodes) {
-      if (n.seq >= start && n.seq <= end) s.surface[n.bucket] = Math.max(0, s.surface[n.bucket] - n.tokens);
-    }
-    s.surfaceNodes = s.surfaceNodes.filter(n => n.seq < start || n.seq > end);
+  const message = surfaceMessageOf(event);
+  const tokens = priceMessage(message);
+  const bucket = bucketFor(event.type, message);
+  // Zero-priced nodes (an empty system head) still hold a position a later replace may name.
+  const node = { seq: event.seq, bucket, tokens };
+  const op = event.surfaceOp ?? event.data.surfaceOp;
+  const range = record(op) && op.op === 'replace' && count(op.startSeq) && count(op.endSeq)
+    ? replacedRange(s.surfaceNodes, op) : undefined;
+  if (range) {
+    const [from, to] = range;
+    // Part of the range lies outside the retained nodes: the total can no longer be complete.
+    if (s.surfaceNodes[from]?.seq !== op.startSeq) s.surfacePartial = true;
+    dropNodes(s, s.surfaceNodes.slice(from, to + 1));
+    s.surfaceNodes.splice(from, Math.max(0, to - from + 1), node);
+  } else {
+    if (range === null) s.surfacePartial = true;
+    s.surfaceNodes.push(node);
   }
-  s.surfaceNodes.push({ seq: event.seq, bucket, tokens });
   if (s.surfaceNodes.length > SURFACE_NODE_CAP) {
-    const dropped = s.surfaceNodes.slice(0, s.surfaceNodes.length - SURFACE_NODE_CAP);
-    for (const n of dropped) s.surface[n.bucket] = Math.max(0, s.surface[n.bucket] - n.tokens);
+    dropNodes(s, s.surfaceNodes.slice(0, s.surfaceNodes.length - SURFACE_NODE_CAP));
     s.surfaceNodes = s.surfaceNodes.slice(-SURFACE_NODE_CAP);
     s.surfacePartial = true;
   }

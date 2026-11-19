@@ -83,8 +83,8 @@ test('surface attributes system, memory, conversation and tool prices',()=>{
     event('request/header',0,0,{header:{config:{provider:'p',model:'a'},tools:[{name:'bash'}]}}),
     event('system/message',1,1,{turn:1,step:1,message:{role:'system',content:[{type:'text',text:'you are helpful'.repeat(40)}]}}),
     event('turn/start',2,2,{turn:1}),
-    event('user/message',3,3,{turn:1,step:1,message:{role:'user',source:{kind:'user'},content:[{type:'text',text:'hello'}]}}),
-    event('user/message',4,4,{turn:1,step:1,message:{role:'user',source:{kind:'agent.inject',form:'instructions'},content:[{type:'text',text:'AGENTS.md'.repeat(60)}]}}),
+    event('user/message',3,3,{id:'u3',role:'user',source:{kind:'user'},content:[{type:'text',text:'hello'}]}),
+    event('user/message',4,4,{id:'u4',role:'user',source:{kind:'agent.inject',form:'instructions'},content:[{type:'text',text:'AGENTS.md'.repeat(60)}]}),
     event('step/start',5,10,{turn:1,step:1}),
     complete(6),
   ]);
@@ -99,16 +99,18 @@ test('surface attributes system, memory, conversation and tool prices',()=>{
 });
 test('file attachment user messages price into the files bucket',()=>{
   const s=fold(fixture([
-    event('user/message',3,3,{turn:1,step:1,message:{role:'user',source:{kind:'user'},content:[{type:'file',attachment:{path:'a.ts',text:'x'.repeat(400)}}]}}),
+    event('user/message',3,3,{id:'u3',role:'user',source:{kind:'user'},content:[{type:'file',attachment:{path:'a.ts',text:'x'.repeat(400)}}]}),
     complete(4),
   ]));
   assert.ok(viewOf(s).context.surface.files>0);
   assert.equal(viewOf(s).context.surface.conversation,0);
 });
 test('surface replacement removes shadowed nodes from buckets',()=>{
+  // Harness replaces through user/message, system/message, or tool/result; the
+  // fold must honour a replace on any surface type and price the request as sent.
   const rows=[
     event('turn/start',1,1,{turn:1}),
-    event('user/message',2,2,{turn:1,step:1,message:{role:'user',source:{kind:'user'},content:[{type:'text',text:'x'.repeat(400)}]}}),
+    {...event('user/message',2,2,{id:'u2',role:'user',source:{kind:'user'},content:[{type:'text',text:'x'.repeat(400)}]}),surfaceOp:'append'},
     event('step/start',3,10,{turn:1,step:1}),
     {type:'assistant/message',seq:4,time:100,surfaceOp:{op:'replace',startSeq:2,endSeq:2},data:{turn:1,step:1,usage,message:{source:{kind:'model',provider:'p',model:'a'},role:'assistant',content:[{type:'text',text:'done'}]}}},
   ];
@@ -145,7 +147,7 @@ test('request/context publishes the advertised window',()=>{
   assert.equal(viewOf(s).context.window,200000);
 });
 test('skipped surface events mark the estimate partial',()=>{
-  const s=fold([event('user/message',2,2,{turn:1,step:1,message:{role:'user',source:{kind:'user'},content:[{type:'text',text:'x'}]}})],initialState({id:'fork'},4));
+  const s=fold([event('user/message',2,2,{id:'u2',role:'user',source:{kind:'user'},content:[{type:'text',text:'x'}]})],initialState({id:'fork'},4));
   assert.equal(viewOf(s).context.surface.partial,true);
   assert.equal(viewOf(s).context.surface.conversation,0);
 });

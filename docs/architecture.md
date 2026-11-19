@@ -29,6 +29,8 @@ The client entry `src/client/index.tsx` injects two host slots:
 - `settings.section` renders `InsightsSettings` from `src/client/Insights.tsx`.
 - `conversation.session.header.utilities` renders the Watcher button, order 50.
 
+The context 水面 prefers the host's token-meter `contextPressure` projection, which only the open session exposes. `src/client/context-reading.ts` picks it, and `watcherInsights.context` (the fold's surface estimate, replacements applied by position) is the fallback.
+
 `src/client/Watcher.tsx` reads the host conversation and draws the work picture: turns, steps, parallel tool calls, and the optional model stage. `src/observation/fold.ts` groups those events. A second plugin, dsh-better-sidebar, is optional. `src/client/SidebarTab.tsx` registers a tab only when that service exists. It is not a dependency.
 
 Pricing reads `pricing/models.yaml` and an optional `localStorage` override `dsh-watcher:pricing-override:v1`. Missing prices stay unknown. They are not treated as zero.
