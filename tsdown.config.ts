@@ -20,6 +20,13 @@ function resolveHarnessAdapter() {
 const adapter = existsSync(vendored) ? vendored : resolveHarnessAdapter()
 if (!existsSync(adapter)) throw new Error(`dshx client build adapter not found: ${adapter}`)
 const { externalClientBundle } = await import(pathToFileURL(adapter).href)
-export default externalClientBundle('dsh-watcher', ['src/dsh-watcher.ts'], {
+const [host, ...client] = externalClientBundle('dsh-watcher', ['src/dsh-watcher.ts'], {
   clientEntry: 'src/client/index.tsx',
 })
+// The host bundle is runtime code read by Node, not documentation: drop JSDoc
+// (src/ keeps it) and keep legal and @__PURE__ comments. Saves about 0.7 kB of
+// the 8 kB brotli budget in .size-limit.json.
+export default [
+  { ...host, outputOptions: { ...host.outputOptions, comments: { jsdoc: false } } },
+  ...client,
+]
