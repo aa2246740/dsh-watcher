@@ -4,7 +4,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { test } from 'vitest'
 import { apply, inject } from '../src/dsh-watcher.ts'
 import { initialState, viewOf } from '../src/insights/engine.mjs'
-import { overlayTopMargin, placeBelowAnchor } from '../lib/types/client/anchored-position.js'
+import { overlayTopMargin, placeBelowAnchor } from '../src/client/anchored-position.ts'
 
 /**
  * A fake host context. `register` returns what one Harness line returns:
