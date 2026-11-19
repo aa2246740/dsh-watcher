@@ -17,14 +17,14 @@
 
 - The Better Sidebar Watcher tab reads `sessions`, `uiConversation`, and `uiSession` from Watcher's own context. Better Sidebar's host context does not inject those services, so the tab stayed on "Watcher 正在等待会话记录…". The client inject list now includes `uiSession`. A failed source read is logged once at debug level.
 - The Better Sidebar Watcher tab passes the conversation service it already resolved into the history loader. Copying `uiConversation` onto an object that inherits a Cordis context throws `cannot set property "uiConversation" in multiple fibers` on Cordis 4.0.5, and the tab stayed on "Watcher 正在等待会话记录…". CSS module class hashes now use a package-relative filename, so a fresh `pnpm run build` matches the committed client bundle on another checkout path.
-- Daily token buckets are quarter-hour UTC instants (`days[].start`). The browser places each bucket on its own local calendar day, so a host started in UTC no longer shifts 00:00–08:00 Asia/Shanghai usage onto the previous day. The day axis steps by local midnight across DST. Projection `stateVersion` is 5. Caches without `start` still render through the old `days[].key`, turn, or `updatedAt` fallback until that session is refolded.
-- Dev pin `@deepseek-ai/cordis` is `4.0.5`, the version `@deepseek-ai/dsh@0.2.1-rc.2` and `@deepseek-ai/dsh-session@0.2.1-rc.2` require (`~4.0.5`). The peer range stays `~4.0.4`.
 
 ## 0.9.0 — 2026-10-17
 
 - Target official DeepSeek Harness **0.2.1-rc.2** (`dsh-v0.2.1-rc.2`, `@deepseek-ai/dsh@0.2.1-rc.2`, commit `687f282e8625c6b8d11ff58211a90524be2e4317`). Dev pins are `0.2.1-rc.2`. `@deepseek-ai/dsh-*` peers and `engines.dsh` are `>=0.2.1-rc.1 <0.2.2`, matching DSHX 0.9.7: accepts `0.2.1-rc.1` / `0.2.1-rc.2` / stable `0.2.1`, rejects `0.2.1` alphas and `0.2.0-rc.2`. `@deepseek-ai/cordis` stays `~4.0.4`.
 - Icons stay `IconChevronRightOutlineRegular`, `IconRefreshOutlineRegular`, `IconCheckOutlineRegular`, and `IconCopyOutlineRegular`. Those exports are still present in `@deepseek-ai/dsh-client-ui-primitives@0.2.1-rc.2`. Size-suffixed names remain absent.
 - Terminal card labels gain required `commandLine` for overflowing authored command lines (`命令行 N`). Client bundle rebuilt; host entry `lib/dsh-watcher.js` kept from the prior full commit (tsdown 0.22 still stubs that entry).
+- Daily token buckets are quarter-hour UTC instants (`days[].start`). The browser places each bucket on its own local calendar day, so a host started in UTC no longer shifts 00:00–08:00 Asia/Shanghai usage onto the previous day. The day axis steps by local midnight across DST. Projection `stateVersion` is 5. Caches without `start` still render through the old `days[].key`, turn, or `updatedAt` fallback until that session is refolded.
+- Dev pin `@deepseek-ai/cordis` is `4.0.5`, the version `@deepseek-ai/dsh@0.2.1-rc.2` and `@deepseek-ai/dsh-session@0.2.1-rc.2` require (`~4.0.5`). The peer range stays `~4.0.4`.
 
 ## 0.8.0 — 2026-10-07
 
