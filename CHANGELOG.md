@@ -36,6 +36,7 @@
 - Target official DeepSeek Harness **0.2.0-rc.1** (`dsh-v0.2.0-rc.1`, `@deepseek-ai/dsh@0.2.0-rc.1`, commit `4878cdabd87d4041bdaff61d04c966883b9fd07a`). Dev pins are `0.2.0-rc.1`. `@deepseek-ai/dsh-*` peers are `>=0.2.0-rc.1 <0.2.1`, which accepts `0.2.0-rc.1` and stable `0.2.0`, rejects `0.2.0` alphas, and rejects `0.1.7-rc.2`. `@deepseek-ai/cordis` stays `~4.0.4`.
 - Icons stay `IconChevronRightOutlineRegular`, `IconRefreshOutlineRegular`, `IconCheckOutlineRegular`, and `IconCopyOutlineRegular`. Those exports are still present in `@deepseek-ai/dsh-client-ui-primitives` at SHA `4878cdabd87d4041bdaff61d04c966883b9fd07a`. `IconChevronRightOutline14`, `IconRefreshOutline14`, `IconCheckOutline16`, and `IconCopyOutline16` are still absent. Issue #17's Desktop screenshot is Watcher 0.5.0, which imported the removed size-suffixed names.
 - Client source is unchanged, so the vendored `lib/client.js` from 0.6.1 stays. The vendored client-build adapter remains the build path.
+- The `v0.7.0` tag itself was built and tested against DeepSeek Harness **0.2.0-rc.2** (commit `639ed015397290b3745d163aafe02ffee4aa3f84`), on macOS arm64 only. The rc.1 public plugin interfaces stay inside the peer range.
 
 ## 0.6.1 — 2026-09-24
 
