@@ -137,5 +137,6 @@
   },
   "lint-staged": {
     "*.{ts,tsx,mjs,js}": "eslint --max-warnings 0 --no-warn-ignored"
-  }
+  },
+  "packageManager": "pnpm@12.20.0"
 }

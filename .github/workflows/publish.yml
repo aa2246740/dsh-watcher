@@ -21,9 +21,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # No `version`: the action reads `packageManager` from package.json.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 12.9.1
 
       - uses: actions/setup-node@v4
         with:
