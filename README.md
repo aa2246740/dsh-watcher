@@ -78,7 +78,7 @@ dsh plugin --profile web remove dsh-watcher
 ## 本次更新（0.10.0）
 
 - 对齐官方 DeepSeek Harness **0.2.2-rc.5**（`dsh-v0.2.2-rc.5`，commit `9c2670d3`）。开发依赖固定到 `0.2.2-rc.5`，`@deepseek-ai/cordis` 开发版 `4.1.0`、peer `~4.0.4 || ~4.1.0`。
-- 0.2.2-rc.5 的 primitives 删掉了 `useAnchoredPosition`。旧版 Watcher 在 0.2.2 上一点眼睛按钮就会报错。现在 Watcher 自带同样的定位逻辑，三条 Harness 线用同一个包。
+- 0.2.2-rc.5 的 primitives 删掉了 `useAnchoredPosition`。旧版 Watcher 在渲染会话标题栏的眼睛按钮时就无条件调用它，所以在 0.2.2 上一显示会话就报错，不用点按钮。现在 Watcher 自带同样的定位逻辑，三条 Harness 线用同一个包。
 - Host 端 `sessionProjections.register()` 在 0.2.2 改成要 `await` 的注册句柄。Watcher 的 `apply` 现在等注册完成再预热，注册失败会让插件加载失败，而不是只打一条日志。预热只计算 `watcherInsights` 一个键。
 - `watcherInsights` 继续出现在会话列表摘要里（0.2.2 默认如此），统计页照旧从 `session.list()` 读数据。
 

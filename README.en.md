@@ -78,7 +78,7 @@ The interaction contract lives in [DESIGN.md](./DESIGN.md). MIT.
 ## What's new in 0.10.0
 
 - Targets official DeepSeek Harness **0.2.2-rc.5** (`dsh-v0.2.2-rc.5`, commit `9c2670d3`). Dev pins are `0.2.2-rc.5`; `@deepseek-ai/cordis` is pinned to `4.1.0` for development and peers on `~4.0.4 || ~4.1.0`.
-- 0.2.2-rc.5 removed `useAnchoredPosition` from the primitives package, so earlier Watcher builds threw when the eye button opened the panel on 0.2.2. Watcher now carries the same placement logic itself, and one package serves all three Harness lines.
+- 0.2.2-rc.5 removed `useAnchoredPosition` from the primitives package, and earlier Watcher builds called it unconditionally while rendering the session-header eye button, so on 0.2.2 they threw as soon as a session was shown, without a click. Watcher now carries the same placement logic itself, and one package serves all three Harness lines.
 - On the host, `sessionProjections.register()` returns an awaitable registration handle in 0.2.2. Watcher's `apply` now waits for it before warm-up, and a failed registration fails plugin loading instead of only being logged. Warm-up computes only the `watcherInsights` key.
 - `watcherInsights` stays in Session summaries (the 0.2.2 default), so Insights still reads it from `session.list()`.
 

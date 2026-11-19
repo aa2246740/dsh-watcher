@@ -3,7 +3,7 @@
  *
  * Harness 0.2.1 exported this hook from `@deepseek-ai/dsh-client-ui-primitives`;
  * 0.2.2-rc.5 removed it, so an injected import resolves to `undefined` and the
- * panel throws on open. Watcher owns this small copy (MIT, DeepSeek Harness
+ * header button threw as soon as it rendered (the hook ran on every render). Watcher owns this small copy (MIT, DeepSeek Harness
  * 0.2.1-rc.5 `useAnchoredPosition`, below/start placement only) so the same
  * bundle runs on every supported Host line.
  */
