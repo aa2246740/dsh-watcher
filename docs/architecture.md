@@ -22,7 +22,7 @@ flowchart LR
   prices --> insights
 ```
 
-The host loads `cordis.yml`, which inserts plugin id `dsh-watcher` from `src/dsh-watcher.ts`. `apply` registers session projection `watcherInsights`. The projection stores folded token and timing stats. `src/insights/engine.mjs` is the reducer. Zod in `src/insights/projection.ts` checks the state before it is replayed. The projection does not add a transport and does not write model-facing messages.
+The host loads `cordis.yml`, which inserts plugin id `dsh-watcher` from `src/dsh-watcher.ts`. `apply` registers session projection `watcherInsights` and awaits the registration (Harness 0.2.2 returns an awaitable handle; 0.2.0 and 0.2.1 return a disposer that `await` passes through). The key stays in Session summaries, which is where Insights reads it from `session.list()`. The projection stores folded token and timing stats. `src/insights/engine.mjs` is the reducer. Zod in `src/insights/projection.ts` checks the state before it is replayed. The projection does not add a transport and does not write model-facing messages.
 
 The client entry `src/client/index.tsx` injects two host slots:
 

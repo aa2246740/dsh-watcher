@@ -1,11 +1,19 @@
 # Changelog
 
+## 0.10.0 — Unreleased
+
+- Target official DeepSeek Harness **0.2.2-rc.5** (`dsh-v0.2.2-rc.5`, `@deepseek-ai/dsh@0.2.2-rc.5`, commit `9c2670d3`). Dev pins are `0.2.2-rc.5` and `@deepseek-ai/cordis` `4.1.0`, the version those packages require (`~4.1.0`). The cordis peer is `~4.0.4 || ~4.1.0`.
+- `@deepseek-ai/dsh-*` peers and `engines.dsh` are `>=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-0 <0.2.2-0 || >=0.2.2-0 <0.2.3-0`. It accepts `0.2.0-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.5`, and stable `0.2.2`, and rejects `0.2.0-rc.1` and all of `0.2.3`. The split form gives the same answer with and without prerelease matching. The old `<0.2.2` bound rejected stable `0.2.2`, and the Harness installer (prerelease matching on) still let 0.9.1 install on `0.2.2-rc.5`, where the panel crashed.
+- `@deepseek-ai/dsh-client-ui-primitives@0.2.2-rc.5` no longer exports `useAnchoredPosition`. The injected import was `undefined` and opening the Watcher panel threw. Watcher now owns the below-anchor placement (`src/client/anchored-position.ts`, copied from the MIT 0.2.1-rc.5 hook).
+- `sessionProjections.register()` returns an awaitable handle in 0.2.2 and callers must await it. `apply` is async and awaits registration before the warm-up reads. A registration failure now rejects plugin activation. On 0.2.0 / 0.2.1 the call returns a disposer and `await` passes it through. The `SessionProjectionStateMap` augmentation is gone because 0.2.2 removed that map. Warm-up calls `snapshot(session, ['watcherInsights'])`, so it no longer forces other plugins' views.
+- `watcherInsights` keeps the default `summary: true`. 0.2.2 list rows carry only summary keys, and Insights reads this key from `session.list()`.
+- Runtime `zod` is `4.6.6`, the version the 0.2.2-rc.5 projection packages use. The host only calls `.parse()`, so older hosts are unaffected.
+- CI: `pnpm-workspace.yaml` now sets `autoInstallPeers: false`. Dependabot runs pnpm 12, which ignores that setting in `.npmrc`, so its lockfiles failed the frozen install (#44, #45).
+- Dev tools: eslint `10.14.0`, size-limit and `@size-limit/file` `14.3.0`.
+
 ## 0.9.1 — 2026-11-03
 
 - The Better Sidebar Watcher tab reads `sessions`, `uiConversation`, and `uiSession` from Watcher's own context. Better Sidebar's host context does not inject those services, so the tab stayed on "Watcher 正在等待会话记录…". The client inject list now includes `uiSession`. A failed source read is logged once at debug level.
-
-## Unreleased
-
 - The Better Sidebar Watcher tab passes the conversation service it already resolved into the history loader. Copying `uiConversation` onto an object that inherits a Cordis context throws `cannot set property "uiConversation" in multiple fibers` on Cordis 4.0.5, and the tab stayed on "Watcher 正在等待会话记录…". CSS module class hashes now use a package-relative filename, so a fresh `pnpm run build` matches the committed client bundle on another checkout path.
 - Daily token buckets are quarter-hour UTC instants (`days[].start`). The browser places each bucket on its own local calendar day, so a host started in UTC no longer shifts 00:00–08:00 Asia/Shanghai usage onto the previous day. The day axis steps by local midnight across DST. Projection `stateVersion` is 5. Caches without `start` still render through the old `days[].key`, turn, or `updatedAt` fallback until that session is refolded.
 - Dev pin `@deepseek-ai/cordis` is `4.0.5`, the version `@deepseek-ai/dsh@0.2.1-rc.2` and `@deepseek-ai/dsh-session@0.2.1-rc.2` require (`~4.0.5`). The peer range stays `~4.0.4`.

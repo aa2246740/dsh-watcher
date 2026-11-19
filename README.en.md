@@ -30,7 +30,7 @@ Then start the web UI with `dsh web`. No build step, no restart.
 
 This official CLI command writes only the `web` profile; it cannot modify the Desktop App profile — use the in-app **Add plugin** wizard above for desktop. This release commits `lib/`; normal use needs no clone, build, or DSHX installation.
 
-DeepSeek Harness **0.2.1-rc.2** (`@deepseek-ai/dsh@0.2.1-rc.2`, `dsh-v0.2.1-rc.2`). The `@deepseek-ai/dsh-*` peer and `engines.dsh` range is `>=0.2.1-rc.1 <0.2.2`: it accepts **0.2.1-rc.2** and stable **0.2.1**, rejects alphas, and rejects **0.2.0-rc.2**. Node `^22.19.0` or `>=24`.
+DeepSeek Harness **0.2.2-rc.5** (`@deepseek-ai/dsh@0.2.2-rc.5`, `dsh-v0.2.2-rc.5`); the 0.2.0 and 0.2.1 lines from 0.2.0-rc.2 on still work. The `@deepseek-ai/dsh-*` peer and `engines.dsh` range is `>=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-0 <0.2.2-0 || >=0.2.2-0 <0.2.3-0`: it accepts **0.2.0-rc.2**, **0.2.1-rc.5**, **0.2.2-rc.5**, and stable **0.2.2**, and rejects **0.2.0-rc.1** and every **0.2.3** prerelease or release. The range is spelled this way so the Harness installer (which compares prereleases) and npm / pnpm peer checks (which do not) reach the same answer. Node `^22.19.0` or `>=24`.
 
 A read-only plugin for DeepSeek Harness Web. Open the eye in the session header. A Session becomes a foldable work path: how many steps ran, how many tools fired, how long it took. Open a step for parallel branches, a tool result, or a reasoning row that stays folded until you ask.
 
@@ -75,7 +75,14 @@ The settings summary and session HUD show **Estimated cost** (not “total value
 
 The interaction contract lives in [DESIGN.md](./DESIGN.md). MIT.
 
-## What's new in 0.9.1
+## What's new in 0.10.0
+
+- Targets official DeepSeek Harness **0.2.2-rc.5** (`dsh-v0.2.2-rc.5`, commit `9c2670d3`). Dev pins are `0.2.2-rc.5`; `@deepseek-ai/cordis` is pinned to `4.1.0` for development and peers on `~4.0.4 || ~4.1.0`.
+- 0.2.2-rc.5 removed `useAnchoredPosition` from the primitives package, so earlier Watcher builds threw when the eye button opened the panel on 0.2.2. Watcher now carries the same placement logic itself, and one package serves all three Harness lines.
+- On the host, `sessionProjections.register()` returns an awaitable registration handle in 0.2.2. Watcher's `apply` now waits for it before warm-up, and a failed registration fails plugin loading instead of only being logged. Warm-up computes only the `watcherInsights` key.
+- `watcherInsights` stays in Session summaries (the 0.2.2 default), so Insights still reads it from `session.list()`.
+
+## 0.9.1
 
 - The Better Sidebar Watcher page now reads the plugin's own session context. It previously received the sidebar host context, which cannot see `uiConversation` or `uiSession`, so the page stayed on "waiting for the session record…".
 

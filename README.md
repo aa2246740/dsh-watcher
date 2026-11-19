@@ -30,7 +30,7 @@ dsh plugin --profile web update dsh-watcher@latest
 
 这条官方 CLI 命令只写入 `web` profile，不能修改 Desktop App 的 profile；桌面端请使用上面的应用内“添加插件”向导。本发布已提交 `lib/`；普通使用不需要 clone、构建或安装 DSHX。
 
-需要 DeepSeek Harness **0.2.1-rc.2**（`@deepseek-ai/dsh@0.2.1-rc.2`，`dsh-v0.2.1-rc.2`）。`@deepseek-ai/dsh-*` 的 peer 与 `engines.dsh` 范围是 `>=0.2.1-rc.1 <0.2.2`：接受 **0.2.1-rc.2** 和稳定版 **0.2.1**，拒绝 alpha，也拒绝 **0.2.0-rc.2**。Node `^22.19.0` 或 `>=24`。
+需要 DeepSeek Harness **0.2.2-rc.5**（`@deepseek-ai/dsh@0.2.2-rc.5`，`dsh-v0.2.2-rc.5`），也兼容 0.2.0-rc.2 起的 0.2.0 / 0.2.1 线。`@deepseek-ai/dsh-*` 的 peer 与 `engines.dsh` 范围是 `>=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-0 <0.2.2-0 || >=0.2.2-0 <0.2.3-0`：接受 **0.2.0-rc.2**、**0.2.1-rc.5**、**0.2.2-rc.5** 和稳定版 **0.2.2**，拒绝 **0.2.0-rc.1** 和 **0.2.3** 的任何预发布或正式版。这样写是为了让 Harness 安装器（带 prerelease 比较）和 npm / pnpm 的 peer 检查（不带）得到同一个结论。Node `^22.19.0` 或 `>=24`。
 
 DeepSeek Harness Web 的只读插件。点会话标题栏里的眼睛，把 Session 收成一张能折叠的工作路径：这轮走了几步、跑了几次、花了多久；再展开某一步看并行分支、工具结果，或一条默认折着的推理记录。
 
@@ -75,7 +75,14 @@ dsh plugin --profile web remove dsh-watcher
 
 交互约定在 [DESIGN.md](./DESIGN.md)。MIT。
 
-## 本次更新（0.9.1）
+## 本次更新（0.10.0）
+
+- 对齐官方 DeepSeek Harness **0.2.2-rc.5**（`dsh-v0.2.2-rc.5`，commit `9c2670d3`）。开发依赖固定到 `0.2.2-rc.5`，`@deepseek-ai/cordis` 开发版 `4.1.0`、peer `~4.0.4 || ~4.1.0`。
+- 0.2.2-rc.5 的 primitives 删掉了 `useAnchoredPosition`。旧版 Watcher 在 0.2.2 上一点眼睛按钮就会报错。现在 Watcher 自带同样的定位逻辑，三条 Harness 线用同一个包。
+- Host 端 `sessionProjections.register()` 在 0.2.2 改成要 `await` 的注册句柄。Watcher 的 `apply` 现在等注册完成再预热，注册失败会让插件加载失败，而不是只打一条日志。预热只计算 `watcherInsights` 一个键。
+- `watcherInsights` 继续出现在会话列表摘要里（0.2.2 默认如此），统计页照旧从 `session.list()` 读数据。
+
+## 0.9.1
 
 - Better Sidebar 里的 Watcher 页改读插件自己的会话上下文。以前那一页拿的是侧栏宿主的 context，读不到 `uiConversation` / `uiSession`，所以会一直停在「正在等待会话记录…」。
 
