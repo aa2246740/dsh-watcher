@@ -1,8 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "entry": [
-    "src/dsh-watcher.ts",
-    "src/client/index.tsx",
     "src/hub/watcher.ts",
     "src/insights/*.{ts,mjs}",
     "src/observation/*.ts",
@@ -13,6 +11,5 @@
     "tools/client-build.js"
   ],
   "ignoreDependencies": ["lightningcss"],
-  "project": ["src/**/*.{ts,tsx,mjs}", "scripts/**/*.{mjs,js}", "tests/**/*.mjs", "tools/**/*.js"],
-  "ignore": ["lib/**"]
+  "project": ["src/**/*.{ts,tsx,mjs}", "scripts/**/*.{mjs,js}", "tests/**/*.mjs", "tools/**/*.js"]
 }

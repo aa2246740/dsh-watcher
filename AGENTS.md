@@ -21,7 +21,7 @@ pnpm check:agents
 pnpm build
 ```
 
-`pnpm test` compiles with `tsc`, then runs Vitest in isolated processes and prints `test-suite-duration-ms`. A failed test is retried once (`retry: 1`). `pnpm test:list` lists test names and does not run them. `pnpm test:coverage` enforces the line, function, and branch floors in `vitest.config.mjs`. `pnpm boundaries` checks that `observation`, `insights`, and `hub` do not import the client panel.
+`pnpm test` compiles with `tsc`, then runs Vitest in isolated processes and prints `test-suite-duration-ms`. A failed test is retried once (`retry: 1`). `pnpm test:list` lists test names and does not run them. `pnpm test:coverage` enforces the line, function, and branch floors in `vitest.config.mjs`. `pnpm deadcode` compiles `lib/types/` with `tsc` before knip runs: knip maps tests' `lib/types/` imports back to `src/`, so without that step a fresh clone and a tree that has already run `pnpm test` gave different answers. `pnpm boundaries` checks that `observation`, `insights`, and `hub` do not import the client panel.
 
 `pnpm build` refreshes the committed `lib/` bundle. `tools/client-build.js` is vendored, so a normal build does not need a Harness checkout. Set `DSHX_HARNESS` only when that adapter file is missing.
 
