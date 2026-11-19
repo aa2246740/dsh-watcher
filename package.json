@@ -61,7 +61,7 @@
   ],
   "engines": {
     "node": "^22.19.0 || >=24.0.0",
-    "dsh": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-0 <0.2.2-0 || >=0.2.2-0 <0.2.3-0"
+    "dsh": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-rc.1 <0.2.2-0 || >=0.2.2-rc.1 <0.2.3-0"
   },
   "repository": {
     "type": "git",
@@ -84,17 +84,17 @@
   "license": "MIT",
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.0.4 || ~4.1.0",
-    "@deepseek-ai/dsh-api-remotes": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-0 <0.2.2-0 || >=0.2.2-0 <0.2.3-0",
-    "@deepseek-ai/dsh-client-ui-chat": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-0 <0.2.2-0 || >=0.2.2-0 <0.2.3-0",
-    "@deepseek-ai/dsh-client-ui-conversation": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-0 <0.2.2-0 || >=0.2.2-0 <0.2.3-0",
-    "@deepseek-ai/dsh-client-ui-primitives": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-0 <0.2.2-0 || >=0.2.2-0 <0.2.3-0",
-    "@deepseek-ai/dsh-client-ui-renderer": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-0 <0.2.2-0 || >=0.2.2-0 <0.2.3-0",
-    "@deepseek-ai/dsh-client-ui-session": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-0 <0.2.2-0 || >=0.2.2-0 <0.2.3-0",
-    "@deepseek-ai/dsh-client-ui-settings": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-0 <0.2.2-0 || >=0.2.2-0 <0.2.3-0",
-    "@deepseek-ai/dsh-client-ui-slots": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-0 <0.2.2-0 || >=0.2.2-0 <0.2.3-0",
-    "@deepseek-ai/dsh-session": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-0 <0.2.2-0 || >=0.2.2-0 <0.2.3-0",
-    "@deepseek-ai/dsh-session-projection": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-0 <0.2.2-0 || >=0.2.2-0 <0.2.3-0",
-    "@deepseek-ai/dsh-session-stats": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-0 <0.2.2-0 || >=0.2.2-0 <0.2.3-0"
+    "@deepseek-ai/dsh-api-remotes": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-rc.1 <0.2.2-0 || >=0.2.2-rc.1 <0.2.3-0",
+    "@deepseek-ai/dsh-client-ui-chat": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-rc.1 <0.2.2-0 || >=0.2.2-rc.1 <0.2.3-0",
+    "@deepseek-ai/dsh-client-ui-conversation": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-rc.1 <0.2.2-0 || >=0.2.2-rc.1 <0.2.3-0",
+    "@deepseek-ai/dsh-client-ui-primitives": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-rc.1 <0.2.2-0 || >=0.2.2-rc.1 <0.2.3-0",
+    "@deepseek-ai/dsh-client-ui-renderer": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-rc.1 <0.2.2-0 || >=0.2.2-rc.1 <0.2.3-0",
+    "@deepseek-ai/dsh-client-ui-session": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-rc.1 <0.2.2-0 || >=0.2.2-rc.1 <0.2.3-0",
+    "@deepseek-ai/dsh-client-ui-settings": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-rc.1 <0.2.2-0 || >=0.2.2-rc.1 <0.2.3-0",
+    "@deepseek-ai/dsh-client-ui-slots": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-rc.1 <0.2.2-0 || >=0.2.2-rc.1 <0.2.3-0",
+    "@deepseek-ai/dsh-session": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-rc.1 <0.2.2-0 || >=0.2.2-rc.1 <0.2.3-0",
+    "@deepseek-ai/dsh-session-projection": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-rc.1 <0.2.2-0 || >=0.2.2-rc.1 <0.2.3-0",
+    "@deepseek-ai/dsh-session-stats": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-rc.1 <0.2.2-0 || >=0.2.2-rc.1 <0.2.3-0"
   },
   "dependencies": {
     "zod": "4.6.6"
@@ -128,6 +128,7 @@
     "prettier": "^3.9.10",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "semver": "^7.8.5",
     "size-limit": "^14.3.0",
     "tsdown": "^0.23.1",
     "typescript": "^6.0.3",

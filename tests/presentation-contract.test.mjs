@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import semver from 'semver'
 import { test } from 'vitest'
 
 const clientSource = new URL('../src/client/Watcher.tsx', import.meta.url)
@@ -27,12 +28,12 @@ test('the Markdown reader is supplied through the declared RC1 client injection'
   const bundle = await readFile(new URL('../lib/client.js', import.meta.url), 'utf8')
   assert.ok(pkg.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-primitives'))
   for (const [name, range] of Object.entries(pkg.peerDependencies)) {
-    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(range, '>=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-0 <0.2.2-0 || >=0.2.2-0 <0.2.3-0', name)
+    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(range, '>=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-rc.1 <0.2.2-0 || >=0.2.2-rc.1 <0.2.3-0', name)
   }
   for (const [name, version] of Object.entries(pkg.devDependencies)) {
     if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(version, '0.2.2-rc.5', name)
   }
-  assert.equal(pkg.engines.dsh, '>=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-0 <0.2.2-0 || >=0.2.2-0 <0.2.3-0')
+  assert.equal(pkg.engines.dsh, '>=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-rc.1 <0.2.2-0 || >=0.2.2-rc.1 <0.2.3-0')
   assert.equal(pkg.peerDependencies['@deepseek-ai/cordis'], '~4.0.4 || ~4.1.0')
   assert.equal(pkg.devDependencies['@deepseek-ai/cordis'], '4.1.0')
   for (const icon of [
@@ -58,6 +59,23 @@ test('the Markdown reader is supplied through the declared RC1 client injection'
   assert.match(source, /codeLabel: '代码块'/)
   assert.match(source, /useSessionStatus/)
   assert.doesNotMatch(source, /useSessionPendingInteraction/)
+})
+
+test('the dsh range answers the same with and without prerelease matching and rejects alphas', async () => {
+  const pkg = JSON.parse(await readFile(packageSource, 'utf8'))
+  const ranges = [pkg.engines.dsh, ...Object.entries(pkg.peerDependencies)
+    .filter(([name]) => name.startsWith('@deepseek-ai/dsh-')).map(([, range]) => range)]
+  const accepted = ['0.2.0-rc.2', '0.2.0-rc.3', '0.2.0', '0.2.1-rc.1', '0.2.1-rc.5', '0.2.1', '0.2.2-rc.1', '0.2.2-rc.5', '0.2.2']
+  const rejected = [
+    '0.2.0-alpha.1', '0.2.0-rc.1', '0.2.1-alpha.0', '0.2.1-alpha.3', '0.2.1-0',
+    '0.2.2-alpha.0', '0.2.2-alpha.2', '0.2.2-0', '0.2.3-alpha.0', '0.2.3-rc.1', '0.2.3', '0.1.9',
+  ]
+  for (const range of ranges) {
+    for (const includePrerelease of [false, true]) {
+      for (const version of accepted) assert.equal(semver.satisfies(version, range, { includePrerelease }), true, `${version} ${includePrerelease}`)
+      for (const version of rejected) assert.equal(semver.satisfies(version, range, { includePrerelease }), false, `${version} ${includePrerelease}`)
+    }
+  }
 })
 
 test('the overview keeps every Step and occurrence reachable through folding and reversible grouping', async () => {

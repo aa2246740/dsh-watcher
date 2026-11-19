@@ -266,6 +266,9 @@ importers:
       react-dom:
         specifier: ^18.2.0
         version: 18.3.1(react@18.3.1)
+      semver:
+        specifier: ^7.8.5
+        version: 7.8.5
       size-limit:
         specifier: ^14.3.0
         version: 14.3.0
