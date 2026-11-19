@@ -3,3 +3,13 @@
 # Keep it equal to pnpm-lock.yaml `settings.autoInstallPeers` and the CI flag,
 # or `pnpm install --frozen-lockfile` fails with ERR_PNPM_LOCKFILE_CONFIG_MISMATCH.
 autoInstallPeers: false
+
+# GHSA-g3hv-75wg-m249 (moderate, ReDoS in minimatch <11.0.1). Only the lint
+# toolchain uses minimatch: eslint 10.14 / @eslint/config-array 0.23.5 /
+# @typescript-eslint/typescript-estree 8.72 ask for ^10. Their releases that
+# move to ^11 (eslint 10.15.0, typescript-eslint 8.73.0) were under seven days
+# old when this was added; once Dependabot brings them in, this entry matches
+# nothing and can be deleted. They use only `new Minimatch()`, `.match()`, and
+# `minimatch()`, which minimatch 11 keeps.
+overrides:
+  'minimatch@>=7.0.0 <11.0.1': 11.0.8
