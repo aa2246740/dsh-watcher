@@ -26,7 +26,10 @@ export function emptySkillStat(name) {
   return { name, modelCalls: 0, userCalls: 0, errors: 0, toolMs: 0, stepTokens: 0, injectedChars: 0, lastSeen: 0 };
 }
 export function initialState(header = {}, inherited = 0) {
-  return { version: 5, sessionId: String(header.id ?? ''), skip: inherited, seq: -1,
+  // surfaceRev 1: this fold stores user-message nodes and replaces by position.
+  // A ≤0.9.1 row has no marker. Its statistics stay; the surface is partial
+  // because those nodes cannot be replaced by position reliably.
+  return { version: 5, surfaceRev: 1, sessionId: String(header.id ?? ''), skip: inherited, seq: -1,
     updatedAt: 0, route: { provider: 'unknown', model: 'unknown' }, totals: emptyStats(),
     models: [], days: [], turn: null, open: null, tools: [], previousFailure: null,
     findings: [], findingCount: 0,
@@ -326,6 +329,8 @@ export function reduceEvent(state, event) {
     (event.type !== 'assistant/attempt' || (!!state.open && state.open.turn === d.turn && state.open.step === d.step));
   if (!passesGuards && !isSurface) return state;
   const s = structuredClone(state);
+  // Do not invent surfaceRev on a legacy row: the marker means this process created the state.
+  if (s.surfaceRev !== 1) s.surfacePartial = true;
   s.seq = event.seq; s.updatedAt = event.time;
   const surfaceBefore = isSurface ? surfaceTotals(s) : null;
   if (isSurface) applySurface(s, event);
@@ -464,7 +469,7 @@ function buildView(s) {
     findings: s.findings, findingCount: s.findingCount,
     context: {
       window: s.contextWindow,
-      surface: { ...s.surface, total: surfaceTotal(s.surface), partial: s.surfacePartial },
+      surface: { ...s.surface, total: surfaceTotal(s.surface), partial: s.surfacePartial || s.surfaceRev !== 1 },
       projected: surfaceTotal(s.surface),
     },
     requests: s.requests,

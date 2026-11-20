@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'vitest'
 import { initialState, reduceEvent, viewOf } from '../src/insights/engine.mjs'
+import { stateSchema, viewSchema } from '../src/insights/projection.ts'
 import { contextReadingOf } from '../src/client/context-reading.ts'
 
 // Issue #43. Builders follow the event shapes Harness 0.2.0-0.2.2 records:
@@ -138,6 +139,62 @@ test('a replace whose range cannot be placed appends and marks partial', () => {
   const s = fold(l.rows)
   assert.deepEqual(s.surfaceNodes.map(n => n.seq), [a, checkpoint])
   assert.equal(viewOf(s).context.surface.partial, true)
+})
+
+test('a 0.9.1 state keeps its statistics and stays partial through a compaction', () => {
+  // initialState in v0.9.1:src/insights/engine.mjs is version 5 and has no surfaceRev.
+  // That fold returned before storing a zero-priced user message, so the node list has none.
+  const { surfaceRev, ...legacy } = initialState({ id: 'legacy', cwd: '/repo' })
+  assert.equal(surfaceRev, 1)
+  legacy.seq = 4
+  legacy.updatedAt = 40
+  legacy.prompts = 3
+  legacy.totals = { ...legacy.totals, calls: 2, reported: 2, tokens: 900, input: 800, output: 100 }
+  legacy.days = [{ start: 0, tokens: 900, models: [{ provider: 'p', model: 'm', tokens: 900 }] }]
+  legacy.surface = { system: 40, tools: 0, memory: 0, files: 0, results: 0, conversation: 80 }
+  legacy.surfaceNodes = [
+    { seq: 1, bucket: 'system', tokens: 40 },
+    { seq: 3, bucket: 'conversation', tokens: 80 },
+  ]
+  legacy.surfacePartial = false
+  const parsed = stateSchema.parse(legacy)
+  assert.equal(parsed.surfaceRev, undefined)
+  assert.equal(parsed.totals.tokens, 900)
+  assert.equal(parsed.days[0].tokens, 900)
+  assert.equal(parsed.prompts, 3)
+  assert.deepEqual(parsed.surfaceNodes, legacy.surfaceNodes)
+  assert.equal(viewOf(legacy).totals.tokens, 900)
+  assert.equal(viewOf(legacy).context.surface.partial, true)
+  const checkpoint = {
+    type: 'user/message', seq: 5, time: 50,
+    data: { id: 'k', role: 'user', source: { kind: 'compact-checkpoint', compactionId: 'c1' }, content: text(40) },
+    surfaceOp: { op: 'replace', startSeq: 1, endSeq: 3 },
+  }
+  let next = reduceEvent(legacy, checkpoint)
+  assert.equal(next.surfaceRev, undefined)
+  assert.equal(next.totals.tokens, 900)
+  assert.equal(next.days[0].tokens, 900)
+  assert.equal(next.prompts, 3)
+  assert.equal(viewOf(next).context.surface.partial, true)
+  next = reduceEvent(next, { type: 'turn/start', seq: 6, time: 60, data: { turn: 2 } })
+  next = reduceEvent(next, { type: 'step/start', seq: 7, time: 70, data: { turn: 2, step: 1 } })
+  next = reduceEvent(next, {
+    type: 'assistant/message', seq: 8, time: 80,
+    data: {
+      turn: 2, step: 1, stream: [],
+      usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+      message: { role: 'assistant', content: text(4), source: { kind: 'model', provider: 'p', model: 'm' } },
+    },
+    surfaceOp: 'append',
+  })
+  assert.equal(next.totals.tokens, 915)
+  assert.equal(next.days[0].tokens, 915)
+  assert.equal(next.surfaceRev, undefined)
+  assert.equal(viewOf(next).context.surface.partial, true)
+  assert.equal(viewOf(next).totals.tokens, 915)
+  assert.equal(stateSchema.parse(next).totals.tokens, 915)
+  assert.equal(viewSchema.parse(viewOf(next)).totals.tokens, 915)
+  assert.equal(viewOf(initialState({ id: 'fresh' })).context.surface.partial, false)
 })
 
 test('the node cap keeps positions and marks the estimate partial', () => {

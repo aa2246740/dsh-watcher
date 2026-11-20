@@ -99,8 +99,9 @@ test('the projection keeps its key, version, and Session-summary membership', as
   const [definition] = log.definitions
   assert.deepEqual(inject, ['sessionProjections', 'sessions'])
   assert.equal(definition.key, 'watcherInsights')
-  // 6: surface nodes are positional (issue #43); a version bump makes the host refold old caches.
-  assert.equal(definition.stateVersion, 6)
+  // Stay on 5. A mismatch makes viewCheckpoint skip the row, and unattached
+  // sessions are listed from the cache only, so a bump hides every closed session.
+  assert.equal(definition.stateVersion, 5)
   // Insights reads watcherInsights from session.list() rows; 0.2.2 drops keys declaring summary: false.
   assert.notEqual(definition.wire.summary, false)
   const state = definition.init({ id: 's1', cwd: '/w' }, 0)
