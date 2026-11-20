@@ -48,7 +48,10 @@ function log() {
     },
   }
 }
-const fold = (rows, state = initialState({ id: 's' })) => rows.reduce(reduceEvent, state)
+const fold = (rows, state = initialState({ id: 's' }), surfaceNodeCap) => rows.reduce(
+  (next, event) => reduceEvent(next, event, surfaceNodeCap === undefined ? undefined : { surfaceNodeCap }),
+  state,
+)
 const totalAt = (rows, seq) => viewOf(fold(rows.filter(r => r.seq <= seq))).context.projected
 
 test('user messages in the recorded shape price into the surface', () => {
@@ -198,13 +201,14 @@ test('a 0.9.1 state keeps its statistics and stays partial through a compaction'
 })
 
 test('the node cap keeps positions and marks the estimate partial', () => {
+  const cap = 4
   const l = log()
-  for (let i = 0; i < 3002; i++) l.user(1)
-  const s = fold(l.rows)
-  assert.equal(s.surfaceNodes.length, 3000)
+  for (let i = 0; i < cap + 2; i++) l.user(1)
+  const s = fold(l.rows, initialState({ id: 's' }), cap)
+  assert.equal(s.surfaceNodes.length, cap)
   assert.equal(s.surfaceNodes[0].seq, 2)
   assert.equal(viewOf(s).context.surface.partial, true)
-  assert.equal(viewOf(s).context.projected, 3000 * price(text(1)))
+  assert.equal(viewOf(s).context.projected, cap * price(text(1)))
 })
 
 const context = { window: 1000000, surface: { system: 1, tools: 1, memory: 0, files: 0, results: 0, conversation: 554000, total: 556000, partial: false }, projected: 556000 }
