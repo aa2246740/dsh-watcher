@@ -1,11 +1,19 @@
+/*!
+ * Copyright (c) 2026 DeepSeek
+ * SPDX-License-Identifier: MIT
+ *
+ * Below/start placement copied from DeepSeek Harness:
+ * - 0.2.1-rc.5 packages/client/ui-primitives/src/useAnchoredPosition.ts
+ * - 0.2.2-rc.5 packages/client/ui-primitives/src/overlay-top-margin.ts
+ * The permission notice ships in THIRD_PARTY_NOTICES.md.
+ *
+ * Harness 0.2.1 exported useAnchoredPosition from
+ * `@deepseek-ai/dsh-client-ui-primitives`. 0.2.2-rc.5 removed it, so an
+ * injected import was `undefined` and the header button threw as soon as it
+ * rendered. Watcher owns this copy so one bundle runs on every supported line.
+ */
 /**
  * Keep the portaled Watcher panel anchored below its header trigger.
- *
- * Harness 0.2.1 exported this hook from `@deepseek-ai/dsh-client-ui-primitives`;
- * 0.2.2-rc.5 removed it, so an injected import resolves to `undefined` and the
- * header button threw as soon as it rendered (the hook ran on every render). Watcher owns this small copy (MIT, DeepSeek Harness
- * 0.2.1-rc.5 `useAnchoredPosition`, below/start placement only) so the same
- * bundle runs on every supported Host line.
  */
 import { useLayoutEffect, useState, type CSSProperties, type RefObject } from 'react'
 

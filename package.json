@@ -56,6 +56,7 @@
     "lib/types/**/*.d.ts",
     "cordis.yml",
     "README.md",
+    "THIRD_PARTY_NOTICES.md",
     "cordis.patch.yml",
     "pricing/**"
   ],

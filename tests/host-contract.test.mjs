@@ -112,6 +112,22 @@ test('the panel anchors below its trigger and clamps like the retired Harness ho
   assert.equal(overlayTopMargin(30, 0, true), 30)
 })
 
+test('the anchored-position copy carries the DeepSeek MIT notice into the client bundle', async () => {
+  const source = await readFile(new URL('../src/client/anchored-position.ts', import.meta.url), 'utf8')
+  const notices = await readFile(new URL('../THIRD_PARTY_NOTICES.md', import.meta.url), 'utf8')
+  const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+  const bundle = await readFile(new URL('../lib/client.js', import.meta.url), 'utf8')
+  for (const text of [source, bundle]) {
+    assert.match(text, /Copyright \(c\) 2026 DeepSeek/)
+    assert.match(text, /SPDX-License-Identifier: MIT/)
+    assert.match(text, /useAnchoredPosition\.ts/)
+    assert.match(text, /overlay-top-margin\.ts/)
+  }
+  assert.match(notices, /Copyright \(c\) 2026 DeepSeek/)
+  assert.match(notices, /Permission is hereby granted/)
+  assert.ok(pkg.files.includes('THIRD_PARTY_NOTICES.md'))
+})
+
 test('the client no longer imports primitives that 0.2.2-rc.5 removed', async () => {
   const source = await readFile(new URL('../src/client/Watcher.tsx', import.meta.url), 'utf8')
   const block = source.match(/import \{([^}]*)\} from '@deepseek-ai\/dsh-client-ui-primitives'/)
