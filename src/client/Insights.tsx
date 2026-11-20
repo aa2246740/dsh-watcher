@@ -11,6 +11,7 @@ import { estimateFromInsights, estimateUsageRows, formatEstimate, formatEstimate
 // @ts-ignore TS7016: no declarations for the local .mjs module
 import { costCopy, detectLocale } from '../insights/i18n.mjs'
 import type { InsightsView } from '../insights/projection.ts'
+import type { ContextReading } from './context-reading.ts'
 import css from './Insights.module.css'
 import { TimingPanel } from './TimingPanel.tsx'
 import { logError } from '../log.ts'
@@ -283,8 +284,8 @@ function effortLabel(effort: string | null | undefined): string {
 
 type Evidence = { turn: number; steps: number[]; seqs: number[] }
 
-export function SessionInsights({ value, now, running, waiting, onEvidence }: {
-  value: InsightsView | undefined; now: number; running: boolean; waiting: boolean; onEvidence: (e: Evidence) => void
+export function SessionInsights({ value, reading, now, running, waiting, onEvidence }: {
+  value: InsightsView | undefined; reading?: ContextReading | null; now: number; running: boolean; waiting: boolean; onEvidence: (e: Evidence) => void
 }) {
   const limits = useLimits()
   const pricing = usePricingTable()
@@ -323,7 +324,17 @@ export function SessionInsights({ value, now, running, waiting, onEvidence }: {
 
   const ctx = value.context ?? undefined
   const surface = ctx?.surface
-  const ctxPct = ctx?.window ? Math.min(100, Math.round((ctx.projected / ctx.window) * 100)) : null
+  // 水面 prefers the host's own context meter (contextPressure); Watcher's fold is the fallback.
+  const level = reading ?? (ctx === undefined ? null : { tokens: ctx.projected, window: ctx.window, exact: false, source: 'estimate' as const, partial: ctx.surface.partial })
+  const ctxPct = level?.window ? Math.min(100, Math.round((level.tokens / level.window) * 100)) : null
+  const levelMark = level?.exact === true ? '●' : '○'
+  const levelTitle = level === null
+    ? ''
+    : level.source === 'host'
+      ? level.exact
+        ? '上下文水面：宿主上下文指示的同一数值，最近一发请求的厂商上报提示词 ●'
+        : '上下文水面：宿主上下文指示的同一数值，厂商上报的最近一发提示词加上之后增减部分（如压缩）的估算 ○'
+      : `上下文水面：按内容长度估算 ○，宿主上下文指示不可读时使用${level.partial ? '；部分历史未载入，数值偏低' : ''}`
   const surfaceTotal = Math.max(1, surface?.total ?? 0)
   const compHint = (() => {
     if (surface === undefined) return null
@@ -383,19 +394,19 @@ export function SessionInsights({ value, now, running, waiting, onEvidence }: {
           </button>
         </div>
       </div>
-      {collapsed || ctx === undefined || surface === undefined ? null : (
-        <div className={css.ctxRow} title="上下文水面：当前提示词大小与窗口占比。● 为厂商/日志精确值，○ 为按内容长度估算">
+      {collapsed || level === null || surface === undefined ? null : (
+        <div className={css.ctxRow} title={`${levelTitle}。● 为厂商/日志精确值，○ 为估算`}>
           <span className={css.ctxLabel}>水面</span>
           <span className={css.ctxGauge} aria-hidden="true">
             <i style={{ width: `${ctxPct ?? 0}%` }} data-hot={ctxPct !== null && ctxPct >= 85 ? '' : undefined} />
           </span>
           <span className={css.ctxNums}>
             {ctxPct === null ? '—' : `${ctxPct}%`}
-            <em> · {fmtCompact(ctx.projected)}{ctx.window ? ` / ${fmtCompact(ctx.window)}` : ''}</em>
+            <em> · {fmtCompact(level.tokens)}{level.window ? ` / ${fmtCompact(level.window)}` : ''}</em>
           </span>
           <SurfaceBar surface={surface} mini />
           {totalIn > 0 ? <span className={css.ctxCache} title={cacheKnown ? undefined : '厂商未上报缓存桶，命中率不可知'}>{cacheKnown ? `${cachePct}% 缓存●` : '缓存 —'}</span> : null}
-          <span className={css.ctxNext}>下一发 ~{fmtCompact(ctx.projected)} ○</span>
+          <span className={css.ctxNext}>{level.exact ? '最近一发 ' : '下一发 ~'}{fmtCompact(level.tokens)} {levelMark}{level.partial ? ' · 部分历史未载入' : ''}</span>
         </div>
       )}
       {!collapsed && scope === 'session' && isMultiModel ? (

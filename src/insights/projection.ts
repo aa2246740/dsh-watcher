@@ -59,7 +59,7 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
  * `session.list()` rows.
  */
 export async function installProjection(ctx:Context):Promise<void> {
-  await ctx.sessionProjections.register<'watcherInsights',InsightsState>({key:'watcherInsights',stateVersion:5,stateSchema,
+  await ctx.sessionProjections.register<'watcherInsights',InsightsState>({key:'watcherInsights',stateVersion:6,stateSchema,
     init:(header,inherited)=>stateSchema.parse(initialState(header,inherited)),apply:(state,event)=>reduceEvent(state,event),
     wire:{viewSchema,view:state=>viewOf(state)}})
   ctx.inject(['sessions'], c => {

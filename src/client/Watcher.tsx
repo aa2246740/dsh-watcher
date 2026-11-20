@@ -49,6 +49,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { InsightsView } from '../insights/projection.ts'
 import css from './Watcher.module.css'
 import { SessionInsights } from './Insights.tsx'
+import { contextReadingOf } from './context-reading.ts'
 import {
   OVERVIEW_STATE_LABEL,
   overviewStateOf,
@@ -1333,6 +1334,9 @@ function ReadyWatcher({
   }), [chat, views, pending, sessionSnapshot.blank, sessionSnapshot.hasMore, sessionSnapshot.running])
   const wholeSessionStats = useProjection('sessionStats')
   const wholeSessionInsights = useProjection('watcherInsights')
+  // Host token-meter projection behind the Composer context meter (issue #43).
+  // Watcher does not depend on token-meter types; contextReadingOf validates the value.
+  const hostContextPressure = (useProjection as unknown as (key: string) => unknown)('contextPressure')
   const { picture, performanceByTurn } = useObservedPicture(sessionId, snapshot)
   const [open, setOpen] = useState(false)
   const [panelPin, setPanelPin] = useState<{ top: number; right: number } | null>(null)
@@ -1523,6 +1527,7 @@ function ReadyWatcher({
               hasMore={snapshot.hasMore}
               stats={wholeSessionStats}
               insights={wholeSessionInsights}
+              contextPressure={hostContextPressure}
               loadAllHistory={loadAllHistory}
               live={open}
               onInspectorFrameChange={pinPanelFrame}
@@ -1577,6 +1582,8 @@ export interface WorkPicturePanelProps {
   stats: { turns: number; steps: number } | undefined
   /** Cost/performance HUD input; the header overlay always renders it. */
   insights: InsightsView | undefined
+  /** Raw host `contextPressure` projection for the open session; absent where it cannot be read. */
+  contextPressure?: unknown
   /** Never mount the cost/performance HUD (the sidebar tab omits it). */
   hideInsights?: boolean
   /** Explicit whole-history loader; absent when no Session face is available. */
@@ -1603,6 +1610,7 @@ export function WorkPicturePanel({
   hasMore,
   stats,
   insights,
+  contextPressure,
   hideInsights,
   loadAllHistory,
   live,
@@ -1650,7 +1658,8 @@ export function WorkPicturePanel({
     [insights?.requests],
   )
   const pendingRequest = insights?.pending ?? null
-  const projectedTokens = insights?.context?.projected ?? null
+  const contextReading = contextReadingOf(insights?.context, contextPressure)
+  const projectedTokens = contextReading?.tokens ?? null
   const requestForStep = (turn: number, step: number) => requestByStep.get(`${turn}:${step}`)
   const pendingForStep = (turn: number, step: number) =>
     pendingRequest !== null && pendingRequest.turn === turn && pendingRequest.step === step
@@ -1924,7 +1933,7 @@ export function WorkPicturePanel({
         {hideInsights === true
           ? null
           : (
-            <SessionInsights value={insights} now={now} running={picture.running} waiting={picture.pendingCount > 0} onEvidence={locateEvidence} />
+            <SessionInsights value={insights} reading={contextReading} now={now} running={picture.running} waiting={picture.pendingCount > 0} onEvidence={locateEvidence} />
           )}
 
         <div className={css.viewToolbar} aria-label="路径视图设置">
