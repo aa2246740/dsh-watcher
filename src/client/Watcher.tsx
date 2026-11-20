@@ -1353,7 +1353,9 @@ function ReadyWatcher({
   const wholeSessionStats = useProjection('sessionStats')
   const wholeSessionInsights = useProjection('watcherInsights')
   // Host token-meter projection behind the Composer context meter (issue #43).
-  // Watcher does not depend on token-meter types; contextReadingOf validates the value.
+  // ContextPressureProjection lives on @deepseek-ai/dsh-token-meter/client.
+  // That package is not installed, and adding it would pull peers this plugin
+  // does not declare. contextReadingOf validates the value.
   const hostContextPressure = (useProjection as unknown as (key: string) => unknown)('contextPressure')
   const { picture, performanceByTurn } = useObservedPicture(sessionId, snapshot)
   const [open, setOpen] = useState(false)

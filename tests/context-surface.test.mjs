@@ -255,8 +255,9 @@ test('the host context meter wins over the fold and stays an estimate when proje
 
 test('only an unmoved provider-reported prompt reads as exact', () => {
   assert.equal(contextReadingOf(context, { pressureTokens: 175000, projectedTokens: 175000 }).exact, true)
+  assert.equal(contextReadingOf(context, { pressureTokens: 10, contextWindow: 200 }).window, 200)
   assert.deepEqual(contextReadingOf(context, { pressureTokens: 175000 }),
-    { tokens: 175000, window: 1000000, exact: true, source: 'host', partial: false })
+    { tokens: 175000, window: null, exact: true, source: 'host', partial: false })
 })
 
 test('without a host reading the fold is the estimate, partial included', () => {

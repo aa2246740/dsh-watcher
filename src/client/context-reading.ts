@@ -40,7 +40,9 @@ export function contextReadingOf(
     // projectedTokens = provider-reported prompt + a heuristic repricing of what the
     // surface gained or lost since then (e.g. a compaction). Only the unmoved figure is exact.
     const tokens = projected ?? reported ?? 0
-    return { tokens, window: hostWindow ?? context?.window ?? null, exact: tokens === reported, source: 'host', partial: false }
+    // A missing host window must stay missing. Filling it from Watcher's own
+    // window would draw a percentage the host indicator does not show.
+    return { tokens, window: hostWindow, exact: tokens === reported, source: 'host', partial: false }
   }
   if (context === null || context === undefined) return null
   return { tokens: context.projected, window: context.window, exact: false, source: 'estimate', partial: context.surface.partial }
