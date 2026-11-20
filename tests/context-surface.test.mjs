@@ -39,11 +39,21 @@ function log() {
       return seqs
     },
     reply: (turn, n) => add('assistant/message', { turn, step: 1, stream: [], usage, message: { id: `a${seq}`, role: 'assistant', source: { kind: 'model', provider: 'p', model: 'm' }, content: text(n) } }, { surfaceOp: 'append' }),
-    result: (turn, n, surfaceOp = 'append') => add('tool/result', { turn, step: 1, message: { id: `r${seq}`, role: 'user', source: { kind: 'tool', callId: `c${seq}` }, content: [{ type: 'tool-result', toolCallId: `c${seq}`, isError: false, content: text(n) }] } }, { surfaceOp, sourceEventSeqs: [] }),
+    // Appends omit sourceEventSeqs. Harness rejects an empty array there.
+    result: (turn, n, surfaceOp = 'append') => {
+      if (surfaceOp === 'append') {
+        return add('tool/result', { turn, step: 1, message: { id: `r${seq}`, role: 'user', source: { kind: 'tool', callId: `c${seq}` }, content: [{ type: 'tool-result', toolCallId: `c${seq}`, isError: false, content: text(n) }] } }, { surfaceOp: 'append' })
+      }
+      // A prune replacement keeps the original tool/result data except content, including callId.
+      const original = rows.find(row => row.seq === surfaceOp.startSeq)
+      const block = { ...original.data.message.content[0], content: text(n) }
+      return add('tool/result', { ...original.data, message: { ...original.data.message, content: [block] } }, { surfaceOp, sourceEventSeqs: [surfaceOp.startSeq] })
+    },
     prune: seq => add('compaction/prune', { shadowedRange: { start: seq, end: seq }, shadowedSeqs: [seq], shadowedTokenCount: 1 }),
     compact: (start, end, shadowed, n) => {
-      add('compaction/summary', { compactionId: `c${seq}`, shadowedRange: { start, end }, shadowedSeqs: shadowed, shadowedTokenCount: 1, summary: 'filler', provider: 'p', model: 'm' })
-      return add('user/message', { id: `k${seq}`, role: 'user', source: { kind: 'plugin', plugin: 'compaction-basic', compactionId: `c${seq}` }, content: text(n) },
+      const compactionId = `c${seq}`
+      add('compaction/summary', { compactionId, shadowedRange: { start, end }, shadowedSeqs: shadowed, shadowedTokenCount: 1, summary: 'filler', provider: 'p', model: 'm' })
+      return add('user/message', { id: `k${seq}`, role: 'user', source: { kind: 'compact-checkpoint', compactionId }, content: text(n) },
         { surfaceOp: { op: 'replace', startSeq: start, endSeq: end }, sourceEventSeqs: shadowed })
     },
   }
@@ -94,6 +104,11 @@ test('a multi-turn session with two compactions falls each time (issue #43)', ()
   assert.equal(v.context.surface.partial, false)
   // Exactly what the model now sees: system prompt, one checkpoint, turns 5-6.
   assert.deepEqual(s.surfaceNodes.map(n => n.seq), [1, second, ...turns[4], ...turns[5]])
+  const checkpointRow = l.rows.find(row => row.seq === second)
+  assert.equal(checkpointRow.data.source.kind, 'compact-checkpoint')
+  assert.equal(typeof checkpointRow.data.source.compactionId, 'string')
+  assert.equal(checkpointRow.data.source.plugin, undefined)
+  assert.ok(l.rows.every(row => row.sourceEventSeqs === undefined || row.sourceEventSeqs.length > 0))
   assert.equal(v.context.surface.system, price(text(200)))
   assert.equal(v.context.surface.conversation, price(text(700)) + 2 * (price(text(2000)) + price(text(1000))))
   assert.ok(v.context.surface.tools > 0)
@@ -117,10 +132,18 @@ test('a tool-result prune swaps one node in place', () => {
   l.header()
   const [result, reply] = l.turn(1, t => [l.result(t, 8000), l.reply(t, 100)])
   l.prune(result)
+  const original = l.rows.find(row => row.seq === result)
   const pruned = l.result(1, 10, { op: 'replace', startSeq: result, endSeq: result })
+  const replacement = l.rows.find(row => row.seq === pruned)
+  assert.deepEqual(replacement.sourceEventSeqs, [result])
+  assert.deepEqual(
+    { ...replacement.data, message: { ...replacement.data.message, content: original.data.message.content } },
+    original.data,
+  )
+  assert.equal(replacement.data.message.source.callId, original.data.message.source.callId)
   const s = fold(l.rows)
   assert.deepEqual(s.surfaceNodes.map(n => n.seq), [pruned, reply])
-  assert.equal(viewOf(s).context.surface.results, price([{ type: 'tool-result', toolCallId: `c${pruned}`, isError: false, content: text(10) }]))
+  assert.equal(viewOf(s).context.surface.results, price(replacement.data.message.content))
 })
 
 test('a replace reaching into history the fold never held marks the estimate partial', () => {
