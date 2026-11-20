@@ -29,7 +29,7 @@ The client entry `src/client/index.tsx` injects two host slots:
 - `settings.section` renders `InsightsSettings` from `src/client/Insights.tsx`.
 - `conversation.session.header.utilities` renders the Watcher button, order 50.
 
-The context 水面 prefers the host's token-meter `contextPressure` projection, which only the open session exposes. `src/client/context-reading.ts` picks it, and `watcherInsights.context` (the fold's surface estimate, replacements applied by position) is the fallback.
+The context 水面 prefers the host's token-meter `contextPressure` projection, which only the open session exposes. `src/client/context-reading.ts` picks it, and `watcherInsights.context` (the fold's surface estimate, replacements applied by position) is the fallback. A compressor that rewrites the request outside the Harness session surface writes no `compaction/*` event and no `surfaceOp`, so the fold cannot see that shrinkage. It shows up only in the host indicator. While that indicator is the reading, the composition block shows the Harness surface as percentages, and the per-request "较上一发" delta is not presented as the prompt's real change.
 
 `src/client/Watcher.tsx` reads the host conversation and draws the work picture: turns, steps, parallel tool calls, and the optional model stage. `src/observation/fold.ts` groups those events. A second plugin, dsh-better-sidebar, is optional. `src/client/SidebarTab.tsx` registers a tab only when that service exists. It is not a dependency.
 

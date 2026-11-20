@@ -327,6 +327,7 @@ export function SessionInsights({ value, reading, now, running, waiting, onEvide
   // 水面 prefers the host's own context meter (contextPressure); Watcher's fold is the fallback.
   const level = reading ?? (ctx === undefined ? null : { tokens: ctx.projected, window: ctx.window, exact: false, source: 'estimate' as const, partial: ctx.surface.partial })
   const ctxPct = level?.window ? Math.min(100, Math.round((level.tokens / level.window) * 100)) : null
+  const hostSurface = level?.source === 'host'
   const levelMark = level?.exact === true ? '●' : '○'
   const levelTitle = level === null
     ? ''
@@ -426,17 +427,20 @@ export function SessionInsights({ value, reading, now, running, waiting, onEvide
           <div className={css.compBlock}>
             <div className={css.compHead}>
               <span className={css.compTitle}>提示词里装着什么</span>
-              <span className={css.compNote}>~按内容长度估算{surface.partial ? ' · 部分历史未载入' : ''}</span>
+              <span className={css.compNote}>{hostSurface
+                ? `Harness 会话水面的比例，不含会话外压缩${surface.partial ? ' · 可能不准' : ''}`
+                : `~按内容长度估算${surface.partial ? ' · 部分历史未载入，可能不准' : ''}`}</span>
             </div>
             <SurfaceBar surface={surface} />
             <div className={css.compLegend}>
               {SURFACE_BUCKETS.map(b => {
                 const v = surface[b.key]
                 if (v <= 0) return null
+                const amount = hostSurface ? null : <strong>{fmtCompact(v)}</strong>
                 return (
                   <span key={b.key} className={css.compItem}>
                     <i style={{ background: b.color }} aria-hidden="true" />
-                    {b.label} <strong>{fmtCompact(v)}</strong> {Math.round((v / surfaceTotal) * 100)}%
+                    {b.label} {amount} {Math.round((v / surfaceTotal) * 100)}%
                   </span>
                 )
               })}

@@ -78,6 +78,17 @@ test('the dsh range answers the same with and without prerelease matching and re
   }
 })
 
+test('a host reading does not present the fold as the prompt size', async () => {
+  const [insights, watcher] = await Promise.all([
+    readFile(new URL('../src/client/Insights.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/client/Watcher.tsx', import.meta.url), 'utf8'),
+  ])
+  assert.match(insights, /Harness 会话水面的比例，不含会话外压缩/)
+  assert.match(insights, /const amount = hostSurface \? null : <strong>\{fmtCompact\(v\)\}<\/strong>/)
+  assert.match(watcher, /较上一发只比较 Harness 会话水面，会话外压缩不会出现在这条差值里/)
+  assert.match(watcher, /hostSurface=\{contextReading\?\.source === 'host'\}/)
+})
+
 test('a partial surface says the figure may be inaccurate, not only low', async () => {
   const insights = await readFile(new URL('../src/client/Insights.tsx', import.meta.url), 'utf8')
   assert.match(insights, /部分历史未载入，数值可能不准/)
