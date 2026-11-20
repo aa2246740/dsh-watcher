@@ -200,6 +200,18 @@ test('a 0.9.1 state keeps its statistics and stays partial through a compaction'
   assert.equal(viewOf(initialState({ id: 'fresh' })).context.surface.partial, false)
 })
 
+test('a checkpoint the cap trims does not stay in the bucket total', () => {
+  const cap = 3
+  const l = log()
+  for (let i = 0; i < cap + 1; i++) l.result(1, 80)
+  l.compact(0, 0, [0], 40)
+  const s = fold(l.rows, initialState({ id: 's' }), cap)
+  assert.equal(s.surfaceNodes.length, cap)
+  assert.ok(s.surfaceNodes.every(node => node.seq !== 0))
+  const retained = s.surfaceNodes.reduce((sum, node) => sum + node.tokens, 0)
+  assert.equal(viewOf(s).context.surface.total, retained)
+})
+
 test('the node cap keeps positions and marks the estimate partial', () => {
   const cap = 4
   const l = log()

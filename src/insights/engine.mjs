@@ -204,12 +204,14 @@ function applySurface(s, event, cap = SURFACE_NODE_CAP) {
     if (range === null) s.surfacePartial = true;
     s.surfaceNodes.push(node);
   }
+  // Charge before the cap trim. A replace can insert the new node at the front,
+  // and the trim then drops it; adding afterwards would leave its tokens behind.
+  s.surface[bucket] += tokens;
   if (s.surfaceNodes.length > cap) {
     dropNodes(s, s.surfaceNodes.slice(0, s.surfaceNodes.length - cap));
     s.surfaceNodes = s.surfaceNodes.slice(-cap);
     s.surfacePartial = true;
   }
-  s.surface[bucket] += tokens;
 }
 function books(s, route = s.route) { return [s.totals, modelRow(s, route), ...(s.turn ? [s.turn.stats] : [])]; }
 function creditDay(s, time, route, u) {
