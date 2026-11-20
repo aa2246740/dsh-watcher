@@ -6,6 +6,6 @@
       "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode"]
     }
   },
-  "postCreateCommand": "corepack enable && corepack prepare pnpm@10.33.2 --activate && pnpm install",
+  "postCreateCommand": "corepack enable && corepack install && pnpm install",
   "updateContentCommand": "pnpm install"
 }

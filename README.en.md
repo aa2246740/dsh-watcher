@@ -125,7 +125,7 @@ Older releases: [CHANGELOG.md](./CHANGELOG.md).
 
 ## Build from source
 
-Skip this for a normal install. Rebuild the committed `lib/` with **pnpm** after TypeScript changes:
+Skip this for a normal install. Rebuild the committed `lib/` with **pnpm** after TypeScript changes. The pnpm version is pinned by `packageManager` in `package.json` (pnpm 12.20.0); pnpm 10 and later switch to it on their own:
 
 ```sh
 pnpm install

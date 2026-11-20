@@ -125,7 +125,7 @@ dsh plugin --profile web remove dsh-watcher
 
 ## 从源码构建
 
-日常安装不用这一步。改 TypeScript 后用 **pnpm** 重建已提交的 `lib/`：
+日常安装不用这一步。改 TypeScript 后用 **pnpm** 重建已提交的 `lib/`。pnpm 版本固定在 `package.json` 的 `packageManager`（pnpm 12.20.0），pnpm 10 及以上会自动切换到这个版本：
 
 ```sh
 pnpm install

@@ -21,7 +21,7 @@ pnpm check:agents
 pnpm build
 ```
 
-`pnpm test` compiles with `tsc`, then runs Vitest in isolated processes and prints `test-suite-duration-ms`. A failed test is retried once (`retry: 1`). `pnpm test:list` lists test names and does not run them. `pnpm test:coverage` enforces the line, function, and branch floors in `vitest.config.mjs`. `pnpm boundaries` checks that `observation`, `insights`, and `hub` do not import the client panel.
+`pnpm test` compiles with `tsc`, then runs Vitest in isolated processes and prints `test-suite-duration-ms`. A failed test is retried once (`retry: 1`). `pnpm test:list` lists test names and does not run them. `pnpm test:coverage` enforces the line, function, and branch floors in `vitest.config.mjs`. `pnpm deadcode` compiles `lib/types/` with `tsc` before knip runs: knip maps tests' `lib/types/` imports back to `src/`, so without that step a fresh clone and a tree that has already run `pnpm test` gave different answers. `pnpm boundaries` checks that `observation`, `insights`, and `hub` do not import the client panel.
 
 `pnpm build` refreshes the committed `lib/` bundle. `tools/client-build.js` is vendored, so a normal build does not need a Harness checkout. Set `DSHX_HARNESS` only when that adapter file is missing.
 
@@ -39,7 +39,7 @@ Copy `.env.example`. None of these are required for `pnpm test`.
 
 ## Interactive check
 
-1. Install dependencies with `pnpm install`.
+1. Install dependencies with `pnpm install`. The pnpm version is `packageManager` in `package.json` (pnpm 12.20.0); CI, publish, and Dependabot use the same one, and a global pnpm 10 or later switches to it.
 2. Install the plugin into the local web profile: `dsh plugin --profile web add ./dsh-watcher`. Official `dsh` is `@deepseek-ai/dsh`; this package targets Harness `0.2.2-rc.5` and accepts `0.2.0-rc.2` through stable `0.2.2` (see `engines.dsh`), and Node `^22.19.0` or `>=24`.
 3. Start the host with `dsh web`. If it prints a local URL with a startup token, that URL is the auth gate. There is no second login inside Watcher.
 4. In the host, select a workspace and a session. Remember the exact workspace name and session title.

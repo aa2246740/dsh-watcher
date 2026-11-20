@@ -17,6 +17,11 @@ export default defineConfig({
         'lib/types/client/step-timeline.js',
         'lib/types/client/disclosure-depth.js',
         'src/insights/**/*.mjs',
+        // Modules that tests import from src/ rather than from lib/types/.
+        'src/dsh-watcher.ts',
+        'src/insights/**/*.ts',
+        'src/client/context-reading.ts',
+        'src/client/anchored-position.ts',
       ],
       exclude: ['lib/types/hub/watcher.js'],
       thresholds: {

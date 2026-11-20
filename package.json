@@ -14,7 +14,7 @@
     "test": "tsc -p tsconfig.json && node scripts/run-tests.mjs",
     "test:list": "vitest list",
     "test:coverage": "tsc -p tsconfig.json && node scripts/run-tests.mjs --coverage",
-    "deadcode": "knip",
+    "deadcode": "tsc -p tsconfig.json && knip",
     "boundaries": "depcruise src --config .dependency-cruiser.cjs",
     "duplicates": "jscpd src tests scripts tools",
     "size": "size-limit",
@@ -137,5 +137,6 @@
   },
   "lint-staged": {
     "*.{ts,tsx,mjs,js}": "eslint --max-warnings 0 --no-warn-ignored"
-  }
+  },
+  "packageManager": "pnpm@12.20.0"
 }
