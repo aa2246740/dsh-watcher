@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { setTimeout as delay } from 'node:timers/promises'
 import { test } from 'vitest'
 import { apply, inject } from '../src/dsh-watcher.ts'
@@ -152,6 +153,25 @@ test('the anchored-position copy carries the DeepSeek MIT notice into the client
   assert.match(notices, /Copyright \(c\) 2026 DeepSeek/)
   assert.match(notices, /Permission is hereby granted/)
   assert.ok(pkg.files.includes('THIRD_PARTY_NOTICES.md'))
+})
+
+test('every primitives name the built client reads is exported by the installed package', async () => {
+  const bundle = await readFile(new URL('../lib/client.js', import.meta.url), 'utf8')
+  const binding = bundle.match(/let (\w+) = require\("@deepseek-ai\/dsh-client-ui-primitives"\)/)
+  assert.ok(binding, 'lib/client.js requires @deepseek-ai/dsh-client-ui-primitives')
+  const names = new Set()
+  for (const match of bundle.matchAll(new RegExp(`\\b${binding[1]}\\.([A-Za-z_$][\\w$]*)`, 'g'))) names.add(match[1])
+  assert.ok(names.size > 0)
+  const require = createRequire(import.meta.url)
+  const entry = await readFile(require.resolve('@deepseek-ai/dsh-client-ui-primitives'), 'utf8')
+  const exported = new Set()
+  for (const block of entry.matchAll(/export\s*\{([^}]+)\}/g)) {
+    for (const part of block[1].split(',')) {
+      const name = part.trim().split(/\s+as\s+/).pop()
+      if (name) exported.add(name)
+    }
+  }
+  for (const name of names) assert.ok(exported.has(name), `${name} is read by lib/client.js and missing from the installed primitives exports`)
 })
 
 test('the client no longer imports primitives that 0.2.2-rc.5 removed', async () => {
