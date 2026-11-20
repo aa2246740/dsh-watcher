@@ -50,6 +50,26 @@ test('0.2.2 registration is awaited before the plugin finishes loading and befor
   assert.deepEqual(log.snapshots, [{ target: session, keys: ['watcherInsights'], ready: true }])
 })
 
+test('the load marker is printed only after registration resolves', async () => {
+  const lines = []
+  const original = console.log
+  console.log = (...args) => { lines.push(args.map(String).join(' ')) }
+  try {
+    const failure = new Error('stateVersion conflict')
+    const rejected = hostContext(() => Object.assign(() => {}, {
+      then: (resolve, reject) => Promise.reject(failure).then(resolve, reject),
+    }))
+    await assert.rejects(apply(rejected.ctx), failure)
+    assert.equal(lines.includes('[my-plugins/dsh-watcher] loaded'), false)
+    lines.length = 0
+    const { ctx } = hostContext(() => () => {})
+    await apply(ctx)
+    assert.equal(lines.includes('[my-plugins/dsh-watcher] loaded'), true)
+  } finally {
+    console.log = original
+  }
+})
+
 test('0.2.2 registration failure rejects plugin activation instead of being logged away', async () => {
   const failure = new Error('stateVersion conflict')
   const { ctx, log } = hostContext(() => Object.assign(() => {}, {
