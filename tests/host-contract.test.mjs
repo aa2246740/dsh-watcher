@@ -106,10 +106,16 @@ test('the panel anchors below its trigger and clamps like the retired Harness ho
     placeBelowAnchor({ ...base, anchor: { left: 2, bottom: -50 }, panel: { width: 0, height: 0 } }),
     { left: 2, top: -42 },
   )
+  // Same inputs and results as Harness 0.2.2-rc.5
+  // packages/client/ui-primitives/tests/overlay-top-margin.client.spec.ts
+  // (`--dsh-frame-top-clearance: 40px` parses as 40).
   assert.equal(overlayTopMargin(12, Number.NaN, false), 12)
-  assert.equal(overlayTopMargin(12, 28, false), 48)
-  assert.equal(overlayTopMargin(12, 28, true), 20)
-  assert.equal(overlayTopMargin(30, 0, true), 30)
+  assert.equal(overlayTopMargin(12, 40, false), 60)
+  assert.equal(overlayTopMargin(12, 40, false, { top: 10, bottom: 24 }, 4), 28)
+  assert.equal(overlayTopMargin(12, 40, false, { top: -10, bottom: 24 }, 4), 60)
+  assert.equal(overlayTopMargin(12, 40, false, { top: 0, bottom: 4 }, 4), 12)
+  assert.equal(overlayTopMargin(80, 40, false), 80)
+  assert.equal(overlayTopMargin(12, 40, true), 20)
 })
 
 test('the anchored-position copy carries the DeepSeek MIT notice into the client bundle', async () => {
