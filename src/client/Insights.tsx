@@ -334,11 +334,11 @@ export function SessionInsights({ value, reading, now, running, waiting, onEvide
       ? level.exact
         ? '上下文水面：宿主上下文指示的同一数值，最近一发请求的厂商上报提示词 ●'
         : '上下文水面：宿主上下文指示的同一数值，厂商上报的最近一发提示词加上之后增减部分（如压缩）的估算 ○'
-      : `上下文水面：按内容长度估算 ○，宿主上下文指示不可读时使用${level.partial ? '；部分历史未载入，数值偏低' : ''}`
+      : `上下文水面：按内容长度估算 ○，宿主上下文指示不可读时使用${level.partial ? '；部分历史未载入，数值可能不准' : ''}`
   const surfaceTotal = Math.max(1, surface?.total ?? 0)
   const compHint = (() => {
     if (surface === undefined) return null
-    if (surface.partial) return '部分历史未载入，构成只统计已加载的提示词'
+    if (surface.partial) return '部分历史未载入，构成可能不准'
     const share = (k: keyof Omit<SurfaceTotals, 'total'>) => surface[k] / surfaceTotal
     if (share('memory') > 0.25 && surface.memory > 20000) return `记忆类内容占 ${Math.round(share('memory') * 100)}% — MEMORY.md / AGENTS.md 偏大，可考虑精简`
     if (share('tools') > 0.3 && surface.tools > 20000) return `工具清单占 ${Math.round(share('tools') * 100)}% — 启用插件/工具较多时会推高每发成本`

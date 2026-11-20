@@ -78,6 +78,14 @@ test('the dsh range answers the same with and without prerelease matching and re
   }
 })
 
+test('a partial surface says the figure may be inaccurate, not only low', async () => {
+  const insights = await readFile(new URL('../src/client/Insights.tsx', import.meta.url), 'utf8')
+  assert.match(insights, /部分历史未载入，数值可能不准/)
+  assert.match(insights, /部分历史未载入，构成可能不准/)
+  assert.doesNotMatch(insights, /数值偏低/)
+  assert.doesNotMatch(insights, /构成只统计已加载的提示词/)
+})
+
 test('the overview keeps every Step and occurrence reachable through folding and reversible grouping', async () => {
   const [source, styles] = await Promise.all([
     readFile(clientSource, 'utf8'),
