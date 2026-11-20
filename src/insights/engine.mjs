@@ -1,4 +1,4 @@
-/** Read-only DSH 0.2.1-rc.2 log fold. No prompt, reasoning or tool body is retained. */
+/** Read-only DSH 0.2.x log fold. No prompt, reasoning or tool body is retained. */
 import { createHash } from 'node:crypto';
 export const KEY = 'watcherInsights';
 // 15 minutes, not 30: +5:45 / +8:45 / +12:45 are real offsets, and a 30-minute slot straddles their midnight.

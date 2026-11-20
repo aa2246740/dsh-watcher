@@ -14,7 +14,6 @@ import {
   ReadBlock,
   StateDot,
   TerminalBlock,
-  useAnchoredPosition,
   writeClipboard,
   type DiffBlockLabels,
   type JsonTreeLabels,
@@ -28,6 +27,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import { createFollow } from '../hub/follow.ts'
 import type { CompleteHistoryResult } from '../hub/history.ts'
+import { useAnchoredPosition } from './anchored-position.ts'
 import {
   clusterOutcomeSummary,
   clusterWorkItems,

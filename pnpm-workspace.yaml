@@ -1,0 +1,5 @@
+# pnpm 11 and later read settings from this file and ignore them in .npmrc.
+# Dependabot runs a newer pnpm than CI, so this setting has to live here too.
+# Keep it equal to pnpm-lock.yaml `settings.autoInstallPeers` and the CI flag,
+# or `pnpm install --frozen-lockfile` fails with ERR_PNPM_LOCKFILE_CONFIG_MISMATCH.
+autoInstallPeers: false

@@ -40,7 +40,7 @@ Copy `.env.example`. None of these are required for `pnpm test`.
 ## Interactive check
 
 1. Install dependencies with `pnpm install`.
-2. Install the plugin into the local web profile: `dsh plugin --profile web add ./dsh-watcher`. Official `dsh` is `@deepseek-ai/dsh`; this package needs Harness `0.2.0-rc.2` or the stable `0.2.0` line, and Node `^22.19.0` or `>=24`.
+2. Install the plugin into the local web profile: `dsh plugin --profile web add ./dsh-watcher`. Official `dsh` is `@deepseek-ai/dsh`; this package targets Harness `0.2.2-rc.5` and accepts `0.2.0-rc.2` through stable `0.2.2` (see `engines.dsh`), and Node `^22.19.0` or `>=24`.
 3. Start the host with `dsh web`. If it prints a local URL with a startup token, that URL is the auth gate. There is no second login inside Watcher.
 4. In the host, select a workspace and a session. Remember the exact workspace name and session title.
 5. Either click the session-header button named Watcher and wait for the dialog `Watcher 工作图`, or run the scripted path:
