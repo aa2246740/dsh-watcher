@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { setTimeout as delay } from 'node:timers/promises'
 import { test } from 'vitest'
 import { apply, inject } from '../src/dsh-watcher.ts'
@@ -50,6 +51,26 @@ test('0.2.2 registration is awaited before the plugin finishes loading and befor
   assert.deepEqual(log.snapshots, [{ target: session, keys: ['watcherInsights'], ready: true }])
 })
 
+test('the load marker is printed only after registration resolves', async () => {
+  const lines = []
+  const original = console.log
+  console.log = (...args) => { lines.push(args.map(String).join(' ')) }
+  try {
+    const failure = new Error('stateVersion conflict')
+    const rejected = hostContext(() => Object.assign(() => {}, {
+      then: (resolve, reject) => Promise.reject(failure).then(resolve, reject),
+    }))
+    await assert.rejects(apply(rejected.ctx), failure)
+    assert.equal(lines.includes('[my-plugins/dsh-watcher] loaded'), false)
+    lines.length = 0
+    const { ctx } = hostContext(() => () => {})
+    await apply(ctx)
+    assert.equal(lines.includes('[my-plugins/dsh-watcher] loaded'), true)
+  } finally {
+    console.log = original
+  }
+})
+
 test('0.2.2 registration failure rejects plugin activation instead of being logged away', async () => {
   const failure = new Error('stateVersion conflict')
   const { ctx, log } = hostContext(() => Object.assign(() => {}, {
@@ -78,8 +99,9 @@ test('the projection keeps its key, version, and Session-summary membership', as
   const [definition] = log.definitions
   assert.deepEqual(inject, ['sessionProjections', 'sessions'])
   assert.equal(definition.key, 'watcherInsights')
-  // 6: surface nodes are positional (issue #43); a version bump makes the host refold old caches.
-  assert.equal(definition.stateVersion, 6)
+  // Stay on 5. A mismatch makes viewCheckpoint skip the row, and unattached
+  // sessions are listed from the cache only, so a bump hides every closed session.
+  assert.equal(definition.stateVersion, 5)
   // Insights reads watcherInsights from session.list() rows; 0.2.2 drops keys declaring summary: false.
   assert.notEqual(definition.wire.summary, false)
   const state = definition.init({ id: 's1', cwd: '/w' }, 0)
@@ -106,10 +128,51 @@ test('the panel anchors below its trigger and clamps like the retired Harness ho
     placeBelowAnchor({ ...base, anchor: { left: 2, bottom: -50 }, panel: { width: 0, height: 0 } }),
     { left: 2, top: -42 },
   )
+  // Same inputs and results as Harness 0.2.2-rc.5
+  // packages/client/ui-primitives/tests/overlay-top-margin.client.spec.ts
+  // (`--dsh-frame-top-clearance: 40px` parses as 40).
   assert.equal(overlayTopMargin(12, Number.NaN, false), 12)
-  assert.equal(overlayTopMargin(12, 28, false), 48)
-  assert.equal(overlayTopMargin(12, 28, true), 20)
-  assert.equal(overlayTopMargin(30, 0, true), 30)
+  assert.equal(overlayTopMargin(12, 40, false), 60)
+  assert.equal(overlayTopMargin(12, 40, false, { top: 10, bottom: 24 }, 4), 28)
+  assert.equal(overlayTopMargin(12, 40, false, { top: -10, bottom: 24 }, 4), 60)
+  assert.equal(overlayTopMargin(12, 40, false, { top: 0, bottom: 4 }, 4), 12)
+  assert.equal(overlayTopMargin(80, 40, false), 80)
+  assert.equal(overlayTopMargin(12, 40, true), 20)
+})
+
+test('the anchored-position copy carries the DeepSeek MIT notice into the client bundle', async () => {
+  const source = await readFile(new URL('../src/client/anchored-position.ts', import.meta.url), 'utf8')
+  const notices = await readFile(new URL('../THIRD_PARTY_NOTICES.md', import.meta.url), 'utf8')
+  const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+  const bundle = await readFile(new URL('../lib/client.js', import.meta.url), 'utf8')
+  for (const text of [source, bundle]) {
+    assert.match(text, /Copyright \(c\) 2026 DeepSeek/)
+    assert.match(text, /SPDX-License-Identifier: MIT/)
+    assert.match(text, /useAnchoredPosition\.ts/)
+    assert.match(text, /overlay-top-margin\.ts/)
+  }
+  assert.match(notices, /Copyright \(c\) 2026 DeepSeek/)
+  assert.match(notices, /Permission is hereby granted/)
+  assert.ok(pkg.files.includes('THIRD_PARTY_NOTICES.md'))
+})
+
+test('every primitives name the built client reads is exported by the installed package', async () => {
+  const bundle = await readFile(new URL('../lib/client.js', import.meta.url), 'utf8')
+  const binding = bundle.match(/let (\w+) = require\("@deepseek-ai\/dsh-client-ui-primitives"\)/)
+  assert.ok(binding, 'lib/client.js requires @deepseek-ai/dsh-client-ui-primitives')
+  const names = new Set()
+  for (const match of bundle.matchAll(new RegExp(`\\b${binding[1]}\\.([A-Za-z_$][\\w$]*)`, 'g'))) names.add(match[1])
+  assert.ok(names.size > 0)
+  const require = createRequire(import.meta.url)
+  const entry = await readFile(require.resolve('@deepseek-ai/dsh-client-ui-primitives'), 'utf8')
+  const exported = new Set()
+  for (const block of entry.matchAll(/export\s*\{([^}]+)\}/g)) {
+    for (const part of block[1].split(',')) {
+      const name = part.trim().split(/\s+as\s+/).pop()
+      if (name) exported.add(name)
+    }
+  }
+  for (const name of names) assert.ok(exported.has(name), `${name} is read by lib/client.js and missing from the installed primitives exports`)
 })
 
 test('the client no longer imports primitives that 0.2.2-rc.5 removed', async () => {

@@ -26,7 +26,10 @@ export function emptySkillStat(name) {
   return { name, modelCalls: 0, userCalls: 0, errors: 0, toolMs: 0, stepTokens: 0, injectedChars: 0, lastSeen: 0 };
 }
 export function initialState(header = {}, inherited = 0) {
-  return { version: 5, sessionId: String(header.id ?? ''), skip: inherited, seq: -1,
+  // surfaceRev 1: this fold stores user-message nodes and replaces by position.
+  // A ≤0.9.1 row has no marker. Its statistics stay; the surface is partial
+  // because those nodes cannot be replaced by position reliably.
+  return { version: 5, surfaceRev: 1, sessionId: String(header.id ?? ''), skip: inherited, seq: -1,
     updatedAt: 0, route: { provider: 'unknown', model: 'unknown' }, totals: emptyStats(),
     models: [], days: [], turn: null, open: null, tools: [], previousFailure: null,
     findings: [], findingCount: 0,
@@ -182,7 +185,7 @@ function replacedRange(nodes, op) {
   if (from >= 0) return to >= from ? [from, to] : null;
   return [0, to];
 }
-function applySurface(s, event) {
+function applySurface(s, event, cap = SURFACE_NODE_CAP) {
   const message = surfaceMessageOf(event);
   const tokens = priceMessage(message);
   const bucket = bucketFor(event.type, message);
@@ -201,12 +204,14 @@ function applySurface(s, event) {
     if (range === null) s.surfacePartial = true;
     s.surfaceNodes.push(node);
   }
-  if (s.surfaceNodes.length > SURFACE_NODE_CAP) {
-    dropNodes(s, s.surfaceNodes.slice(0, s.surfaceNodes.length - SURFACE_NODE_CAP));
-    s.surfaceNodes = s.surfaceNodes.slice(-SURFACE_NODE_CAP);
+  // Charge before the cap trim. A replace can insert the new node at the front,
+  // and the trim then drops it; adding afterwards would leave its tokens behind.
+  s.surface[bucket] += tokens;
+  if (s.surfaceNodes.length > cap) {
+    dropNodes(s, s.surfaceNodes.slice(0, s.surfaceNodes.length - cap));
+    s.surfaceNodes = s.surfaceNodes.slice(-cap);
     s.surfacePartial = true;
   }
-  s.surface[bucket] += tokens;
 }
 function books(s, route = s.route) { return [s.totals, modelRow(s, route), ...(s.turn ? [s.turn.stats] : [])]; }
 function creditDay(s, time, route, u) {
@@ -306,7 +311,9 @@ function applyStream(open, stream) {
 const interesting = new Set(['request/header', 'request/context', 'user/message', 'system/message', 'developer/message', 'turn/start', 'step/start', 'assistant/attempt', 'assistant/message', 'llm/retry', 'tool/call', 'tool/result', 'step/end', 'turn/end']);
 const NO_TURN_GUARD = new Set(['request/header', 'request/context', 'user/message', 'system/message']);
 const NO_STEP_GUARD = new Set(['request/header', 'request/context', 'user/message', 'system/message', 'developer/message', 'turn/start', 'turn/end']);
-export function reduceEvent(state, event) {
+export function reduceEvent(state, event, options) {
+  // Array.reduce passes the index here. Only an options object changes the cap.
+  const cap = record(options) && count(options.surfaceNodeCap) ? options.surfaceNodeCap : SURFACE_NODE_CAP;
   if (!record(event) || !interesting.has(event.type) || !count(event.seq) || !Number.isFinite(event.time) || !record(event.data)) return state;
   if (event.seq <= state.seq) return state;
   const d = event.data;
@@ -326,9 +333,11 @@ export function reduceEvent(state, event) {
     (event.type !== 'assistant/attempt' || (!!state.open && state.open.turn === d.turn && state.open.step === d.step));
   if (!passesGuards && !isSurface) return state;
   const s = structuredClone(state);
+  // Do not invent surfaceRev on a legacy row: the marker means this process created the state.
+  if (s.surfaceRev !== 1) s.surfacePartial = true;
   s.seq = event.seq; s.updatedAt = event.time;
   const surfaceBefore = isSurface ? surfaceTotals(s) : null;
-  if (isSurface) applySurface(s, event);
+  if (isSurface) applySurface(s, event, cap);
   if (!passesGuards) return s;
   if (event.type === 'request/header') {
     s.surface.tools = priceTools(d.header);
@@ -464,7 +473,7 @@ function buildView(s) {
     findings: s.findings, findingCount: s.findingCount,
     context: {
       window: s.contextWindow,
-      surface: { ...s.surface, total: surfaceTotal(s.surface), partial: s.surfacePartial },
+      surface: { ...s.surface, total: surfaceTotal(s.surface), partial: s.surfacePartial || s.surfaceRev !== 1 },
       projected: surfaceTotal(s.surface),
     },
     requests: s.requests,

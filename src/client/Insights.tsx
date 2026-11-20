@@ -327,6 +327,7 @@ export function SessionInsights({ value, reading, now, running, waiting, onEvide
   // 水面 prefers the host's own context meter (contextPressure); Watcher's fold is the fallback.
   const level = reading ?? (ctx === undefined ? null : { tokens: ctx.projected, window: ctx.window, exact: false, source: 'estimate' as const, partial: ctx.surface.partial })
   const ctxPct = level?.window ? Math.min(100, Math.round((level.tokens / level.window) * 100)) : null
+  const hostSurface = level?.source === 'host'
   const levelMark = level?.exact === true ? '●' : '○'
   const levelTitle = level === null
     ? ''
@@ -334,11 +335,11 @@ export function SessionInsights({ value, reading, now, running, waiting, onEvide
       ? level.exact
         ? '上下文水面：宿主上下文指示的同一数值，最近一发请求的厂商上报提示词 ●'
         : '上下文水面：宿主上下文指示的同一数值，厂商上报的最近一发提示词加上之后增减部分（如压缩）的估算 ○'
-      : `上下文水面：按内容长度估算 ○，宿主上下文指示不可读时使用${level.partial ? '；部分历史未载入，数值偏低' : ''}`
+      : `上下文水面：按内容长度估算 ○，宿主上下文指示不可读时使用${level.partial ? '；部分历史未载入，数值可能不准' : ''}`
   const surfaceTotal = Math.max(1, surface?.total ?? 0)
   const compHint = (() => {
     if (surface === undefined) return null
-    if (surface.partial) return '部分历史未载入，构成只统计已加载的提示词'
+    if (surface.partial) return '部分历史未载入，构成可能不准'
     const share = (k: keyof Omit<SurfaceTotals, 'total'>) => surface[k] / surfaceTotal
     if (share('memory') > 0.25 && surface.memory > 20000) return `记忆类内容占 ${Math.round(share('memory') * 100)}% — MEMORY.md / AGENTS.md 偏大，可考虑精简`
     if (share('tools') > 0.3 && surface.tools > 20000) return `工具清单占 ${Math.round(share('tools') * 100)}% — 启用插件/工具较多时会推高每发成本`
@@ -426,17 +427,20 @@ export function SessionInsights({ value, reading, now, running, waiting, onEvide
           <div className={css.compBlock}>
             <div className={css.compHead}>
               <span className={css.compTitle}>提示词里装着什么</span>
-              <span className={css.compNote}>~按内容长度估算{surface.partial ? ' · 部分历史未载入' : ''}</span>
+              <span className={css.compNote}>{hostSurface
+                ? `Harness 会话水面的比例，不含会话外压缩${surface.partial ? ' · 可能不准' : ''}`
+                : `~按内容长度估算${surface.partial ? ' · 部分历史未载入，可能不准' : ''}`}</span>
             </div>
             <SurfaceBar surface={surface} />
             <div className={css.compLegend}>
               {SURFACE_BUCKETS.map(b => {
                 const v = surface[b.key]
                 if (v <= 0) return null
+                const amount = hostSurface ? null : <strong>{fmtCompact(v)}</strong>
                 return (
                   <span key={b.key} className={css.compItem}>
                     <i style={{ background: b.color }} aria-hidden="true" />
-                    {b.label} <strong>{fmtCompact(v)}</strong> {Math.round((v / surfaceTotal) * 100)}%
+                    {b.label} {amount} {Math.round((v / surfaceTotal) * 100)}%
                   </span>
                 )
               })}

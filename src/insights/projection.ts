@@ -32,7 +32,7 @@ export const viewSchema = z.object({version:z.literal(5),sessionId:z.string(),se
   context,requests:z.array(requestRow).max(60),
   cwd:z.string().nullable(),preset:z.string().nullable(),prompts:number,
   toolStats:z.array(toolStat),skillStats:z.array(skillStat),turns:z.array(turnRow).max(500)})
-const stateSchema = z.object({version:z.literal(5),sessionId:z.string(),skip:number,seq:z.number().int().min(-1),updatedAt:z.number().finite(),
+export const stateSchema = z.object({version:z.literal(5),surfaceRev:z.literal(1).optional(),sessionId:z.string(),skip:number,seq:z.number().int().min(-1),updatedAt:z.number().finite(),
   route,totals:stats,models:z.array(stats.extend({provider:z.string(),model:z.string()})),days,turn,
   cwd:z.string().nullable(),preset:z.string().nullable(),prompts:number,
   stepTokens:z.object({turn:number,step:number,tokens:number}).nullable(),
@@ -59,7 +59,7 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
  * `session.list()` rows.
  */
 export async function installProjection(ctx:Context):Promise<void> {
-  await ctx.sessionProjections.register<'watcherInsights',InsightsState>({key:'watcherInsights',stateVersion:6,stateSchema,
+  await ctx.sessionProjections.register<'watcherInsights',InsightsState>({key:'watcherInsights',stateVersion:5,stateSchema,
     init:(header,inherited)=>stateSchema.parse(initialState(header,inherited)),apply:(state,event)=>reduceEvent(state,event),
     wire:{viewSchema,view:state=>viewOf(state)}})
   ctx.inject(['sessions'], c => {

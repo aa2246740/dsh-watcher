@@ -590,6 +590,7 @@ function RequestInspector({
   trace,
   now,
   closing,
+  hostSurface = false,
   onBack,
   onExited,
 }: {
@@ -598,6 +599,8 @@ function RequestInspector({
   trace: ModelStepTrace | null
   now: number
   closing: boolean
+  /** Host meter is the reading, so this delta is not the prompt's real change. */
+  hostSurface?: boolean
   onBack: () => void
   onExited: () => void
 }) {
@@ -696,9 +699,11 @@ function RequestInspector({
         <section className={css.reqSection} aria-label="这发新增">
           <div className={css.sectionHeading}>
             <h3>这发新增</h3>
-            <span>相对上一发 · ~估算</span>
+            <span>{hostSurface ? '会话外压缩不会出现在这里' : '相对上一发 · ~估算'}</span>
           </div>
-          {deltaRows.length === 0 ? (
+          {hostSurface ? (
+            <p className={css.reqNote}>较上一发只比较 Harness 会话水面，会话外压缩不会出现在这条差值里。</p>
+          ) : deltaRows.length === 0 ? (
             <p className={css.reqNote}>与上一发相比提示词没有变化。</p>
           ) : (
             <div className={css.reqDeltas}>
@@ -825,6 +830,7 @@ function ModelStage({
   disclosure,
   request,
   pendingEstimate,
+  hostSurface = false,
   onToggle,
   onToggleReasoning,
   onOpenRequest,
@@ -837,6 +843,8 @@ function ModelStage({
   request?: InsightRequest
   /** In-flight next-request estimate (tokens), shown while this step's usage is unsettled. */
   pendingEstimate?: number | null
+  /** Host meter is the reading, so the fold delta is not the prompt's real change. */
+  hostSurface?: boolean
   onToggle: () => void
   onToggleReasoning: (key: string) => void
   onOpenRequest?: (request: InsightRequest) => void
@@ -864,12 +872,17 @@ function ModelStage({
       const cacheUnknown = u.cacheReported === false
       const pct = cacheUnknown || prompt <= 0 ? null : Math.round((u.cacheRead / prompt) * 100)
       const delta = request.delta.total
-      const label = `${fmtK(prompt)} · ${pct === null ? '—' : `${pct}%`} · ${fmtSignedK(delta)}`
+      const deltaNote = hostSurface
+        ? '较上一发不含会话外压缩，不把水面差值当作提示词真实增减'
+        : `提示词较上一发 ${fmtSignedK(delta)}（~估算）`
+      const label = hostSurface
+        ? `${fmtK(prompt)} · ${pct === null ? '—' : `${pct}%`}`
+        : `${fmtK(prompt)} · ${pct === null ? '—' : `${pct}%`} · ${fmtSignedK(delta)}`
       return (
         <button
           type="button"
           className={css.requestChip}
-          title={`请求用量 ${prompt.toLocaleString('zh-CN')} token（● 厂商上报）· 缓存命中 ${cacheUnknown ? '未上报' : `${pct ?? '—'}%`} · 提示词较上一发 ${fmtSignedK(delta)}（~估算）`}
+          title={`请求用量 ${prompt.toLocaleString('zh-CN')} token（● 厂商上报）· 缓存命中 ${cacheUnknown ? '未上报' : `${pct ?? '—'}%`} · ${deltaNote}`}
           onClick={event => {
             event.stopPropagation()
             onOpenRequest?.(request)
@@ -1022,6 +1035,7 @@ function PhaseOverview({
   disclosure,
   requestForStep,
   pendingForStep,
+  hostSurface = false,
   onToggle,
   onToggleLayer,
   onToggleReasoning,
@@ -1040,6 +1054,8 @@ function PhaseOverview({
   requestForStep: (turn: number, step: number) => InsightRequest | undefined
   /** In-flight estimate for a step whose request has not settled yet. */
   pendingForStep: (turn: number, step: number) => number | null
+  /** Host meter is the reading, so a fold delta is not the prompt's real change. */
+  hostSurface?: boolean
   onToggle: () => void
   onToggleLayer: (layer: DisclosureLayer, key: string) => void
   onToggleReasoning: (key: string, modelKey: string) => void
@@ -1143,6 +1159,7 @@ function PhaseOverview({
                               disclosure={disclosure}
                               request={requestForStep(step.turn, step.step)}
                               pendingEstimate={pendingForStep(step.turn, step.step)}
+                              hostSurface={hostSurface}
                               onToggle={() => onToggleLayer('model', step.id)}
                               onToggleReasoning={key => onToggleReasoning(key, step.id)}
                               onOpenRequest={onOpenRequest}
@@ -1208,6 +1225,7 @@ function PhaseOverview({
                               disclosure={disclosure}
                               request={requestForStep(step.turn, step.step)}
                               pendingEstimate={pendingForStep(step.turn, step.step)}
+                              hostSurface={hostSurface}
                               onToggle={() => onToggleLayer('model', step.id)}
                               onToggleReasoning={key => onToggleReasoning(key, step.id)}
                               onOpenRequest={onOpenRequest}
@@ -1335,7 +1353,9 @@ function ReadyWatcher({
   const wholeSessionStats = useProjection('sessionStats')
   const wholeSessionInsights = useProjection('watcherInsights')
   // Host token-meter projection behind the Composer context meter (issue #43).
-  // Watcher does not depend on token-meter types; contextReadingOf validates the value.
+  // ContextPressureProjection lives on @deepseek-ai/dsh-token-meter/client.
+  // That package is not installed, and adding it would pull peers this plugin
+  // does not declare. contextReadingOf validates the value.
   const hostContextPressure = (useProjection as unknown as (key: string) => unknown)('contextPressure')
   const { picture, performanceByTurn } = useObservedPicture(sessionId, snapshot)
   const [open, setOpen] = useState(false)
@@ -1860,6 +1880,7 @@ export function WorkPicturePanel({
               trace={selectedTrace}
               now={now}
               closing={inspectorClosing}
+              hostSurface={contextReading?.source === 'host'}
               onBack={() => closeInspector()}
               onExited={finishInspectorExit}
             />
@@ -2095,6 +2116,7 @@ export function WorkPicturePanel({
                                 disclosure={disclosure}
                                 requestForStep={requestForStep}
                                 pendingForStep={pendingForStep}
+                                hostSurface={contextReading?.source === 'host'}
                                 onToggle={() => {
                                   pinForDisclosure()
                                   setDisclosure(current => toggleLayerDisclosure(current, 'phase', group.id))

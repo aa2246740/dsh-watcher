@@ -1,11 +1,19 @@
+/*!
+ * Copyright (c) 2026 DeepSeek
+ * SPDX-License-Identifier: MIT
+ *
+ * Below/start placement copied from DeepSeek Harness:
+ * - 0.2.1-rc.5 packages/client/ui-primitives/src/useAnchoredPosition.ts
+ * - 0.2.2-rc.5 packages/client/ui-primitives/src/overlay-top-margin.ts
+ * The permission notice ships in THIRD_PARTY_NOTICES.md.
+ *
+ * Harness 0.2.1 exported useAnchoredPosition from
+ * `@deepseek-ai/dsh-client-ui-primitives`. 0.2.2-rc.5 removed it, so an
+ * injected import was `undefined` and the header button threw as soon as it
+ * rendered. Watcher owns this copy so one bundle runs on every supported line.
+ */
 /**
  * Keep the portaled Watcher panel anchored below its header trigger.
- *
- * Harness 0.2.1 exported this hook from `@deepseek-ai/dsh-client-ui-primitives`;
- * 0.2.2-rc.5 removed it, so an injected import resolves to `undefined` and the
- * panel throws on open. Watcher owns this small copy (MIT, DeepSeek Harness
- * 0.2.1-rc.5 `useAnchoredPosition`, below/start placement only) so the same
- * bundle runs on every supported Host line.
  */
 import { useLayoutEffect, useState, type CSSProperties, type RefObject } from 'react'
 
@@ -37,20 +45,33 @@ export function placeBelowAnchor(input: AnchoredPlacementInput): { left: number;
 
 /**
  * Resolve the top margin an overlay keeps from the viewport edge.
+ * Clearance and fullscreen are arguments so the Harness cases can be checked
+ * without a document. `frameTopMargin` is what the hook calls.
  * @param min - the overlay's own viewport margin, used as the floor.
  * @param clearance - `--dsh-frame-top-clearance` in px, or NaN when unset.
  * @param fullscreen - whether the frame strip is hidden.
- * @returns the larger of `min` and the frame clearance plus 20px.
+ * @param anchor - viewport rect of the control that opened the overlay.
+ * @param gap - distance kept below `anchor`.
+ * @returns frame clearance plus 20px (20px in fullscreen), never below `min`.
+ * While `anchor.top` is inside the viewport the result does not exceed
+ * `anchor.bottom + gap`, so a control in the desktop title bar stays next to its panel.
  */
-export function overlayTopMargin(min: number, clearance: number, fullscreen: boolean): number {
+export function overlayTopMargin(
+  min: number,
+  clearance: number,
+  fullscreen: boolean,
+  anchor?: { readonly top: number; readonly bottom: number },
+  gap = 0,
+): number {
   if (Number.isNaN(clearance)) return min
-  return Math.max(min, (fullscreen ? 0 : clearance) + 20)
+  const cap = anchor !== undefined && anchor.top >= 0 ? anchor.bottom + gap : Number.POSITIVE_INFINITY
+  return Math.max(min, Math.min((fullscreen ? 0 : clearance) + 20, cap))
 }
 
-function frameTopMargin(min: number): number {
+function frameTopMargin(min: number, anchor?: { readonly top: number; readonly bottom: number }, gap = 0): number {
   const root = document.documentElement
   const clearance = Number.parseFloat(getComputedStyle(root).getPropertyValue('--dsh-frame-top-clearance'))
-  return overlayTopMargin(min, clearance, root.hasAttribute('data-fullscreen'))
+  return overlayTopMargin(min, clearance, root.hasAttribute('data-fullscreen'), anchor, gap)
 }
 
 /** Inputs for {@link useAnchoredPosition}. */
@@ -85,7 +106,7 @@ export function useAnchoredPosition(options: AnchoredPositionOptions): CSSProper
         viewport: { width: window.innerWidth, height: window.innerHeight },
         gap,
         margin,
-        topMargin: frameTopMargin(margin),
+        topMargin: frameTopMargin(margin, { top: rect.top, bottom: rect.bottom }, gap),
       }))
     }
     place()

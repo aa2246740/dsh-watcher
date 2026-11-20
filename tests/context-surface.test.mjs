@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'vitest'
 import { initialState, reduceEvent, viewOf } from '../src/insights/engine.mjs'
+import { stateSchema, viewSchema } from '../src/insights/projection.ts'
 import { contextReadingOf } from '../src/client/context-reading.ts'
 
 // Issue #43. Builders follow the event shapes Harness 0.2.0-0.2.2 records:
@@ -38,16 +39,29 @@ function log() {
       return seqs
     },
     reply: (turn, n) => add('assistant/message', { turn, step: 1, stream: [], usage, message: { id: `a${seq}`, role: 'assistant', source: { kind: 'model', provider: 'p', model: 'm' }, content: text(n) } }, { surfaceOp: 'append' }),
-    result: (turn, n, surfaceOp = 'append') => add('tool/result', { turn, step: 1, message: { id: `r${seq}`, role: 'user', source: { kind: 'tool', callId: `c${seq}` }, content: [{ type: 'tool-result', toolCallId: `c${seq}`, isError: false, content: text(n) }] } }, { surfaceOp, sourceEventSeqs: [] }),
+    // Appends omit sourceEventSeqs. Harness rejects an empty array there.
+    result: (turn, n, surfaceOp = 'append') => {
+      if (surfaceOp === 'append') {
+        return add('tool/result', { turn, step: 1, message: { id: `r${seq}`, role: 'user', source: { kind: 'tool', callId: `c${seq}` }, content: [{ type: 'tool-result', toolCallId: `c${seq}`, isError: false, content: text(n) }] } }, { surfaceOp: 'append' })
+      }
+      // A prune replacement keeps the original tool/result data except content, including callId.
+      const original = rows.find(row => row.seq === surfaceOp.startSeq)
+      const block = { ...original.data.message.content[0], content: text(n) }
+      return add('tool/result', { ...original.data, message: { ...original.data.message, content: [block] } }, { surfaceOp, sourceEventSeqs: [surfaceOp.startSeq] })
+    },
     prune: seq => add('compaction/prune', { shadowedRange: { start: seq, end: seq }, shadowedSeqs: [seq], shadowedTokenCount: 1 }),
     compact: (start, end, shadowed, n) => {
-      add('compaction/summary', { compactionId: `c${seq}`, shadowedRange: { start, end }, shadowedSeqs: shadowed, shadowedTokenCount: 1, summary: 'filler', provider: 'p', model: 'm' })
-      return add('user/message', { id: `k${seq}`, role: 'user', source: { kind: 'plugin', plugin: 'compaction-basic', compactionId: `c${seq}` }, content: text(n) },
+      const compactionId = `c${seq}`
+      add('compaction/summary', { compactionId, shadowedRange: { start, end }, shadowedSeqs: shadowed, shadowedTokenCount: 1, summary: 'filler', provider: 'p', model: 'm' })
+      return add('user/message', { id: `k${seq}`, role: 'user', source: { kind: 'compact-checkpoint', compactionId }, content: text(n) },
         { surfaceOp: { op: 'replace', startSeq: start, endSeq: end }, sourceEventSeqs: shadowed })
     },
   }
 }
-const fold = (rows, state = initialState({ id: 's' })) => rows.reduce(reduceEvent, state)
+const fold = (rows, state = initialState({ id: 's' }), surfaceNodeCap) => rows.reduce(
+  (next, event) => reduceEvent(next, event, surfaceNodeCap === undefined ? undefined : { surfaceNodeCap }),
+  state,
+)
 const totalAt = (rows, seq) => viewOf(fold(rows.filter(r => r.seq <= seq))).context.projected
 
 test('user messages in the recorded shape price into the surface', () => {
@@ -90,6 +104,11 @@ test('a multi-turn session with two compactions falls each time (issue #43)', ()
   assert.equal(v.context.surface.partial, false)
   // Exactly what the model now sees: system prompt, one checkpoint, turns 5-6.
   assert.deepEqual(s.surfaceNodes.map(n => n.seq), [1, second, ...turns[4], ...turns[5]])
+  const checkpointRow = l.rows.find(row => row.seq === second)
+  assert.equal(checkpointRow.data.source.kind, 'compact-checkpoint')
+  assert.equal(typeof checkpointRow.data.source.compactionId, 'string')
+  assert.equal(checkpointRow.data.source.plugin, undefined)
+  assert.ok(l.rows.every(row => row.sourceEventSeqs === undefined || row.sourceEventSeqs.length > 0))
   assert.equal(v.context.surface.system, price(text(200)))
   assert.equal(v.context.surface.conversation, price(text(700)) + 2 * (price(text(2000)) + price(text(1000))))
   assert.ok(v.context.surface.tools > 0)
@@ -113,10 +132,18 @@ test('a tool-result prune swaps one node in place', () => {
   l.header()
   const [result, reply] = l.turn(1, t => [l.result(t, 8000), l.reply(t, 100)])
   l.prune(result)
+  const original = l.rows.find(row => row.seq === result)
   const pruned = l.result(1, 10, { op: 'replace', startSeq: result, endSeq: result })
+  const replacement = l.rows.find(row => row.seq === pruned)
+  assert.deepEqual(replacement.sourceEventSeqs, [result])
+  assert.deepEqual(
+    { ...replacement.data, message: { ...replacement.data.message, content: original.data.message.content } },
+    original.data,
+  )
+  assert.equal(replacement.data.message.source.callId, original.data.message.source.callId)
   const s = fold(l.rows)
   assert.deepEqual(s.surfaceNodes.map(n => n.seq), [pruned, reply])
-  assert.equal(viewOf(s).context.surface.results, price([{ type: 'tool-result', toolCallId: `c${pruned}`, isError: false, content: text(10) }]))
+  assert.equal(viewOf(s).context.surface.results, price(replacement.data.message.content))
 })
 
 test('a replace reaching into history the fold never held marks the estimate partial', () => {
@@ -140,14 +167,83 @@ test('a replace whose range cannot be placed appends and marks partial', () => {
   assert.equal(viewOf(s).context.surface.partial, true)
 })
 
-test('the node cap keeps positions and marks the estimate partial', () => {
+test('a 0.9.1 state keeps its statistics and stays partial through a compaction', () => {
+  // initialState in v0.9.1:src/insights/engine.mjs is version 5 and has no surfaceRev.
+  // That fold returned before storing a zero-priced user message, so the node list has none.
+  const { surfaceRev, ...legacy } = initialState({ id: 'legacy', cwd: '/repo' })
+  assert.equal(surfaceRev, 1)
+  legacy.seq = 4
+  legacy.updatedAt = 40
+  legacy.prompts = 3
+  legacy.totals = { ...legacy.totals, calls: 2, reported: 2, tokens: 900, input: 800, output: 100 }
+  legacy.days = [{ start: 0, tokens: 900, models: [{ provider: 'p', model: 'm', tokens: 900 }] }]
+  legacy.surface = { system: 40, tools: 0, memory: 0, files: 0, results: 0, conversation: 80 }
+  legacy.surfaceNodes = [
+    { seq: 1, bucket: 'system', tokens: 40 },
+    { seq: 3, bucket: 'conversation', tokens: 80 },
+  ]
+  legacy.surfacePartial = false
+  const parsed = stateSchema.parse(legacy)
+  assert.equal(parsed.surfaceRev, undefined)
+  assert.equal(parsed.totals.tokens, 900)
+  assert.equal(parsed.days[0].tokens, 900)
+  assert.equal(parsed.prompts, 3)
+  assert.deepEqual(parsed.surfaceNodes, legacy.surfaceNodes)
+  assert.equal(viewOf(legacy).totals.tokens, 900)
+  assert.equal(viewOf(legacy).context.surface.partial, true)
+  const checkpoint = {
+    type: 'user/message', seq: 5, time: 50,
+    data: { id: 'k', role: 'user', source: { kind: 'compact-checkpoint', compactionId: 'c1' }, content: text(40) },
+    surfaceOp: { op: 'replace', startSeq: 1, endSeq: 3 },
+  }
+  let next = reduceEvent(legacy, checkpoint)
+  assert.equal(next.surfaceRev, undefined)
+  assert.equal(next.totals.tokens, 900)
+  assert.equal(next.days[0].tokens, 900)
+  assert.equal(next.prompts, 3)
+  assert.equal(viewOf(next).context.surface.partial, true)
+  next = reduceEvent(next, { type: 'turn/start', seq: 6, time: 60, data: { turn: 2 } })
+  next = reduceEvent(next, { type: 'step/start', seq: 7, time: 70, data: { turn: 2, step: 1 } })
+  next = reduceEvent(next, {
+    type: 'assistant/message', seq: 8, time: 80,
+    data: {
+      turn: 2, step: 1, stream: [],
+      usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+      message: { role: 'assistant', content: text(4), source: { kind: 'model', provider: 'p', model: 'm' } },
+    },
+    surfaceOp: 'append',
+  })
+  assert.equal(next.totals.tokens, 915)
+  assert.equal(next.days[0].tokens, 915)
+  assert.equal(next.surfaceRev, undefined)
+  assert.equal(viewOf(next).context.surface.partial, true)
+  assert.equal(viewOf(next).totals.tokens, 915)
+  assert.equal(stateSchema.parse(next).totals.tokens, 915)
+  assert.equal(viewSchema.parse(viewOf(next)).totals.tokens, 915)
+  assert.equal(viewOf(initialState({ id: 'fresh' })).context.surface.partial, false)
+})
+
+test('a checkpoint the cap trims does not stay in the bucket total', () => {
+  const cap = 3
   const l = log()
-  for (let i = 0; i < 3002; i++) l.user(1)
-  const s = fold(l.rows)
-  assert.equal(s.surfaceNodes.length, 3000)
+  for (let i = 0; i < cap + 1; i++) l.result(1, 80)
+  l.compact(0, 0, [0], 40)
+  const s = fold(l.rows, initialState({ id: 's' }), cap)
+  assert.equal(s.surfaceNodes.length, cap)
+  assert.ok(s.surfaceNodes.every(node => node.seq !== 0))
+  const retained = s.surfaceNodes.reduce((sum, node) => sum + node.tokens, 0)
+  assert.equal(viewOf(s).context.surface.total, retained)
+})
+
+test('the node cap keeps positions and marks the estimate partial', () => {
+  const cap = 4
+  const l = log()
+  for (let i = 0; i < cap + 2; i++) l.user(1)
+  const s = fold(l.rows, initialState({ id: 's' }), cap)
+  assert.equal(s.surfaceNodes.length, cap)
   assert.equal(s.surfaceNodes[0].seq, 2)
   assert.equal(viewOf(s).context.surface.partial, true)
-  assert.equal(viewOf(s).context.projected, 3000 * price(text(1)))
+  assert.equal(viewOf(s).context.projected, cap * price(text(1)))
 })
 
 const context = { window: 1000000, surface: { system: 1, tools: 1, memory: 0, files: 0, results: 0, conversation: 554000, total: 556000, partial: false }, projected: 556000 }
@@ -159,8 +255,9 @@ test('the host context meter wins over the fold and stays an estimate when proje
 
 test('only an unmoved provider-reported prompt reads as exact', () => {
   assert.equal(contextReadingOf(context, { pressureTokens: 175000, projectedTokens: 175000 }).exact, true)
+  assert.equal(contextReadingOf(context, { pressureTokens: 10, contextWindow: 200 }).window, 200)
   assert.deepEqual(contextReadingOf(context, { pressureTokens: 175000 }),
-    { tokens: 175000, window: 1000000, exact: true, source: 'host', partial: false })
+    { tokens: 175000, window: null, exact: true, source: 'host', partial: false })
 })
 
 test('without a host reading the fold is the estimate, partial included', () => {
